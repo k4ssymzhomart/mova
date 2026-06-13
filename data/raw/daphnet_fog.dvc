@@ -1,0 +1,6 @@
+outs:
+- md5: e7e6a79cf6ef60f4db21f2ef24c7a186.dir
+  size: 90467563
+  nfiles: 29
+  hash: md5
+  path: daphnet_fog
