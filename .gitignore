@@ -1,0 +1,63 @@
+# ── Data (versioned via DVC remote, never committed to git) ────────────────
+/data/raw/*
+/data/interim/*
+/data/processed/*
+/data/synthetic/*
+!/data/raw/.gitkeep
+!/data/interim/.gitkeep
+!/data/processed/.gitkeep
+!/data/synthetic/.gitkeep
+# keep DVC pointer files + DVC-managed ignores (so data is reproducible from git)
+!/data/raw/*.dvc
+!/data/raw/.gitignore
+# keep the small, checked-in metadata
+!/data_manifests/
+
+# ── ML artifacts / experiment outputs ──────────────────────────────────────
+checkpoints/
+outputs/
+multirun/
+.hydra/
+lightning_logs/
+wandb/
+mlruns/
+*.ckpt
+*.pt
+*.pth
+*.onnx
+*.engine
+*.plan
+
+# ── Python ─────────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.env
+.env.*
+!.env.example
+*.egg-info/
+build/
+dist/
+.ipynb_checkpoints/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+
+# ── DVC ────────────────────────────────────────────────────────────────────
+/.dvc/cache
+/.dvc/tmp
+/.dvc/config.local
+
+# ── Frontend / Node ────────────────────────────────────────────────────────
+node_modules/
+services/frontend/.next/
+services/frontend/dist/
+services/frontend/.turbo/
+
+# ── OS / IDE ───────────────────────────────────────────────────────────────
+.DS_Store
+.idea/
+.vscode/
+*.log

@@ -1,0 +1,171 @@
+{
+  "schema_version": "1.0.0",
+  "name": "mova-canonical-imu",
+  "description": "Single intermediate representation that every dataset adapter emits. Adapters normalize units, body-placement labels, time, and metadata. Resampling to the canonical rate and acc/gyro time-alignment happen later in the preprocess stage (not in adapters).",
+  "canonical": {
+    "sampling_rate_hz": 50,
+    "resample": {
+      "applied_in": "preprocess",
+      "method": "polyphase_antialias",
+      "native_rate_preserved": true,
+      "note": "Adapters keep native timestamps; preprocess resamples each modality to 50 Hz on a common grid and joins acc+gyro into windows."
+    },
+    "units": {
+      "accelerometer": "g (1 g = 9.80665 m/s^2)",
+      "gyroscope": "rad/s",
+      "magnetometer": "uT (nullable; not unit-harmonized across datasets)",
+      "orientation": "unit_quaternion (w,x,y,z) (nullable)"
+    },
+    "time": {
+      "column": "t",
+      "unit": "seconds",
+      "reference": "per-session relative, monotonic increasing"
+    },
+    "window": { "seconds": 4, "overlap": 0.5, "target_samples": 200 }
+  },
+  "record_schema": {
+    "partition_columns": ["dataset", "subject_id", "session_id", "modality"],
+    "columns": [
+      { "name": "t", "dtype": "float64", "unit": "s", "nullable": false, "description": "per-session relative timestamp" },
+      { "name": "ax", "dtype": "float32", "unit": "g", "nullable": true, "description": "accel x (null on gyro rows)" },
+      { "name": "ay", "dtype": "float32", "unit": "g", "nullable": true },
+      { "name": "az", "dtype": "float32", "unit": "g", "nullable": true },
+      { "name": "gx", "dtype": "float32", "unit": "rad/s", "nullable": true, "description": "gyro x (null on accel rows / accel-only datasets)" },
+      { "name": "gy", "dtype": "float32", "unit": "rad/s", "nullable": true },
+      { "name": "gz", "dtype": "float32", "unit": "rad/s", "nullable": true },
+      { "name": "mx", "dtype": "float32", "unit": "uT|a.u.", "nullable": true },
+      { "name": "my", "dtype": "float32", "unit": "uT|a.u.", "nullable": true },
+      { "name": "mz", "dtype": "float32", "unit": "uT|a.u.", "nullable": true },
+      { "name": "qw", "dtype": "float32", "unit": "quat", "nullable": true },
+      { "name": "qx", "dtype": "float32", "unit": "quat", "nullable": true },
+      { "name": "qy", "dtype": "float32", "unit": "quat", "nullable": true },
+      { "name": "qz", "dtype": "float32", "unit": "quat", "nullable": true },
+      { "name": "modality", "dtype": "string", "nullable": false, "enum": ["acc", "gyr", "mag", "imu"], "description": "imu = synchronized acc+gyro in one row (REALDISP, Daphnet)" },
+      { "name": "subject_id", "dtype": "string", "nullable": false },
+      { "name": "session_id", "dtype": "string", "nullable": false },
+      { "name": "device_id", "dtype": "string", "nullable": true },
+      { "name": "placement", "dtype": "string", "nullable": false, "vocabulary_ref": "placement_vocabulary" },
+      { "name": "rate_hz", "dtype": "float32", "nullable": true, "description": "effective native rate estimated from timestamps" },
+      { "name": "make_model", "dtype": "string", "nullable": true },
+      { "name": "dataset", "dtype": "string", "nullable": false },
+      { "name": "activity", "dtype": "string", "nullable": true, "description": "raw dataset activity label, normalized to snake_case" },
+      { "name": "activity_canonical", "dtype": "string", "nullable": true, "vocabulary_ref": "activity_canonical" },
+      { "name": "fog_label", "dtype": "int8", "nullable": true, "description": "Daphnet freezing-of-gait: 0 exclude, 1 no_freeze, 2 freeze" }
+    ]
+  },
+  "placement_vocabulary": [
+    "head", "sternum", "chest", "back", "waist",
+    "l_upper_arm", "r_upper_arm", "l_forearm", "r_forearm", "l_wrist", "r_wrist", "wrist",
+    "l_thigh", "r_thigh", "thigh", "l_shank", "r_shank", "l_calf", "r_calf",
+    "l_ankle", "r_ankle", "ankle", "l_foot", "r_foot", "unspecified"
+  ],
+  "activity_canonical": [
+    "walking", "standing", "sitting", "lying", "stairs_up", "stairs_down",
+    "cycling", "running", "jogging", "null"
+  ],
+  "datasets": {
+    "hhar": {
+      "task": "har",
+      "native_sampling_rate_hz": "variable (~50-200, device-dependent)",
+      "raw_columns": ["Index", "Arrival_Time", "Creation_Time", "x", "y", "z", "User", "Model", "Device", "gt"],
+      "file_modalities": {
+        "Phones_accelerometer.csv": { "modality": "acc", "device_class": "phone" },
+        "Phones_gyroscope.csv": { "modality": "gyr", "device_class": "phone" },
+        "Watch_accelerometer.csv": { "modality": "acc", "device_class": "watch" },
+        "Watch_gyroscope.csv": { "modality": "gyr", "device_class": "watch" }
+      },
+      "timestamp": {
+        "primary": "Creation_Time", "primary_unit": "nanoseconds",
+        "fallback": "Arrival_Time", "fallback_unit": "milliseconds",
+        "note": "Some devices log corrupt Creation_Time; adapter falls back to Arrival_Time when Creation_Time<=0."
+      },
+      "units": {
+        "accelerometer": { "raw": "m/s^2", "to_g": 0.10197162129779283 },
+        "gyroscope": { "raw": "rad/s", "to_rad_s": 1.0 }
+      },
+      "placement_map": {
+        "nexus4": "waist", "s3": "waist", "s3mini": "waist", "samsungold": "waist",
+        "gear": "wrist", "lgwatch": "wrist"
+      },
+      "placement_default_by_class": { "phone": "waist", "watch": "wrist" },
+      "activity_canonical_map": {
+        "stand": "standing", "sit": "sitting", "walk": "walking",
+        "stairsup": "stairs_up", "stairsdown": "stairs_down", "bike": "cycling"
+      },
+      "null_activity_tokens": ["null", ""],
+      "subjects": ["a", "b", "c", "d", "e", "f", "g", "h", "i"]
+    },
+    "daphnet_fog": {
+      "task": "fog",
+      "native_sampling_rate_hz": 64,
+      "file_glob": "S[0-9][0-9]R[0-9][0-9].txt",
+      "delimiter": "whitespace",
+      "raw_columns": [
+        "time_ms",
+        "ankle_h_fwd", "ankle_vert", "ankle_h_lat",
+        "thigh_h_fwd", "thigh_vert", "thigh_h_lat",
+        "trunk_h_fwd", "trunk_vert", "trunk_h_lat",
+        "annotation"
+      ],
+      "timestamp": { "primary": "time_ms", "primary_unit": "milliseconds" },
+      "sensors": {
+        "ankle": { "raw_axis_cols": ["ankle_h_fwd", "ankle_h_lat", "ankle_vert"], "placement": "ankle" },
+        "thigh": { "raw_axis_cols": ["thigh_h_fwd", "thigh_h_lat", "thigh_vert"], "placement": "thigh" },
+        "trunk": { "raw_axis_cols": ["trunk_h_fwd", "trunk_h_lat", "trunk_vert"], "placement": "back" }
+      },
+      "axis_mapping_to_canonical": { "ax": "horizontal_forward", "ay": "horizontal_lateral", "az": "vertical" },
+      "units": {
+        "accelerometer": { "raw": "mg", "to_g": 0.001 },
+        "gyroscope": null,
+        "magnetometer": null
+      },
+      "modality_emitted": "acc",
+      "labels": { "fog_annotation": { "0": "not_in_experiment_exclude", "1": "no_freeze", "2": "freeze" } },
+      "exclude_rows_where": "annotation == 0",
+      "subjects": ["S01", "S02", "S03", "S04", "S05", "S06", "S07", "S08", "S09", "S10"]
+    },
+    "realdisp": {
+      "task": "har",
+      "native_sampling_rate_hz": 50,
+      "file_glob": "subject*_*.log",
+      "scenarios": ["ideal", "self", "mutual"],
+      "delimiter": "tab",
+      "columns_layout": { "timestamp_s": 0, "timestamp_us": 1, "sensor_block_start": 2, "label": 119 },
+      "timestamp": { "compose": "timestamp_s + timestamp_us * 1e-6", "unit": "seconds" },
+      "sensor_order": ["RLA", "RUA", "BACK", "LUA", "LLA", "RC", "RT", "LT", "LC"],
+      "per_sensor_width": 13,
+      "per_sensor_channels": [
+        "acc_x", "acc_y", "acc_z", "gyr_x", "gyr_y", "gyr_z",
+        "mag_x", "mag_y", "mag_z", "quat_1", "quat_2", "quat_3", "quat_4"
+      ],
+      "placement_map": {
+        "RLA": "r_forearm", "RUA": "r_upper_arm", "BACK": "back",
+        "LUA": "l_upper_arm", "LLA": "l_forearm",
+        "RC": "r_calf", "RT": "r_thigh", "LT": "l_thigh", "LC": "l_calf"
+      },
+      "units": {
+        "accelerometer": { "raw": "m/s^2", "to_g": 0.10197162129779283 },
+        "gyroscope": { "raw": "rad/s", "to_rad_s": 1.0 },
+        "magnetometer": { "raw": "local_earth_field_a.u.", "to_uT": null },
+        "orientation": "unit_quaternion"
+      },
+      "modality_emitted": "imu",
+      "activity_label_map": {
+        "0": "null", "1": "walking", "2": "jogging", "3": "running", "4": "jump_up",
+        "5": "jump_front_back", "6": "jump_sideways", "7": "jump_legs_arms_open_close", "8": "jump_rope",
+        "9": "trunk_twist_arms_out", "10": "trunk_twist_elbows_bent", "11": "waist_bends_forward",
+        "12": "waist_rotation", "13": "waist_bend_reach_foot", "14": "reach_heels_backwards",
+        "15": "lateral_bend", "16": "lateral_bend_arm_up", "17": "repetitive_forward_stretching",
+        "18": "upper_lower_opposite_twist", "19": "lateral_elevation_arms", "20": "frontal_elevation_arms",
+        "21": "frontal_hand_claps", "22": "frontal_crossing_arms", "23": "shoulders_high_rotation",
+        "24": "shoulders_low_rotation", "25": "arms_inner_rotation", "26": "knees_to_breast",
+        "27": "heels_to_backside", "28": "knees_bending_crouching", "29": "knees_bending_forward",
+        "30": "rotation_on_knees", "31": "rowing", "32": "elliptical_bike", "33": "cycling"
+      },
+      "activity_canonical_map": {
+        "1": "walking", "2": "jogging", "3": "running", "33": "cycling"
+      },
+      "subjects": 17
+    }
+  }
+}
