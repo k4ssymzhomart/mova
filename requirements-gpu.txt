@@ -1,0 +1,21 @@
+# Mova — GPU training dependencies (Python 3.12 + CUDA).
+#
+# The GPU cluster must use Python 3.12: torch / pytorch-lightning have no 3.14 wheels.
+# Recommended setup on `mova-gpu` (after `scripts/deploy_to_gpu.sh`):
+#
+#   python3.12 -m venv .venv && source .venv/bin/activate
+#   pip install -U pip
+#   # Install the CUDA build of torch matching the server driver (e.g. cu121):
+#   pip install torch --index-url https://download.pytorch.org/whl/cu121
+#   pip install -r requirements-gpu.txt
+#   pip install -e .        # mova package + core data deps (numpy/polars/pyarrow)
+#
+# Core data libs (numpy, polars, pyarrow) are declared in pyproject and installed by `pip install -e .`.
+
+torch>=2.4
+pytorch-lightning>=2.4
+torchmetrics>=1.4
+einops>=0.8
+wandb>=0.17
+hydra-core>=1.3
+scikit-learn>=1.5

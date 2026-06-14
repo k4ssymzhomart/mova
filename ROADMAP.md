@@ -56,22 +56,23 @@ with a rigorous generalization evaluation (cross-device, cross-position, subject
 - [ ] **Issue 1.1 — Stand up the GPU training environment** · `P0` · `M`
   - [ ] Connect Kerio VPN; `ssh-copy-id mova-gpu`; `scripts/deploy_to_gpu.sh --dry-run` then real sync
   - [ ] Create **Python 3.12** venv on `mova-gpu` (3.14 lacks torch wheels); `pip install -e ".[ml]"`
+  - [x] _(prep)_ `[ml]` extra pinned for py3.12 (torch/pytorch-lightning/torchmetrics/wandb) + `requirements-gpu.txt` authored
   - [ ] Verify CUDA: `torch.cuda.is_available()`, GPU name, bf16 support; log driver/CUDA versions
   - [ ] Smoke test: load one shard, forward a random tensor through a dummy module on GPU
   - **DoD:** a one-command remote setup script; GPU smoke test passes; environment captured in `docs/`/lockfile.
 
-- [ ] **Issue 1.2 — Dataset & DataLoader layer** (`src/mova/data/datasets.py`) · `P0` · `L`
-  - [ ] `MovaWindowDataset` over `data/processed/*.npy` + `index.parquet` (memmap, lazy shard load)
-  - [ ] Apply train-only normalization from `train_stats.json`; expose placement/dataset as conditioning ids
-  - [ ] Split-aware sampling (train/val/test); task filters (HAR vs FoG; labelled vs unlabelled-for-SSL)
-  - [ ] Augmentations: jitter, scaling, rotation, time-warp, channel/sensor dropout (config-driven)
-  - [ ] Class-imbalance handling for FoG (weighted sampler / focal loss flag)
+- [~] **Issue 1.2 — Dataset & DataLoader layer** (`src/mova/train/data.py`) · `P0` · `L` — _drafted; data-layer validated locally, GPU iteration pending_
+  - [x] `MovaWindowDataset` over `data/processed/*.npy` + `index.parquet` (memmap, lazy shard load)
+  - [x] Apply train-only normalization from `train_stats.json`; expose placement/dataset as conditioning ids
+  - [x] Split-aware sampling (train/val/test); task filters (HAR vs FoG; labelled vs unlabelled-for-SSL); `verify_splits` re-check
+  - [ ] Augmentations: jitter, scaling, rotation, time-warp, channel/sensor dropout (config-driven) — _transform hook in place; library TBD_
+  - [x] Class-imbalance handling for FoG (weighted sampler)
   - **DoD:** deterministic batches; unit tests for shapes/labels/leakage; throughput benchmarked.
 
-- [ ] **Issue 1.3 — Encoder backbone** (`src/mova/models/encoder.py`) · `P0` · `L`
-  - [ ] Patch tokenizer (200×6 → patches) + placement/device embeddings + positional encoding
-  - [ ] Transformer encoder (configurable depth/width, ~5–25M params), pre-norm, bf16-friendly
-  - [ ] Variable-sensor masking so the model accepts 1..N placements (sparse-sensor inference path)
+- [~] **Issue 1.3 — Encoder backbone** (`src/mova/models/encoder.py`) · `P0` · `L` — _drafted; GPU forward-pass pending_
+  - [x] Token embedding (per-timestep 6→hidden) + placement/dataset embeddings + learned positional encoding
+  - [x] Transformer encoder (configurable depth/width, ~5–25M params), pre-norm, bf16-friendly + recon/classifier heads
+  - [ ] Variable-sensor masking so the model accepts 1..N placements (sparse-sensor inference path) — _single-placement windows for now; multi-sensor fusion deferred_
   - **DoD:** parametrized by Hydra config; param count + FLOPs logged; forward/backward unit-tested.
 
 - [ ] **Issue 1.4 — Self-supervised pretraining (LIMU-BERT baseline)** (`src/mova/ssl/`, `src/mova/train/`) · `P0` · `XL`
