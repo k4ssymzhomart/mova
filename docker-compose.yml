@@ -1,0 +1,41 @@
+# Mova local stack: API gateway + TimescaleDB.
+# Spin up:  docker compose up --build
+# Verify:   curl localhost:8000/health   (and POST to /api/v1/predict/fog)
+services:
+  db:
+    image: timescale/timescaledb:latest-pg16
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-mova}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-mova}
+      POSTGRES_DB: ${POSTGRES_DB:-mova}
+    ports:
+      - "5432:5432"
+    volumes:
+      - mova_pgdata:/var/lib/postgresql/data
+      - ./services/api/db/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-mova} -d ${POSTGRES_DB:-mova}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  api:
+    build:
+      context: ./services/api
+      dockerfile: Dockerfile
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-mova}:${POSTGRES_PASSWORD:-mova}@db:5432/${POSTGRES_DB:-mova}
+      MODEL_MODE: mock
+      CORS_ORIGINS: '["http://localhost:3000"]'
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - ./services/api/app:/srv/app:ro
+    restart: unless-stopped
+
+volumes:
+  mova_pgdata:

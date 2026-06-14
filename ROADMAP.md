@@ -159,12 +159,12 @@ and benchmarked latency. **Owner:** ML/MLOps · **Milestone:** M2 · **Depends o
 **Goal:** a FastAPI application that ingests IMU sessions, runs batch + real-time inference, and persists
 clinical metrics. **Owner:** Backend · **Milestone:** M3 · **Depends on:** E2 (served model).
 
-- [ ] **Issue 3.1 — FastAPI gateway scaffold** (`services/api/`) · `P0` · `M`
+- [~] **Issue 3.1 — FastAPI gateway scaffold** (`services/api/`) · `P0` · `M` — _app + `/health` (DB ping) + CORS + OpenAPI + Dockerfile done; JWT/RBAC auth pending_
   - [ ] App factory, settings via `pydantic-settings` (env, no secrets in code), OpenAPI docs
   - [ ] Auth: JWT + refresh, RBAC (patient / clinician / admin), password hashing
   - **DoD:** `/healthz`, auth flow, and OpenAPI schema live in docker-compose.
 
-- [ ] **Issue 3.2 — Database schema + migrations** · `P0` · `L`
+- [~] **Issue 3.2 — Database schema + migrations** · `P0` · `L` — _TimescaleDB extension + `fog_events` hypertable init SQL done; SQLAlchemy models + Alembic pending_
   - [ ] Postgres models: users, patients, clinicians, prescriptions, sessions, devices
   - [ ] **TimescaleDB** hypertable for time-series metrics (ROM, gait params, FoG events, adherence)
   - [ ] Alembic migrations; seed/fixtures for dev
@@ -175,13 +175,13 @@ clinical metrics. **Owner:** Backend · **Milestone:** M3 · **Depends on:** E2 
   - [ ] Presigned upload URLs; retention policy; checksum verification
   - **DoD:** client can upload a session blob; server records pointer + metadata.
 
-- [ ] **Issue 3.4 — Batch inference route** · `P0` · `L`
+- [~] **Issue 3.4 — Batch inference route** · `P0` · `L` — _`POST /api/v1/predict/fog` live with deterministic mock engine; queue/worker + persistence pending_
   - [ ] `POST /sessions` → store blob → enqueue (Redis + arq) → worker preprocesses + calls model server
   - [ ] Persist window predictions + aggregated clinical metrics to Timescale
   - [ ] Job status endpoint + idempotency + retries/backoff
   - **DoD:** upload → async processing → metrics queryable; worker pool containerized.
 
-- [ ] **Issue 3.5 — Real-time inference route** · `P1` · `L`
+- [~] **Issue 3.5 — Real-time inference route** · `P1` · `L` — _`ws /api/v1/predict/fog/stream` implemented (mock); backpressure/reconnect pending_
   - [ ] WebSocket endpoint: stream 50 Hz windows → low-latency inference → live feedback events
   - [ ] Backpressure, sequence ordering, reconnect handling
   - **DoD:** a streamed session yields live predictions under target latency.
@@ -195,8 +195,9 @@ clinical metrics. **Owner:** Backend · **Milestone:** M3 · **Depends on:** E2 
   - [ ] Pydantic request/response schemas; `/v1` namespace; rate limiting; pagination
   - **DoD:** typed contract; contract tests; published OpenAPI.
 
-- [ ] **Issue 3.8 — Local dev environment** · `P0` · `M`
-  - [ ] `docker-compose`: api, worker, postgres+timescale, redis, minio, mlflow, model server
+- [~] **Issue 3.8 — Local dev environment** · `P0` · `M` — _compose `api` + `db` (TimescaleDB) with healthcheck + named volume done; rest pending_
+  - [x] `docker-compose`: api + postgres+timescale (healthcheck, `depends_on: service_healthy`, named volume)
+  - [ ] add worker, redis, minio, mlflow, model server
   - **DoD:** `docker compose up` boots the whole backend locally.
 
 ---
@@ -206,9 +207,10 @@ clinical metrics. **Owner:** Backend · **Milestone:** M3 · **Depends on:** E2 
 **Goal:** a clinician dashboard and a patient capture app, integrated with the backend, that close the loop
 from sensor capture to clinical review. **Owner:** Frontend · **Milestone:** M4 · **Depends on:** E3 (API).
 
-- [ ] **Issue 4.1 — Frontend architecture & scaffolding** (`services/frontend/`) · `P0` · `M`
-  - [ ] Next.js + TypeScript clinician dashboard; React Native patient app; shared types package
-  - [ ] Design system (tokens, components), routing, env config
+- [~] **Issue 4.1 — Frontend architecture & scaffolding** (`services/frontend/`) · `P0` · `M` — _Next.js dashboard scaffolded; patient app + shared types pending_
+  - [x] Next.js (App Router, TS) clinician dashboard scaffold
+  - [x] Design system (dark tokens, bento grid, micro-animations), components (`StreamStatus`/`MetricCard`/`PosePlaceholder`/`TelemetryStrip`)
+  - [ ] React Native patient app; shared types package; env config
   - **DoD:** both apps build and render an authenticated shell.
 
 - [ ] **Issue 4.2 — Auth & onboarding** · `P0` · `M`
@@ -221,7 +223,7 @@ from sensor capture to clinical review. **Owner:** Frontend · **Milestone:** M4
   - [ ] 3D skeleton / motion overlay (three.js) and live kinematic plots
   - **DoD:** a patient can record a guided session and see live feedback.
 
-- [ ] **Issue 4.4 — Clinician dashboard** · `P0` · `L`
+- [~] **Issue 4.4 — Clinician dashboard** · `P0` · `L` — _bento layout + stream-status + pose/telemetry placeholders done; real data wiring + prescription editor pending_
   - [ ] Patient roster, session list/review, ROM & gait trends, FoG flags, adherence
   - [ ] Prescription editor (assign exercises, thresholds, schedule)
   - **DoD:** clinician reviews a processed session and edits a prescription.
