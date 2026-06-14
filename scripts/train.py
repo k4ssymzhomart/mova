@@ -90,11 +90,12 @@ def main(cfg: DictConfig) -> None:
         accumulate_grad_batches=cfg.trainer.accumulate_grad_batches,
         log_every_n_steps=cfg.trainer.log_every_n_steps,
         deterministic=cfg.trainer.deterministic,
+        fast_dev_run=cfg.trainer.fast_dev_run,
         logger=logger,
         callbacks=callbacks,
     )
     trainer.fit(model, loaders["train"], loaders["val"])
-    if cfg.task != "ssl":
+    if cfg.task != "ssl" and not cfg.trainer.fast_dev_run:
         trainer.test(model, loaders["test"], ckpt_path="best")
 
 
