@@ -210,6 +210,7 @@ from sensor capture to clinical review. **Owner:** Frontend · **Milestone:** M4
 - [~] **Issue 4.1 — Frontend architecture & scaffolding** (`services/frontend/`) · `P0` · `M` — _Next.js dashboard scaffolded; patient app + shared types pending_
   - [x] Next.js (App Router, TS) clinician dashboard scaffold
   - [x] Design system (dark tokens, bento grid, micro-animations), components (`StreamStatus`/`MetricCard`/`PosePlaceholder`/`TelemetryStrip`)
+  - [x] Light narrative landing page (`src/app/page.tsx`, Tailwind, scroll reveals) + `/dashboard` route migration; `next build` clean
   - [ ] React Native patient app; shared types package; env config
   - **DoD:** both apps build and render an authenticated shell.
 
