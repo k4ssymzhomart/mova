@@ -59,6 +59,7 @@ with a rigorous generalization evaluation (cross-device, cross-position, subject
   - [x] _(prep)_ `[ml]` extra pinned for py3.12 (torch/pytorch-lightning/torchmetrics/wandb) + `requirements-gpu.txt` authored
   - [ ] Verify CUDA: `torch.cuda.is_available()`, GPU name, bf16 support; log driver/CUDA versions
   - [ ] Smoke test: load one shard, forward a random tensor through a dummy module on GPU
+  - [x] _(prep)_ `scripts/bootstrap_gpu.sh` (venv + install + wandb login + `fast_dev_run` smoke) authored
   - **DoD:** a one-command remote setup script; GPU smoke test passes; environment captured in `docs/`/lockfile.
 
 - [~] **Issue 1.2 — Dataset & DataLoader layer** (`src/mova/train/data.py`) · `P0` · `L` — _drafted; data-layer validated locally, GPU iteration pending_

@@ -7,3 +7,4 @@ gradient_clip_val: 1.0
 accumulate_grad_batches: 1
 log_every_n_steps: 50
 deterministic: false
+fast_dev_run: false # override to True for a 1-batch smoke test
