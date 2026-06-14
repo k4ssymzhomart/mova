@@ -75,21 +75,21 @@ with a rigorous generalization evaluation (cross-device, cross-position, subject
   - [ ] Variable-sensor masking so the model accepts 1..N placements (sparse-sensor inference path) — _single-placement windows for now; multi-sensor fusion deferred_
   - **DoD:** parametrized by Hydra config; param count + FLOPs logged; forward/backward unit-tested.
 
-- [ ] **Issue 1.4 — Self-supervised pretraining (LIMU-BERT baseline)** (`src/mova/ssl/`, `src/mova/train/`) · `P0` · `XL`
-  - [ ] Masked IMU modeling objective (mask ratio configurable; smooth-L1 reconstruction)
-  - [ ] Contrastive objective (NT-Xent over augmented views) — toggleable; combined loss weights
-  - [ ] Lightning training loop: AdamW, cosine LR + warmup, grad clip, grad accumulation, EMA, bf16
-  - [ ] Hydra config tree (`configs/ssl/*.yaml`), W&B logging, resumable checkpoints
-  - [ ] Pretrain on train split (all datasets, labelled + unlabelled windows)
+- [~] **Issue 1.4 — Self-supervised pretraining (LIMU-BERT baseline)** (`src/mova/train/module.py`, `scripts/train.py`) · `P0` · `XL` — _stack drafted; GPU run pending_
+  - [x] Masked IMU modeling objective (span mask + BERT 80/10/10; MSE on masked positions)
+  - [ ] Contrastive objective (NT-Xent over augmented views) — _deferred to a later iteration_
+  - [x] Lightning training loop: AdamW, cosine LR + warmup, grad clip, grad accumulation, bf16 _(EMA TBD)_
+  - [x] Hydra config tree (`configs/train.yaml` + `model/` + `trainer/`), W&B logging, resumable checkpoints (`save_last`)
+  - [ ] Pretrain on train split (all datasets, labelled + unlabelled windows) — _ready to launch on `mova-gpu`_
   - **DoD:** stable training curve; checkpoint saved; linear-probe on val ≥ random; run reproducible from config.
 
-- [ ] **Issue 1.5 — HAR fine-tuning + evaluation** · `P0` · `L`
+- [ ] **Issue 1.5 — HAR fine-tuning + evaluation** · `P0` · `L` — _classifier head + acc/macro-F1 metrics wired in `module.py` (`task=har`); training/eval pending GPU_
   - [ ] Classification head on frozen-then-unfrozen encoder; cross-entropy/focal
   - [ ] Train/eval on HHAR + REALDISP labelled windows; metrics: macro-F1, accuracy, confusion matrix
   - [ ] Label-efficiency curves (1% / 10% / 100% labels) — SSL vs from-scratch
   - **DoD:** results table in `docs/`; SSL beats from-scratch at low-label regime; W&B run links.
 
-- [ ] **Issue 1.6 — Clinical FoG fine-tuning + evaluation** · `P0` · `L`
+- [ ] **Issue 1.6 — Clinical FoG fine-tuning + evaluation** · `P0` · `L` — _binary head + FoG imbalance sampler wired (`task=fog`); event-level metrics + training pending GPU_
   - [ ] FoG detection head on Daphnet windows (freeze vs no-freeze)
   - [ ] Clinically meaningful metrics: sensitivity, specificity, AUROC, event-level F1 (not just window acc)
   - [ ] Subject-disjoint eval; report per-subject variance; threshold calibration

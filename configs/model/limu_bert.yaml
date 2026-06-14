@@ -1,0 +1,10 @@
+# LIMU-BERT encoder backbone (~5M params at these defaults).
+# n_placements / n_datasets / num_classes are injected at runtime from the data vocabulary.
+in_channels: 6
+max_len: 200
+hidden: 256
+n_layers: 6
+n_heads: 8
+ff_mult: 4
+dropout: 0.1
+use_conditioning: true

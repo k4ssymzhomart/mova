@@ -1,0 +1,40 @@
+# Mova training config (Hydra). Override on the CLI, e.g.:
+#   python scripts/train.py task=ssl
+#   python scripts/train.py task=har finetune.pretrained_ckpt=checkpoints/last.ckpt
+#   python scripts/train.py task=fog trainer.max_epochs=30 wandb.mode=offline
+defaults:
+  - _self_
+  - model: limu_bert
+  - trainer: single_gpu
+
+task: ssl                 # ssl | har | fog
+seed: 1337
+processed_dir: data/processed
+batch_size: 256
+num_workers: 8
+normalize: true
+
+optim:
+  lr: 0.0003
+  weight_decay: 0.05
+  warmup_ratio: 0.05
+
+ssl:                      # masked-IMU pretraining
+  mask_ratio: 0.15
+  mask_span: 10
+
+finetune:                 # used for task=har|fog
+  pretrained_ckpt: null   # path to an SSL checkpoint to warm-start the encoder
+  freeze_encoder: false
+
+wandb:
+  project: mova
+  entity: null
+  run_name: null
+  mode: online            # online | offline | disabled
+
+hydra:
+  job:
+    chdir: false          # keep cwd at repo root so data/processed paths resolve
+  run:
+    dir: outputs/${now:%Y-%m-%d}/${now:%H-%M-%S}
