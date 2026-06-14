@@ -76,6 +76,7 @@ node_modules/
 services/frontend/.next/
 services/frontend/dist/
 services/frontend/.turbo/
+*.tsbuildinfo
 
 # ── OS / IDE ───────────────────────────────────────────────────────────────
 .DS_Store

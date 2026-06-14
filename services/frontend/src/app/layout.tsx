@@ -1,10 +1,12 @@
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
+
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Mova · Clinician Console",
-  description: "Real-time IMU rehabilitation telemetry — freezing-of-gait monitoring.",
+  title: "Mova — Motion intelligence for rehabilitation",
+  description:
+    "Camera-free, 50 Hz IMU gait and freezing-of-gait tracking that generalizes across patients and devices.",
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {
