@@ -17,6 +17,7 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import random
 from pathlib import Path
 
 import numpy as np
@@ -126,9 +127,59 @@ def _iter_sessions(interim_dir: Path):
                 yield dataset, subject, session, sess_dir
 
 
+def _freeze_positive_subjects(interim_dir: Path) -> set[str]:
+    """Daphnet subjects with at least one freeze sample (fog_label == 2)."""
+    dap = interim_dir / "dataset=daphnet_fog"
+    if not dap.exists():
+        return set()
+    df = (
+        pl.scan_parquet(str(dap / "**" / "*.parquet"), hive_partitioning=True)
+        .select("subject_id", "fog_label")
+        .filter(pl.col("fog_label") == 2)
+        .collect()
+    )
+    return set(df.get_column("subject_id").unique().to_list())
+
+
+def _stratified_split(
+    subjects: list[str],
+    positives: set[str],
+    seed: int,
+    ratios: tuple[float, float, float] = (0.8, 0.1, 0.1),
+) -> dict[str, list[str]]:
+    """Spread positive (freeze) subjects across train/val/test so each split has positives."""
+    rng = random.Random(seed + 7)
+
+    def three_way(items: list[str]) -> tuple[list[str], list[str], list[str]]:
+        s = list(items)
+        rng.shuffle(s)
+        n = len(s)
+        if n == 0:
+            return [], [], []
+        if n == 1:
+            return s, [], []
+        if n == 2:
+            return s[:1], s[1:], []
+        n_tr = max(1, round(n * ratios[0]))
+        n_va = max(1, round(n * ratios[1]))
+        if n_tr + n_va >= n:
+            n_va = max(1, n - n_tr - 1)
+            n_tr = n - n_va - 1
+        return s[:n_tr], s[n_tr : n_tr + n_va], s[n_tr + n_va :]
+
+    ptr, pva, pte = three_way([x for x in subjects if x in positives])
+    ntr, nva, nte = three_way([x for x in subjects if x not in positives])
+    return {"train": sorted(ptr + ntr), "val": sorted(pva + nva), "test": sorted(pte + nte)}
+
+
 def run(interim_dir: Path, out_dir: Path, splits_path: Path, seed: int, shard_size: int) -> None:
     subjects = split.discover_subjects(interim_dir)
     splits = split.make_subject_splits(subjects, seed=seed)
+    # Freezing is rare and concentrated in a few subjects; stratify Daphnet so val AND test each
+    # contain freezing subjects (else sensitivity/AUROC are unmeasurable on an all-negative test set).
+    positives = _freeze_positive_subjects(interim_dir)
+    if "daphnet_fog" in splits and positives:
+        splits["daphnet_fog"] = _stratified_split(subjects["daphnet_fog"], positives, seed)
     split.save_splits(splits, splits_path, seed=seed, ratios=(0.8, 0.1, 0.1))
     lut = split.lookup_table(splits)
     logger.info("subjects per dataset: %s", {k: len(v) for k, v in subjects.items()})
