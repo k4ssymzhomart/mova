@@ -1,461 +1,417 @@
-# MOVA — Master Project Document
+# MOVA — Master Project Document (v2, full ecosystem)
 
-**Type:** Product Requirements Document + Technical Specification
-**Audience:** the founder/orchestrator (product vision) and the engineering/ML execution agent.
-**Status:** living document — the single source of truth that survives session resets.
+**Type:** Product Requirements Document + Technical Specification + Information Architecture.
+**Audience:** the founder/orchestrator (vision) and the execution agent (build).
+**Status:** living source of truth that survives session resets.
 
-> How to use this document: Part 1 captures the story and the locked decisions. Part 2 specifies the reading
-> experience. Part 3 is the 10-phase technical roadmap. Part 4 gives a copy-pasteable execution prompt for
-> every phase (start a fresh session, paste the prompt, hand it this document). Part 5 is the operating contract.
+> How to use: Part 1 = story + ML core + current results. Part 2 = the whole product ecosystem (surfaces,
+> navigation, every page). Part 3 = design system. Part 4 = gamification. Part 5 = CV/game engine. Part 6 =
+> data model. Part 7 = the 10 macro-phases (each owns a slice of the ecosystem). Part 8 = a copy-paste
+> execution prompt per phase. Part 9 = operating rules.
+
+## Contents
+1. Story, current state & the ML core (with real FoG results)
+2. The product ecosystem — surfaces, navigation, every page
+3. Design system (Vercel-native monochrome)
+4. Gamification & engagement ecosystem
+5. CV "spider-web" capture + rehab game engine
+6. Data model (Supabase) & services
+7. The 10 macro-phases (explicit deliverables)
+8. Execution prompts (one per phase)
+9. Operating & Git rules
 
 ---
 
-## Table of contents
-1. Project story & current state (mission, history, ML core, progress, locked decisions)
-2. The "Paper"/Reading integration (educational content UI)
-3. Macro-phases — the master technical roadmap (10 phases)
-4. Prompt engineering for execution (one prompt per phase)
-5. Strict operating & Git rules
-
----
-
-# Part 1 — Project Story & Current State
+# Part 1 — Story, current state & the ML core
 
 ## 1.1 Mission
-MOVA turns **one or two low-cost inertial sensors plus an ordinary camera** into **clinical-grade
-motion intelligence for rehabilitation** — measuring joint angles, movement quality, balance, and
-freezing-of-gait at home, **camera-optional and privacy-first**, with a model that **generalizes across
-patients, devices, and sensor placements**. The product wraps this engine in a **gamified rehabilitation
-experience** that drives the one thing home rehab fails at: adherence.
+MOVA turns **1–2 low-cost inertial sensors + an ordinary camera** into **clinical-grade motion intelligence
+for rehabilitation** — joint angles, movement quality, balance, and freezing-of-gait, measured at home,
+**camera-optional and privacy-first**, with a model that **generalizes across patients, devices, and sensor
+placements**. Wrapped in a **gamified rehab experience** that drives adherence. *mova = movement.*
 
-The name is the thesis: **mova = movement**.
+## 1.2 Problem & wedge
+Rehab outcomes (ROM, compensation, balance, gait) are still measured by eye or $50k lab mocap. IMUs + markerless
+vision can measure them objectively *if the model generalizes* — the open problem. Market: tele-rehab/digital-MSK
+~$5.4B (2024) → ~$15B (2032); Sword Health ($4B) bought Kaia ($285M, Jan 2026). **Wedge:** camera-optional,
+consumer sparse sensors, on-device privacy, body-agnostic model — cheaper, private, deployable anywhere.
 
-## 1.2 The problem & the wedge
-- Physiotherapy outcomes (range of motion, compensation, balance, gait) are still measured by eye or with
-  $50k optical motion-capture confined to labs.
-- Wearable IMUs and markerless computer-vision pose can measure these objectively — **but only if the model
-  generalizes to real patients**, which is the open research problem (the companion survey *Towards
-  Generalizable HAR*, arXiv:2508.12213, is built around exactly this gap).
-- Market proof: tele-rehab / digital-MSK is **~$5.4B (2024) → ~$15B (2032)**; Sword Health ($4B) acquired
-  Kaia Health for $285M (Jan 2026). Incumbents lean on cameras (privacy, fixed location) or proprietary
-  sensor suits. **MOVA's wedge:** camera-optional, consumer-grade sparse sensors, on-device privacy, and a
-  body-agnostic model — cheaper, private, deployable anywhere (a strong fit for under-served regions).
+## 1.3 Story so far
+Direction (generalizable motion model) → canonical IMU schema + adapters (HHAR, Daphnet-FoG, REALDISP) →
+50 Hz pipeline → **672,221 subject-disjoint windows** → LIMU-BERT encoder + Lightning SSL/FoG/HAR module →
+FastAPI + TimescaleDB backend with a Bachlin-Freeze-Index mock → Next.js landing + clinician console →
+**local-training pivot** to Apple-Silicon MPS (GPU cluster fell through) → caught & fixed a split bug that had
+faked 98.6% accuracy → first **honest FoG result** (below).
 
-## 1.3 The story so far (how we got here)
-1. **Direction.** Framed MOVA on the Awesome-IMU-Sensing corpus as a *generalizable motion model for rehab*.
-2. **Data pipeline.** Built a canonical IMU schema, dataset adapters (HHAR, Daphnet-FoG, REALDISP), and a
-   50 Hz preprocessing pipeline → **672,221 subject-disjoint windows**.
-3. **Model stack.** Implemented a LIMU-BERT-style Transformer encoder + a PyTorch-Lightning training module
-   (self-supervised pretraining + HAR/FoG fine-tuning) + clinical metrics.
-4. **Infra & app.** Dockerized FastAPI + TimescaleDB backend with a `/predict/fog` POST + WebSocket served by
-   a deterministic Bachlin Freeze-Index mock; a Next.js clinician console; a light, scroll-narrative landing
-   page declaring the product surfaces **Model · Datasets · Benchmark · Research · Docs**.
-5. **Local-training pivot.** The university GPU cluster became unavailable, so training moved **on-device to
-   Apple-Silicon MPS** (Python 3.12 venv, torch 2.12); the FoG model now trains locally + a Jupyter notebook.
-6. **A methodology correction (important).** The first FoG run scored a misleading 98.6% accuracy — caused by
-   a random subject split handing us a **freeze-free test subject** (sensitivity/AUROC unmeasurable). Fixed
-   with a **freeze-stratified split**; re-training in progress. *The lesson is doctrine for MOVA: in clinical
-   ML the evaluation design is where fake results hide — get the split right before trusting any number.*
+## 1.4 The ML core (defined by the ML lead)
 
-## 1.4 The Machine Learning core (defined by the ML lead)
+MOVA is a **multi-task, multi-modal motion engine** fusing **inertial (IMU)** and **markerless vision (pose)**.
 
-MOVA is a **multi-task motion-intelligence engine** fusing two modalities — **inertial (IMU)** and
-**markerless vision (pose)** — into one kinematic understanding of the body.
-
-### 1.4.1 Tasks
-| Task | Modality | Clinical purpose |
+### 1.4.1 Tasks & current models
+| Task | Modality | Status |
 |---|---|---|
-| Freezing-of-gait (FoG) detection | IMU (+ pose) | the clinical headline (Parkinson's) |
-| Human activity recognition (HAR) | IMU | context + exercise recognition + rep counting |
-| Movement-quality / compensation scoring | pose (+ IMU) | "is the exercise done correctly?" |
-| Joint-angle / range-of-motion estimation | pose + IMU fusion | objective ROM tracking |
-| 3D pose / sparse-IMU pose | pose; IMU (roadmap) | the "spider-web" overlay + kinematics |
+| Freezing-of-gait (FoG) | IMU (+pose) | baseline trained locally (results below) |
+| Human activity recognition (HAR) | IMU | head implemented; eval pending |
+| Movement-quality / compensation | pose (+IMU) | designed; needs KIMORE/UI-PRMD |
+| Joint-angle / ROM | pose+IMU fusion | designed |
+| 3D pose / sparse-IMU pose | pose; IMU roadmap | designed (AMASS/DIP/TotalCapture) |
 
-### 1.4.2 Metrics & required levels (honest, defensible targets)
-**Evaluation doctrine:** always report **subject-disjoint** results; for small clinical sets (Daphnet's 10
-subjects) use **Leave-One-Subject-Out cross-validation (LOSO-CV)** and report **mean ± std**, plus the
-generalization axes the thesis is about: **cross-subject, cross-device (HHAR), cross-position (REALDISP
-ideal→self→mutual)**.
+### 1.4.2 Current FoG result — honest baseline (freeze-stratified, subject-disjoint test = S08)
+```
+accuracy 0.678 · balanced_acc 0.527 · macro_f1 0.525
+sensitivity 0.210 · specificity 0.845 · precision 0.325 · AUROC 0.551
+confusion: tn 1447 · fp 266 · fn 481 · tp 128
+```
+**Interpretation:** AUROC 0.55 ≈ near chance; the model misses ~79% of freezes. This is a *from-scratch,
+12-epoch, single-held-out-subject* baseline — exactly what the rest of the program exists to beat. **Do not
+present this as a success.**
 
-- **FoG (window-level, LOSO-CV):** primary = **AUROC** and **AUPRC** (AUPRC matters under class imbalance);
-  secondary = **sensitivity at fixed specificity**, balanced accuracy, geometric-mean(sens, spec),
-  event-level F1 (windows → episodes). *Targets:* **AUROC ≥ 0.88**, **sensitivity ≥ 0.85 at specificity
-  ≥ 0.85** (deep models in the literature reach this; the classic Bachlin Freeze-Index baseline is ~73% sens /
-  82% spec — we must beat it convincingly).
-- **HAR (cross-subject):** **macro-F1 ≥ 0.90** in-distribution; the *contribution* is quantifying and shrinking
-  the cross-device / cross-position drop with self-supervised pretraining.
-- **Movement quality (KIMORE / UI-PRMD):** **Spearman/Pearson correlation ≥ 0.7** with clinician scores;
-  compensation-detection F1; **ROM MAE ≤ 5°** vs reference.
-- **Joint-angle / sparse-IMU pose (TotalCapture / DIP-IMU / AMASS):** **MPJPE ≤ ~80 mm**, **mean joint-angle
-  error ≤ 5–8°**.
-- **Markerless CV pose vs mocap:** correlation **r ≥ 0.90** (upper limb); fusion must cut the known
-  extreme-flexion/occlusion error (~17°) toward **≤ 8°**.
+**Why it's weak (root causes):** (1) no self-supervised pretraining yet; (2) only 12 epochs, small encoder
+(hidden 192); (3) evaluated on **one** subject → high variance, not representative; (4) plain cross-entropy
+despite imbalance; (5) Daphnet is **accelerometer-only**, so the gyro half of the 6-channel input is
+zero-filled; (6) no decision-threshold tuning (default 0.5).
 
-### 1.4.3 Open-source datasets (exact recommendations)
-- **In use (IMU):** HHAR (cross-device), Daphnet-FoG (freezing of gait), REALDISP (cross-position).
-- **IMU — add next:** **CAPTURE-24** (151 subjects, ~3,900 h free-living — the SSL pretraining fuel),
-  PAMAP2, Opportunity, MHEALTH, MobiAct/SisFall/UMAFall (falls), MM-Fit, WISDM.
-- **Pose + mocap (joint angles & "virtual-IMU" synthesis):** **AMASS** (mocap → simulate IMU + exact joint
-  angles), **TotalCapture**, **DIP-IMU**, **Human3.6M**, **3DPW**, **MoVi**.
-- **Rehabilitation-specific with clinician quality scores (critical for the rehab engine):** **KIMORE**
-  (clinical + control subjects, rehab exercises with clinician scores), **UI-PRMD** (physical-rehab
-  movements), **IntelliRehabDS**, **REHAB24-6**. These are the supervision for movement-quality scoring.
+**The path to thesis-grade FoG (target AUROC ≥ 0.88, sensitivity ≥ 0.85 @ specificity ≥ 0.85):**
+1. **SSL pretrain** the encoder on all 672k windows (masked + contrastive), then fine-tune FoG.
+2. **LOSO-CV** over the 8 freeze-positive subjects; report **mean ± std** (one subject is not an evaluation).
+3. **Class-weighted / focal loss** + keep the imbalance sampler; tune the decision threshold on validation to
+   hit a target operating point (sensitivity@specificity).
+4. **Daphnet-aware input:** an accelerometer-only variant or explicit missing-gyro handling; add the **Bachlin
+   Freeze-Index** as an engineered input channel and as the baseline to beat.
+5. Bigger encoder + more epochs; augmentation (jitter/scale/time-warp); **event-level** smoothing
+   (windows → episodes) for clinical metrics.
 
-### 1.4.4 Model architectures (exact recommendations)
-- **IMU foundation encoder (have):** LIMU-BERT-style Transformer with placement/dataset conditioning;
-  self-supervised pretraining via **masked reconstruction + contrastive (RelCon-style)**; light task heads.
-  *Roadmap:* scale toward **UniMTS** (unified motion-time-series pretraining) and patch/SSM backbones
-  (PatchTST / Mamba) for longer context.
-- **Markerless pose (vision):** **MediaPipe BlazePose (GHUM)** + **Hands** + **FaceMesh** for on-device,
-  real-time capture (the runtime); **MoveNet** as a lightweight alternative; **MMPose / ViTPose** for
-  offline accuracy; **MotionBERT** to lift 2D→3D and recover mesh for kinematics.
-- **Movement-quality assessment:** **spatio-temporal graph networks** on the skeleton (ST-GCN / DG-STGCN) —
-  the SOTA family on KIMORE/UI-PRMD — optionally fused with the IMU encoder.
-- **IMU↔Vision fusion:** a learned complementary filter or a small **cross-modal Transformer**; plus
-  **virtual-IMU synthesis from video** (IMUTube / Wonderwall / Vsens) to feed the data flywheel.
-- **Kinematics:** compute 3D joint angles from fused pose; optional biomechanical model (OpenSim-style) later.
+### 1.4.3 Metrics doctrine (apply to every model)
+Always **subject-disjoint**; **LOSO-CV** for small clinical sets; report the generalization axes the thesis is
+about — **cross-subject, cross-device (HHAR), cross-position (REALDISP ideal→self→mutual)**. FoG primary =
+AUROC + AUPRC; HAR = macro-F1 (target ≥0.90 in-distribution) + quantified cross-device/position drop;
+movement-quality = correlation ≥0.7 with clinician scores, ROM MAE ≤5°; pose = MPJPE ≤~80 mm, joint-angle
+MAE ≤5–8°; CV-vs-mocap r ≥0.90, fusion cuts occlusion/extreme-flexion error toward ≤8°.
 
-### 1.4.5 The data flywheel (the moat)
-Every gamified session produces **synchronized pose + IMU**. Cross-modal research (IMUTube, Vision2Sensor,
-COMODO, PRIMUS, CroSSL) shows vision motion can **synthesize virtual-IMU and supervise IMU encoders**.
-Therefore each session both **treats the patient and improves the model** — a compounding, defensible moat.
-The flywheel is *additive and gated by held-out validation* so it never degrades the model.
+### 1.4.4 Open-source datasets
+IMU (have): HHAR, Daphnet-FoG, REALDISP. IMU (add): **CAPTURE-24** (SSL fuel), PAMAP2, Opportunity, MHEALTH,
+MobiAct/SisFall/UMAFall, MM-Fit, WISDM. Pose+mocap (joint angles + virtual-IMU): **AMASS**, TotalCapture,
+DIP-IMU, Human3.6M, 3DPW, MoVi. Rehab w/ clinician scores: **KIMORE**, **UI-PRMD**, IntelliRehabDS, REHAB24-6.
 
-## 1.5 Architectural decisions locked in
-1. **Canonical IMU schema** as the single intermediate representation; every dataset adapter conforms.
-2. **50 Hz, 4 s (200-sample) windows**, 6 channels (acc xyz + gyro xyz); placement/dataset as conditioning.
-3. **Subject-disjoint evaluation always**; **LOSO-CV** for small clinical sets; freeze-stratified splits.
-4. **Self-supervised pretraining first**, then light task heads (label scarcity is the core constraint).
-5. **Privacy-first CV:** pose runs **on-device**; only keypoints/metrics leave the client, never raw video.
-6. **Fusion over single-modality:** CV is strong globally but fails in occlusion/extreme flexion; IMU
-   complements — so we fuse.
-7. **Mock-but-real integrations:** medical-center / EHR via a **FHIR-shaped** interface on mock data,
-   swappable to live systems.
-8. **Backend re-platform to Supabase** for app data/auth/storage/realtime, with a **separate Python ML
-   inference microservice** (Supabase cannot run torch). See Phase 1.
+### 1.4.5 Models
+IMU encoder: LIMU-BERT Transformer (have) → UniMTS-style unified pretraining; SSL = masked + contrastive
+(RelCon). Vision: **MediaPipe BlazePose/Hands/FaceMesh** (on-device runtime), MoveNet (light), MMPose/ViTPose
+(offline accuracy), MotionBERT (2D→3D + mesh). Quality: ST-GCN/DG-STGCN on skeleton. Fusion: complementary
+filter or cross-modal Transformer + virtual-IMU (IMUTube/Wonderwall/Vsens) for the flywheel.
+
+### 1.4.6 Data flywheel
+Each session yields synced pose+IMU → synthesize virtual-IMU → improve the IMU encoder (gated by held-out
+validation). Every session both treats the patient and improves the model — the moat.
+
+## 1.5 Locked decisions
+Canonical IMU schema; 50 Hz / 4 s / 6-channel windows + placement/dataset conditioning; subject-disjoint &
+LOSO eval; freeze-stratified clinical splits; SSL-first; **on-device CV** (raw video never leaves client);
+fusion over single-modality; mock-but-real FHIR integration; **Supabase** app backend + **separate Python ML
+inference microservice**; monochrome design system.
 
 ---
 
-# Part 2 — The "Paper"/Reading Integration (educational content UI)
+# Part 2 — The product ecosystem (surfaces, navigation, every page)
 
-## 2.1 Goal
-A reading experience where users **read, learn, and absorb rapidly without visual clutter** — the evidence
-base (research, model cards, dataset cards, docs, benchmarks) rendered as a calm, authoritative library.
+MOVA is **four surfaces** sharing one design system:
+**A) Marketing site** · **B) Patient app** · **C) Clinician portal** · **D) Admin console.**
 
-## 2.2 Aesthetic specification — "Vercel-native monochrome"
-- **Color:** strict **monochrome black-and-white**. One ink (`#0a0a0a` on `#ffffff`, inverted for dark),
-  a single faint hairline (`rgba(0,0,0,0.08)`), and **at most one** restrained accent reserved for links/active
-  states. No gradients, no decorative color.
-- **Geometry:** **sharp, geometric, minimal rounding** (radii 0–4px max; cards are squared, not pill-shaped).
-  1px hairline dividers; no heavy borders, no drop shadows beyond a whisper.
-- **Type:** a geometric sans for prose (Geist Sans / Inter) + a mono (Geist Mono) for code, captions,
-  metadata, and citation keys. **Tight tracking** on headings; **generous line-height (~1.7)** and a
-  **measure of ~68 characters** for body text — optimized for reading speed.
-- **Layout:** a single centered column with a sticky **table-of-contents** rail, a thin **reading-progress**
-  indicator, generous whitespace, and a quiet right-margin for **footnotes / citations**.
-- **Motion:** near-none. Content fades/translates in subtly on scroll; everything else is instant. Respect
-  `prefers-reduced-motion`.
+## 2.A Marketing site (public)
+- **Top nav:** `Product ▾` (How it works · For patients · For clinics), `Model`, `Datasets`, `Benchmark`,
+  `Research`, `Docs`, `Pricing`, `Sign in`, **`Get started`** (primary).
+- **Pages:** Home (scroll narrative) · How it works · For patients · For clinics · **Model** (card + live
+  metrics) · **Datasets** (schema + dataset cards) · **Benchmark** (live leaderboard) · **Research** (cited
+  library) · **Docs** (API/schema/guides) · Pricing · About · Legal (Privacy, Terms, HIPAA/GDPR) · Contact.
+- All Model/Datasets/Benchmark/Research/Docs pages use the **reading layout** (Part 3.6) and render from real
+  artifacts (Phase 8).
 
-## 2.3 Content model (and the legal rule)
-- The library covers five surfaces: **Research** (papers), **Model** (model cards), **Datasets** (dataset
-  cards), **Benchmark** (live leaderboard), **Docs** (API/schema/guides).
-- **Legal rule (non-negotiable):** for external papers we **cite + link + summarize** and store **BibTeX /
-  metadata** — we **never host copyrighted PDFs**. Each entry renders title, authors, venue/year, our
-  one-line summary, a "why it matters for MOVA" note, and an outbound link to arXiv/DOI. The seed library is
-  `docs/research_library.md`.
-- First-party content (model cards, dataset cards, docs, benchmark write-ups) is authored as structured
-  content with equations (KaTeX) and code blocks (mono, syntax-muted to stay monochrome).
+## 2.B Patient app (authenticated) — the LEFT SIDEBAR
+A persistent **left nav** (collapsible, icon+label, monochrome). Top: workspace switcher + patient name.
+Items, each a page:
 
-## 2.4 Technical approach
-- Content as **MDX / a typed content-collection** (or Supabase-backed for editable content), rendered in the
-  Next.js app under a shared `reading` layout that enforces the aesthetic.
-- KaTeX for math; a monochrome code theme; auto-generated TOC + anchored headings; citation components that
-  read from a `references.bib`. Benchmark numbers render from the **eval harness output**, never hand-typed.
+1. **Today** (Home) — the hero CTA "Start today's session," streak ring, next milestone, quick stats
+   (adherence %, ROM trend sparkline), recovery-story progress, reminders.
+2. **My Program** — the prescribed plan: weekly schedule calendar, goals (per joint/function), exercise list
+   with status, expected dose, clinician note. Edit-request flow.
+3. **Train** (Live Session) — the camera/game surface: device check → A-pose **calibration** → the
+   **spider-web** overlay → the gamified exercise → real-time feedback → session summary. (Part 5.)
+4. **Exercises** (Library) — browse exercise packs; each exercise has an explainer (animation/loop), target
+   muscles/joints, difficulty, safety notes, "add to program" (request).
+5. **Progress** — analytics dashboards: ROM-over-time per joint, adherence heatmap, smoothness/symmetry
+   trends, freeze-episode timeline, session history with replays; export.
+6. **Achievements** — gamification: level + XP, badges, streaks, daily/weekly goals, opt-in clinic
+   leaderboard, recovery "journey map." (Part 4.)
+7. **Devices** — pair IMU over Web Bluetooth, sensor battery/placement status, camera selection + calibration,
+   connectivity diagnostics, privacy indicator (on-device).
+8. **Care Team** — messages/chat with clinician, scheduled video visits, shared notes, consent status.
+9. **Learn** — the education hub (papers/articles) in the monochrome reading experience; personalized to the
+   patient's condition; "why this exercise works" links to evidence.
+10. **Notifications** — reminders, achievements, clinician messages, schedule changes.
+11. **Settings** — profile, condition/affected-side, accessibility (reduced motion, font size, contrast,
+    language), privacy & consent (data, camera, sharing), connected accounts, danger zone (export/delete).
+- **Footer:** Help/Support, what's-new, Sign out. **Top bar:** search, notifications bell, streak, avatar menu.
+
+## 2.C Clinician portal (authenticated) — left nav
+1. **Overview** — clinic dashboard: active patients, today's sessions, **alerts** (missed sessions, FoG
+   spikes, declining ROM), adherence summary, caseload health.
+2. **Patients** — roster with filters (condition, risk, adherence, clinician), risk flags, search; bulk
+   actions.
+3. **Patient detail** — profile + program + **session review** (replay with spider-web + metrics) + trend
+   charts (ROM/gait/FoG/adherence) + clinical notes + **prescription editor** (assign packs, set
+   targets/dose/schedule) + messages + consent/FHIR status.
+4. **Sessions** — review queue, flagged/abnormal sessions, sign-off workflow.
+5. **Programs** — prescription templates, the exercise library, protocol builder, evidence references.
+6. **Outcomes & Reports** — population analytics, cohort comparisons, exportable **PDF outcome reports**,
+   FHIR sync status.
+7. **Messages** — patient threads, broadcast, visit scheduling.
+8. **Clinic Settings** — team & roles (RBAC), EHR/FHIR integration, branding, billing, audit log access.
+
+## 2.D Admin console
+Tenants/clinics, users & roles, **content management** (papers/model-cards/dataset-cards/docs), **model
+registry & benchmark** publishing, feature flags, audit logs, system health/observability, data-retention
+controls.
 
 ---
 
-# Part 3 — Macro-Phases: the Master Technical Roadmap
+# Part 3 — Design system (Vercel-native monochrome)
 
-Ten overarching phases from zero to product. Each: **background → purpose → technical strategy (with the
-reasons for each choice)**. Micro-tasks live inside; this is the altitude for planning and review.
+- **Color:** strict monochrome. Ink scale (`#0a0a0a → #6b7280 → #e5e5e5` on `#ffffff`; inverted dark mode),
+  one faint hairline `rgba(0,0,0,0.08)`, **one** restrained accent reserved for links/active/primary only. No
+  decorative color, no gradients, no shadows beyond a whisper.
+- **Geometry:** sharp, geometric, **minimal rounding (0–4px)**; squared cards; 1px hairline dividers.
+- **Type:** Geist Sans (prose) + Geist Mono (code/metadata/metrics); tight heading tracking; body line-height
+  ~1.7; reading measure ~68ch.
+- **Spacing/grid:** 4px base scale; 12-col responsive; generous whitespace.
+- **Motion:** near-none; subtle fade/translate on scroll; honor `prefers-reduced-motion`.
+- **Core components:** AppShell (collapsible sidebar + top bar), SidebarNav, Button (primary/ghost/danger),
+  Card (squared), StatTile, Chart (monochrome line/area/bar/heatmap), DataTable, Tabs, Modal/Sheet, Toast,
+  Badge, Avatar, ProgressRing, Stepper (intake), DevicePairing, ChatThread, VideoCall, **SpiderWebCanvas**,
+  **GameStage**, ReadingLayout (sticky TOC + reading-progress + citations + KaTeX + monochrome code),
+  Skeletons, EmptyStates, Forms.
+- **Accessibility:** WCAG AA, keyboard-first, focus rings, captions, i18n-ready (EN/RU/KK).
 
-### Phase 1 — Foundational Architecture & Backend Platform (Supabase)
-- **Background.** We prototyped on FastAPI + TimescaleDB. To move fast on auth, multi-tenant data, storage,
-  and realtime — while staying secure for PHI — we standardize the **application backend on Supabase**.
-- **Purpose.** A secure, multi-tenant system of record with first-class auth, row-level security, storage,
-  and realtime, plus a clean boundary to the ML services.
-- **Technical strategy.**
-  - **Supabase Postgres** as the system of record. Schema (public): `profiles`, `clinics`, `clinicians`,
-    `patients`, `care_plans`, `prescriptions`, `exercises`, `sessions`, `session_metrics`, `fog_events`,
-    `content` (papers/cards), `consents`, `audit_log`. Time-series (`session_frames`, metrics over time) use
-    the **TimescaleDB extension** (available on Supabase) or native partitioning + continuous aggregates.
-  - **Supabase Auth** (email + OAuth + MFA) with **Row-Level Security**: patients see only their own data;
-    clinicians see assigned patients; everything is clinic-scoped. RLS is the PHI isolation boundary.
-  - **Supabase Storage** for artifacts (session blobs of keypoints/metrics, model cards, dataset manifests),
-    **Supabase Realtime** for live clinician view, **Edge Functions** for light serverless logic.
-  - **ML inference stays a separate Python microservice** (FastAPI + ONNX/Triton) — Supabase/Deno can't run
-    torch. The existing FastAPI service is repurposed as that inference plane. Clear contract between them.
-  - Migrations via the **Supabase CLI**; environments dev/staging/prod; secrets in the platform vault.
-- **Why these choices.** Supabase collapses auth + DB + storage + realtime + RLS into one secure platform and
-  removes months of plumbing; keeping ML in Python preserves the torch/ONNX ecosystem. RLS gives
-  defensible PHI isolation from day one.
+## 3.6 Reading/education layout
+Single centered column; sticky TOC rail; thin reading-progress bar; right-margin footnotes/citations; KaTeX
+math; monochrome code; citation components from `references.bib`. **Legal rule:** external papers are
+cite+link+summarize+BibTeX — **never host copyrighted PDFs**.
+
+---
+
+# Part 4 — Gamification & engagement ecosystem
+Adherence is the clinical failure point; gamification (RCT-backed) fixes it.
+- **XP & levels:** points per completed rep/session weighted by quality; levels unlock packs/themes.
+- **Streaks & goals:** daily streaks, weekly dose goals, progress rings; gentle recovery (streak freeze).
+- **Badges/achievements:** milestones (first session, 7/30-day streak, ROM goal reached, 100 quality reps,
+  beat-your-best smoothness).
+- **Recovery journey/story mode:** the program rendered as a map; exercises are stages with narrative.
+- **Leaderboards:** opt-in, clinic-internal, privacy-safe (no PHI), relative-progress not raw scores.
+- **Adaptive challenge:** difficulty/dose auto-tunes from performance to stay in the motivating zone.
+- **Nudges:** reminders, smart notifications, clinician kudos, celebratory micro-moments — all within the
+  monochrome aesthetic (restraint over confetti).
+- **Everything maps to a clinical metric** — engagement never overrides therapy or safety.
+
+---
+
+# Part 5 — CV "spider-web" capture + rehab game engine
+- **On-device pose:** MediaPipe Tasks (Pose 33 / Hands 21 / Face) via WASM/WebGPU; landmark smoothing; **raw
+  video never leaves the client** (only keypoints/metrics).
+- **Calibration:** A-pose + camera distance/FOV + per-user limb lengths; visibility/occlusion confidence.
+- **Spider-web overlay:** luminous skeleton edges + translucent segment ribbons triangulated between landmarks
+  that deform per frame to *embrace* the limb; color states in-range/near-limit/compensation.
+- **Kinematics:** per-frame joint angles (ROM), angular velocity, jerk/smoothness, symmetry, trunk
+  compensation, rep segmentation/count.
+- **Fusion:** weight shifts to IMU when CV confidence drops or the joint enters extreme flexion (CV's known
+  failure mode); output is one fused kinematic stream consumed by the game and the model.
+- **Game engine:** three.js (WebXR-optional); pose drives avatar/cursor; primitives — reach-to-target,
+  grasp-and-release, sit-to-stand, balance-hold, head-tracking; per-exercise clinical scoring rubric;
+  difficulty/dose adaptivity; safety rails (pain/stop, fatigue); session summary → metrics persisted.
+- **Exercise packs (ship order):** (1) upper-limb reaching — richest CV evidence; (2) gait/balance — matches
+  the FoG model; then hand grasp, head/neck, sit-to-stand/lower-limb.
+
+---
+
+# Part 6 — Data model (Supabase) & services
+**Postgres (RLS-isolated, clinic-scoped):** `profiles`, `clinics`, `clinicians`, `patients`,
+`care_team_links`, `conditions`, `goals`, `exercises`, `exercise_packs`, `prescriptions`, `programs`,
+`schedules`, `sessions`, `session_metrics`, `session_frames` (time-series, Timescale/partitioned),
+`fog_events`, `rom_measurements`, `achievements`, `xp_ledger`, `streaks`, `messages`, `notifications`,
+`consents`, `content` (papers/cards/docs), `references` (BibTeX), `audit_log`, `model_registry`,
+`benchmark_runs`.
+**RLS:** patient → own rows; clinician → assigned patients; clinic-scoped; admin → tenant-scoped. Auth =
+Supabase (email/OAuth/MFA). Storage = session artifacts, model cards, dataset manifests. Realtime = live
+session/clinician view. **ML inference = separate Python service** (FastAPI + ONNX/Triton) — fusion + model +
+metrics; Supabase ↔ inference via signed requests + a typed contract. Edge Functions for light logic.
+
+---
+
+# Part 7 — The 10 macro-phases (explicit deliverables)
+Each phase owns concrete pages/services/components. Critical path 1→7; 8–9 run alongside from Phase 3; 10 is
+cross-cutting.
+
+### Phase 1 — Foundational Architecture & Supabase Backend
+Build: Supabase project; full schema + migrations; RLS policy matrix (role×table×op); Auth (email/OAuth/MFA);
+Storage buckets; Realtime channels; the Supabase↔Python-inference contract; environments dev/staging/prod;
+seed data. **DoD:** a patient + clinician can be created, isolated by RLS, with auth working end to end.
 
 ### Phase 2 — Data Platform & Pipelines
-- **Background.** We have a working IMU canonical pipeline (672k windows). We must generalize it to a durable
-  data platform that also ingests **vision/pose** and powers the **flywheel**.
-- **Purpose.** Reproducible, versioned, leakage-free data for training and evaluation across both modalities.
-- **Technical strategy.** Keep the **canonical schema + adapters**; version raw/interim/processed with **DVC**
-  (or lakeFS); add adapters for the new datasets (CAPTURE-24, AMASS, KIMORE/UI-PRMD, TotalCapture/DIP-IMU);
-  add a **pose-capture pipeline** (frames → keypoints → kinematic features); freeze **subject-disjoint /
-  LOSO** splits as artifacts; build the **flywheel ETL** (session pose+IMU → virtual-IMU synthesis →
-  curated training shards, gated by validation). Normalization stats and split manifests are committed
-  artifacts; everything reproducible from a single command.
-- **Why.** Heterogeneous datasets + clinical evaluation demand one schema, hard splits, and provenance, or
-  results aren't trustworthy.
+Build: keep canonical schema + adapters; DVC versioning; adapters for CAPTURE-24, AMASS, KIMORE/UI-PRMD,
+TotalCapture/DIP-IMU; pose-capture feature pipeline; frozen subject-disjoint + LOSO split artifacts; the
+flywheel ETL (session pose+IMU → virtual-IMU → gated shards); dataset cards. **DoD:** reproducible from one
+command; leakage = 0; data cards published.
 
-### Phase 3 — The Motion-Intelligence ML Core
-- **Background.** The encoder + Lightning training stack exist and run locally on MPS; the FoG model is being
-  trained on a corrected split.
-- **Purpose.** Production models: a self-supervised IMU foundation encoder, clinical/HAR/quality heads, a
-  pose-kinematics path, fusion, a registry, and a benchmark harness that feeds the public Benchmark page.
-- **Technical strategy.** **SSL pretrain** (masked + contrastive) on the combined real + (later)
-  AMASS-synthetic corpus; fine-tune **FoG / HAR / movement-quality** heads; evaluate with **LOSO-CV +
-  cross-device/position** protocols; export to **ONNX**; register checkpoints + **model cards**; implement
-  the **fusion module** and the **virtual-IMU** generator. Track experiments (W&B / MLflow). Compute scales
-  from local MPS now to cloud GPU when available; the code is already device-agnostic.
-- **Why.** Label scarcity + the generalization gap make SSL + fusion the only credible route to clinical-grade
-  accuracy from sparse sensors.
+### Phase 3 — Motion-Intelligence ML Core
+Build: SSL pretrain (masked+contrastive) on 672k windows; fine-tune FoG/HAR/quality with **LOSO-CV** +
+class-weighting + threshold tuning; IMU↔vision fusion; virtual-IMU generator; ONNX export; model registry +
+model cards; benchmark harness emitting the leaderboard JSON. **DoD:** FoG **beats the 0.55 baseline** toward
+target, reported as LOSO mean±std with honest failure analysis; metrics flow to the Benchmark page.
 
-### Phase 4 — Real-Time Motion Capture & the "Spider-Web" CV Engine
-- **Background.** The differentiating UX is a live body overlay that *embraces* the limb and scores movement
-  in real time.
-- **Purpose.** An on-device, low-latency pose engine + the spider-web renderer + joint-angle extraction +
-  IMU fusion runtime.
-- **Technical strategy.** **MediaPipe Tasks** (Pose/Hands/Face) via WASM/WebGPU in the browser; landmark
-  smoothing; per-frame joint-angle math; **A-pose calibration** + limb-length normalization;
-  visibility/occlusion confidence; the **spider-web** overlay (skeleton edges + translucent segment ribbons
-  that deform per frame, color-coded in-range/limit/compensation); fusion that shifts weight to IMU when CV
-  confidence drops or joints reach extreme flexion. **Raw video never leaves the device.**
-- **Why.** Validated markerless pose + IMU fusion gives clinical-usable kinematics at consumer cost, privately.
+### Phase 4 — Real-Time CV "Spider-Web" Engine
+Build: on-device pose pipeline, smoothing, A-pose calibration, joint-angle extraction, occlusion confidence,
+the spider-web renderer, IMU-fusion runtime; the **Train/Live Session** page; **Devices** page (BLE pairing +
+camera calibration). **DoD:** live camera → stable web → numeric joint angles in a documented error band → rep
+counts; <50 ms/frame; raw video stays on-device.
 
 ### Phase 5 — Rehabilitation & Gamification Engine
-- **Background.** Adherence is the failure point of home rehab; gamified/VR rehab has RCT-level evidence for
-  motor function, ROM, and motivation.
-- **Purpose.** Turn prescribed exercises into adaptive games driven by the fused motion stream.
-- **Technical strategy.** A lightweight 3D layer (three.js; WebXR-optional) where pose drives an
-  avatar/cursor; **exercise primitives** (reach-to-target, grasp-and-release, sit-to-stand, balance-hold,
-  head-tracking); **clinical scoring rubrics** per exercise (ROM, smoothness/jerk, symmetry, compensation,
-  rep count); **difficulty/dose adaptivity** from performance; **safety rails** (pain/stop, fatigue). Ship
-  **two exercise packs first** — upper-limb reaching (richest CV evidence) and gait/balance (matches our FoG
-  model). A rule-based **prescription engine** maps the intake profile → pack + starting difficulty + dose.
-- **Why.** Every game maps to a validated clinical movement and metric — therapy first, engagement second.
+Build: game runtime + exercise primitives; two exercise packs (reaching, gait/balance) with clinical rubrics;
+difficulty/dose adaptivity; safety rails; the rule-based prescription engine; the **Achievements**, **My
+Program**, **Exercises** pages; the gamification ecosystem (Part 4). **DoD:** a prescribed patient completes a
+full gamified session; scores persist; difficulty adapts; achievements fire.
 
-### Phase 6 — Identity, Personalization & Clinical Onboarding
-- **Background.** Bespoke onboarding raises engagement and yields the data to personalize therapy.
-- **Purpose.** Authenticated, consented users complete an adaptive intake → a personalized plan + (mock)
-  medical-center linkage.
-- **Technical strategy.** Supabase Auth + RLS; a **conversational, ≤2-minute intake** (condition, affected
-  side, goals, pain, schedule, equipment) with progressive disclosure and save-resume; a **60-second
-  CV-guided baseline ROM assessment** seeding difficulty; **consent capture + audit**; a **FHIR-shaped mock**
-  (Patient / Practitioner / CarePlan / Observation / Consent) behind an adapter interface so it's real
-  plumbing on mock data, swappable to a live EHR.
-- **Why.** Personalization + clinician linkage drive adherence; the FHIR adapter avoids a rewrite later.
+### Phase 6 — Identity, Personalization & Onboarding
+Build: Supabase auth + RLS sessions; the conversational ≤2-min **intake stepper**; the 60-sec CV-guided
+baseline ROM assessment; consent capture + audit; the **Settings** page; the FHIR-shaped mock
+(Patient/Practitioner/CarePlan/Observation/Consent) behind an adapter. **DoD:** new patient signs up →
+intake → linked to a mock clinic/clinician → personalized "Today" — fully working on mock data.
 
 ### Phase 7 — Clinician & Medical-Center Portal
-- **Background.** Clinics are the B2B2C buyer; clinicians need review + prescription + outcomes.
-- **Purpose.** A portal for roster, session review, trends, prescription editing, and (mock) EHR exchange.
-- **Technical strategy.** Clinician dashboard (roster, session replay, ROM/gait/FoG trends, prescription
-  editor); **mock-FHIR** CarePlan/Observation round-trip; exportable **PDF outcome reports**; the explicit
-  framing **"decision support, not diagnosis"** throughout; all data clinic-scoped via RLS.
-- **Why.** Outcomes + adherence data are what payers and clinics buy; the EHR adapter keeps integration cheap.
+Build: the clinician surface (Overview, Patients, Patient detail with session replay + trends + prescription
+editor, Sessions, Programs, Outcomes & Reports, Messages, Clinic Settings); mock-FHIR CarePlan/Observation
+round-trip; PDF outcome reports; "decision support, not diagnosis" everywhere; RLS clinic scoping. **DoD:** a
+clinician reviews a real (mock-data) session, edits a prescription, exports a report; FHIR round-trips.
 
-### Phase 8 — Content & Education Platform (Model · Datasets · Benchmark · Research · Docs)
-- **Background.** Credibility is a feature: each landing surface must be backed by a *real* artifact.
-- **Purpose.** Render the five surfaces from sources of truth in the monochrome reading experience (Part 2).
-- **Technical strategy.** **Model** = model card + live held-out metrics; **Datasets** = canonical schema +
-  dataset cards + 672k-window stats; **Benchmark** = a live leaderboard generated by the eval harness;
-  **Research** = the cited library (link + summarize + BibTeX, no hosted PDFs); **Docs** = OpenAPI + schema +
-  guides. A small content pipeline (MDX or Supabase-backed) feeds a shared reading layout.
-- **Why.** Generating content from artifacts (not hand-typed copy) keeps it true and never stale.
+### Phase 8 — Content & Education Platform
+Build: the content pipeline + the **Model / Datasets / Benchmark / Research / Docs** pages and the patient
+**Learn** hub, all in the reading layout, from real artifacts (model cards, dataset cards, eval-harness
+leaderboard, cited library, OpenAPI). **DoD:** every surface renders from a source of truth; benchmark numbers
+auto-update; nothing hand-typed that should be generated; no hosted PDFs.
 
 ### Phase 9 — Design System & Frontend Experience
-- **Background.** Multiple surfaces (landing, app, console, reading) must feel like one product.
-- **Purpose.** A unified, accessible, high-end design system and the app shell that hosts every feature.
-- **Technical strategy.** A token-driven **monochrome design system** (sharp geometry, minimal rounding,
-  hairlines, the type system from Part 2) as a component library; the marketing landing, the authenticated
-  app shell, the clinician console, and the reading layout all consume it; strict accessibility (WCAG),
-  i18n-ready, responsive; **Playwright** end-to-end coverage of the core journeys.
-- **Why.** One coherent system is the difference between "demo" and "product"; tokens prevent drift.
+Build: the token-driven monochrome design system as a component library; refactor marketing, app shell,
+clinician portal, and reading layout to consume it; AppShell + SidebarNav + all core components; WCAG, i18n
+(EN/RU/KK), responsive; Playwright E2E of core journeys. **DoD:** one coherent system across all surfaces;
+green E2E; accessibility report passes.
 
-### Phase 10 — Security/Compliance, MLOps, Observability & Clinical Validation
-- **Background.** Real patient data demands safety; clinical claims demand proof.
-- **Purpose.** Make MOVA safe to run on real PHI and **prove** it works.
-- **Technical strategy.** PHI posture (encryption at rest/in transit, RLS tenant isolation, audit, consent,
-  retention/erasure, **HIPAA/GDPR** review); secrets management + rotation; **CI** (lint/type/test),
-  container builds, IaC, **observability** (traces/metrics/errors), **data/model drift monitoring → retrain
-  triggers**; and a **clinical validation study** (fused kinematics vs. clinician goniometry/mocap on a small
-  cohort, **LOSO-CV** for FoG) plus an **adherence pilot** with one clinic — results feed Benchmark/Research
-  and a publishable write-up.
-- **Why.** Validation is what separates a defensible medical product (and thesis) from a tech demo.
-
-**Critical path:** Phase 1 → 2 → 3 → 4 → 5 → 6 → 7, with Phases 8–9 (content + design system) running
-alongside from Phase 3, and Phase 10 cross-cutting from Phase 3 onward. First demo spine: **Phase 4 (pose) →
-Phase 6 (intake) → Phase 3 (real model) → Phase 5 (one game) → Phase 8 (Model/Datasets pages)**.
+### Phase 10 — Security/Compliance, MLOps & Clinical Validation
+Build: PHI posture (encryption, RLS isolation, audit, consent, retention/erasure, HIPAA/GDPR review); secrets
+mgmt; CI (lint/type/test); container builds; IaC; observability; data/model drift → retrain triggers; a
+clinical validation study (fused kinematics vs goniometry/mocap; FoG LOSO-CV) + an adherence pilot. **DoD:**
+documented path to handle real PHI; green CI; monitoring live; a validation report with honest metrics.
 
 ---
 
-# Part 4 — Prompt Engineering for Execution
+# Part 8 — Execution prompts (one per phase)
+Paste into a fresh session and attach this document. Every prompt assumes Part 9 (no AI signatures; commit as
+`k4ssymzhomart`) and the honesty doctrine.
 
-Paste the matching prompt into a fresh session and attach this document. Every prompt assumes the operating
-rules in Part 5 (no AI signatures; commit as `k4ssymzhomart`).
-
-### Prompt — Phase 1 (Backend Platform / Supabase)
+### Phase 1 — Supabase backend
 ```
-You are a Principal Backend Architect specializing in Supabase and multi-tenant healthcare systems.
-Context: MOVA is a CV+IMU tele-rehabilitation platform (see MOVA_MASTER_DOCUMENT.md). We are standardizing
-the application backend on Supabase, with a separate Python ML inference microservice.
-Task: Design and implement the Supabase foundation: the full Postgres schema (profiles, clinics, clinicians,
-patients, care_plans, prescriptions, exercises, sessions, session_metrics/frames as time-series, fog_events,
-content, consents, audit_log); Row-Level Security policies for patient/clinician/clinic isolation; Auth
-(email + OAuth + MFA); Storage buckets; and the contract between Supabase and the Python inference service.
-Provide migrations via the Supabase CLI and seed data.
-Output: SQL migrations, an RLS policy matrix (role × table × operation), an entity-relationship description,
-the storage-bucket layout, and a short README on running it locally. Verify migrations apply cleanly.
-Rules: no AI-signature comments anywhere; commit as k4ssymzhomart.
+Role: Principal Backend Architect (Supabase, multi-tenant healthcare). Context: MOVA is a CV+IMU tele-rehab
+platform; see MOVA_MASTER_DOCUMENT.md (Parts 1, 2.B/2.C, 6). Task: implement the Supabase foundation — full
+Postgres schema + migrations (all tables in Part 6), the RLS policy matrix (patient/clinician/clinic/admin),
+Auth (email/OAuth/MFA), Storage buckets, Realtime channels, and the typed contract to the Python inference
+service. Output: SQL migrations (Supabase CLI), an RLS matrix table, an ERD description, the bucket layout, and
+a local-run README; verify migrations apply cleanly. Rules: no AI signatures; commit as k4ssymzhomart.
 ```
-
-### Prompt — Phase 2 (Data Platform & Pipelines)
+### Phase 2 — Data platform
 ```
-You are a Senior Data Engineer for ML. Context: MOVA has a canonical 50 Hz IMU pipeline (672k windows) and
-must add vision/pose and the data flywheel (see the master document).
-Task: Generalize the data platform: keep the canonical schema + adapters; add DVC versioning; write adapters
-for CAPTURE-24, AMASS, KIMORE/UI-PRMD, TotalCapture/DIP-IMU; build the pose-capture feature pipeline; freeze
-subject-disjoint and LOSO split artifacts; implement the flywheel ETL (session pose+IMU -> virtual-IMU ->
-gated training shards).
-Output: adapter modules, a DVC pipeline definition, split + normalization manifests, and a data-card per
-dataset. Re-run end to end and report window/leakage statistics.
-Rules: no AI signatures; commit as k4ssymzhomart.
+Role: Senior ML Data Engineer. Context: MOVA has a 50 Hz IMU pipeline (672k windows) and must add vision/pose
++ the flywheel (Parts 1.4, 5, 6). Task: generalize the data platform — keep canonical schema + adapters; add
+DVC; write adapters for CAPTURE-24, AMASS, KIMORE/UI-PRMD, TotalCapture/DIP-IMU; build the pose feature
+pipeline; freeze subject-disjoint + LOSO split artifacts; implement the flywheel ETL. Output: adapters, a DVC
+pipeline, split/normalization manifests, per-dataset data cards; re-run end to end and report window/leakage
+stats. Rules: no AI signatures; commit as k4ssymzhomart.
 ```
-
-### Prompt — Phase 3 (ML Core)
+### Phase 3 — ML core
 ```
-You are a Lead ML Engineer in wearable + vision motion modeling. Context: MOVA's LIMU-BERT encoder + Lightning
-training stack exist and run on Apple-Silicon MPS (see master document, Part 1.4).
-Task: Take the models to production: self-supervised pretraining (masked + contrastive); fine-tune FoG / HAR /
-movement-quality heads; evaluate with LOSO-CV and cross-device/position protocols; implement IMU<->vision
-fusion and virtual-IMU synthesis; export ONNX; register checkpoints + model cards; build the benchmark harness
-that emits results for the Benchmark page.
-Output: trained checkpoints, a metrics report (AUROC/AUPRC/sensitivity@specificity for FoG via LOSO-CV;
-macro-F1 + generalization tables for HAR), ONNX artifacts, model cards, and the benchmark JSON. Be honest
-about numbers and failure modes.
-Rules: no AI signatures; commit as k4ssymzhomart.
+Role: Lead ML Engineer (wearable + vision motion). Context: LIMU-BERT encoder + Lightning stack run on MPS;
+current FoG baseline AUROC 0.55 (Part 1.4.2). Task: SSL pretrain (masked+contrastive) on 672k windows;
+fine-tune FoG/HAR/quality with LOSO-CV + class-weighting + threshold tuning; implement fusion + virtual-IMU;
+export ONNX; register checkpoints + model cards; build the benchmark harness. Output: checkpoints, an honest
+metrics report (FoG AUROC/AUPRC/sensitivity@specificity via LOSO-CV mean±std; HAR macro-F1 + generalization
+tables), ONNX, model cards, benchmark JSON. Beat the 0.55 baseline and explain remaining failure modes. Rules:
+no AI signatures; commit as k4ssymzhomart.
 ```
-
-### Prompt — Phase 4 (CV "Spider-Web" Engine)
+### Phase 4 — CV spider-web engine
 ```
-You are an Expert Real-Time Computer-Vision Engineer. Context: MOVA needs an on-device markerless pose engine
-with a "spider-web" overlay that hugs each limb and scores movement live, fused with IMU (master document,
-Phase 4).
-Task: Implement the in-browser pose pipeline (MediaPipe Tasks via WASM/WebGPU), landmark smoothing, A-pose
-calibration, per-frame joint-angle extraction, occlusion/confidence handling, the spider-web renderer with
-in-range/limit/compensation color states, and the IMU-fusion runtime. Raw video must never leave the client.
-Output: the pose-engine module, the overlay component, a calibration flow, a latency report (<50 ms/frame
-target), and a short validity note comparing extracted angles to a reference for >=2 joints.
-Rules: no AI signatures; commit as k4ssymzhomart.
+Role: Expert Real-Time Computer-Vision Engineer. Context: on-device pose + spider-web + IMU fusion (Part 5).
+Task: implement the in-browser pose pipeline (MediaPipe Tasks, WASM/WebGPU), smoothing, A-pose calibration,
+joint-angle extraction, occlusion confidence, the spider-web renderer (in-range/limit/compensation states),
+and the IMU-fusion runtime; build the Train/Live-Session page and the Devices page (BLE + camera calibration).
+Raw video must never leave the client. Output: the pose-engine module, overlay, calibration flow, a <50 ms
+latency report, and a validity note (≥2 joints vs reference). Rules: no AI signatures; commit as k4ssymzhomart.
 ```
-
-### Prompt — Phase 5 (Rehab & Gamification Engine)
+### Phase 5 — Rehab & gamification
 ```
-You are a Senior Game/Interaction Engineer with rehabilitation-science literacy. Context: MOVA gamifies
-prescribed rehab, driven by the fused motion stream (master document, Phase 5).
-Task: Build the gamification runtime (three.js; WebXR-optional) with exercise primitives (reach-to-target,
-grasp-and-release, sit-to-stand, balance-hold, head-tracking), per-exercise clinical scoring rubrics,
-difficulty/dose adaptivity, and safety rails. Author two exercise packs: upper-limb reaching and gait/balance.
-Implement the rule-based prescription engine (intake profile -> pack + difficulty + dose).
-Output: the game runtime, two exercise packs with scoring rubrics, the adaptivity logic, the prescription
-engine, and a session-summary screen. Each game must map to a validated clinical metric.
-Rules: no AI signatures; commit as k4ssymzhomart.
+Role: Senior Game/Interaction Engineer (rehab-science literate). Context: gamified rehab on the fused motion
+stream (Parts 4, 5). Task: build the game runtime + exercise primitives; two packs (reaching, gait/balance)
+with clinical rubrics; adaptivity; safety rails; the prescription engine; and the My Program, Exercises, and
+Achievements pages + the gamification ecosystem. Output: game runtime, two packs, adaptivity logic,
+prescription engine, session summary; each game maps to a validated clinical metric. Rules: no AI signatures;
+commit as k4ssymzhomart.
 ```
-
-### Prompt — Phase 6 (Identity, Personalization & Onboarding)
+### Phase 6 — Onboarding & personalization
 ```
-You are a Full-Stack Product Engineer focused on onboarding and healthcare integration. Context: MOVA needs an
-authenticated, consented, personalized intake with a mock medical-center linkage (master document, Phase 6).
-Task: Implement Supabase auth + RLS-backed sessions; a <=2-minute conversational intake (condition, side,
-goals, pain, schedule, equipment) with progressive disclosure and save-resume; a 60-second CV-guided baseline
-ROM assessment; consent capture + audit; and a FHIR-shaped mock integration (Patient/Practitioner/CarePlan/
-Observation/Consent) behind an adapter interface.
-Output: auth + intake flows, the baseline-assessment capture, the prescription record, and the mock-FHIR
-CarePlan round-trip — all working end to end on mock data.
-Rules: no AI signatures; commit as k4ssymzhomart.
+Role: Full-Stack Product Engineer (onboarding + healthcare integration). Context: personalized intake + mock
+FHIR (Part 2.B, Phase 6). Task: Supabase auth + RLS sessions; the ≤2-min conversational intake stepper; the
+60-sec CV-guided baseline ROM assessment; consent + audit; Settings page; the FHIR-shaped mock behind an
+adapter. Output: auth + intake flows, baseline capture, prescription record, mock-FHIR CarePlan round-trip —
+working on mock data. Rules: no AI signatures; commit as k4ssymzhomart.
 ```
-
-### Prompt — Phase 7 (Clinician & Medical-Center Portal)
+### Phase 7 — Clinician portal
 ```
-You are a Senior Full-Stack Engineer building clinical dashboards. Context: clinics are MOVA's B2B2C buyer
-(master document, Phase 7).
-Task: Build the clinician portal (patient roster, session replay, ROM/gait/FoG trend charts, prescription
-editor), the mock-FHIR CarePlan/Observation exchange, and exportable PDF outcome reports. Enforce clinic
-scoping via RLS and surface "decision support, not diagnosis" throughout.
-Output: the clinician portal, the mock-FHIR exchange surface, and the report generator, demonstrated on mock
-data (a clinician reviews a session, edits a prescription, exports a report).
-Rules: no AI signatures; commit as k4ssymzhomart.
+Role: Senior Full-Stack Engineer (clinical dashboards). Context: Part 2.C, Phase 7. Task: build Overview,
+Patients, Patient detail (session replay + trends + prescription editor), Sessions, Programs, Outcomes &
+Reports, Messages, Clinic Settings; mock-FHIR CarePlan/Observation exchange; PDF outcome reports; RLS clinic
+scoping; "decision support, not diagnosis." Output: the clinician portal + mock-FHIR exchange + report
+generator, demonstrated on mock data. Rules: no AI signatures; commit as k4ssymzhomart.
 ```
-
-### Prompt — Phase 8 (Content & Education Platform)
+### Phase 8 — Content & education
 ```
-You are a Content-Platform Engineer and technical writer. Context: MOVA's five surfaces (Model, Datasets,
-Benchmark, Research, Docs) must each render from a real artifact in a monochrome reading experience (master
-document, Part 2 and Phase 8).
-Task: Build the content pipeline and pages: Model (card + live metrics), Datasets (schema + dataset cards),
-Benchmark (live leaderboard from the eval harness), Research (cited library; link + summarize + BibTeX, never
-host PDFs), Docs (OpenAPI + schema + guides). Use the reading layout (KaTeX, monochrome code, auto TOC,
-reading progress, citations).
-Output: the five content-backed pages, the citation/BibTeX components, and the benchmark renderer reading the
-eval-harness output. Nothing hand-typed that should come from an artifact.
-Rules: no AI signatures; commit as k4ssymzhomart.
+Role: Content-Platform Engineer + technical writer. Context: Parts 2.A, 3.6, Phase 8. Task: build the content
+pipeline and the Model, Datasets, Benchmark, Research, Docs pages + the patient Learn hub in the monochrome
+reading layout, all from real artifacts (model cards, dataset cards, eval-harness leaderboard, cited library +
+BibTeX, OpenAPI). Output: the content-backed pages + citation components + benchmark renderer; no hosted PDFs;
+nothing hand-typed that should be generated. Rules: no AI signatures; commit as k4ssymzhomart.
 ```
-
-### Prompt — Phase 9 (Design System & Frontend Experience)
+### Phase 9 — Design system & frontend
 ```
-You are an Expert UI/UX Designer and Design-Systems Engineer. Context: MOVA must feel like one product across
-landing, app, console, and reading surfaces, in a Vercel-native monochrome aesthetic (master document, Part 2
-and Phase 9).
-Task: Build a token-driven monochrome design system (sharp geometry, minimal rounding 0-4px, hairlines, the
-type system) as a reusable component library; refactor the landing, app shell, clinician console, and reading
-layout to consume it; ensure WCAG accessibility, i18n-readiness, and responsiveness; add Playwright E2E for the
-core journeys.
-Output: the design-system package + tokens, the refactored surfaces, an accessibility report, and green E2E.
-Rules: no AI signatures; commit as k4ssymzhomart.
+Role: Expert UI/UX Designer + Design-Systems Engineer. Context: Vercel-native monochrome across all surfaces
+(Part 3). Task: build the token-driven monochrome design system as a component library; refactor marketing,
+app shell, clinician portal, reading layout to consume it; AppShell + SidebarNav + all core components; WCAG,
+i18n (EN/RU/KK), responsive; Playwright E2E. Output: the design-system package + tokens, refactored surfaces,
+an accessibility report, green E2E. Rules: no AI signatures; commit as k4ssymzhomart.
 ```
-
-### Prompt — Phase 10 (Security/Compliance, MLOps & Clinical Validation)
+### Phase 10 — Security/MLOps/validation
 ```
-You are a Staff MLOps + Security Engineer with clinical-validation experience. Context: MOVA will process real
-PHI and must prove clinical validity (master document, Phase 10).
-Task: Establish the PHI posture (encryption, RLS isolation, audit, consent, retention/erasure, HIPAA/GDPR
-review), secrets management, CI (lint/type/test), container builds, IaC, observability, and data/model drift
-monitoring with retrain triggers. Design and (where data allows) run a clinical validation study: fused
-kinematics vs clinician goniometry/mocap, and LOSO-CV for FoG; plus an adherence pilot design.
-Output: a compliance checklist, CI/CD + monitoring config, the drift->retrain loop, and a validation-study
-report with honest metrics feeding the Benchmark/Research pages.
-Rules: no AI signatures; commit as k4ssymzhomart.
+Role: Staff MLOps + Security Engineer (clinical validation). Context: Phase 10. Task: PHI posture (encryption,
+RLS isolation, audit, consent, retention/erasure, HIPAA/GDPR), secrets mgmt, CI (lint/type/test), container
+builds, IaC, observability, drift→retrain; design + (where data allows) run a validation study (fused
+kinematics vs goniometry/mocap; FoG LOSO-CV) + adherence pilot. Output: compliance checklist, CI/CD +
+monitoring, drift→retrain loop, a validation report with honest metrics feeding Benchmark/Research. Rules: no
+AI signatures; commit as k4ssymzhomart.
 ```
 
 ---
 
-# Part 5 — Strict Operating & Git Rules
-
-1. **No AI signatures, anywhere.** Never add "Generated by …", "AI-generated", "Co-Authored-By: …", robot
-   emojis, or any machine-authorship metadata to code, comments, commit messages, PR descriptions, or docs.
-   The repository must read as entirely human-authored by the founder.
-2. **Commit identity.** All commits are authored as **`k4ssymzhomart`** (`kassymzhomart.shubay@nu.edu.kz`).
-   Commit messages are plain, conventional, and signature-free.
-3. **Branch discipline.** Feature branches per phase (`feature/<phase>`); never commit directly to a shared
-   default branch without intent; open PRs for review when asked.
-4. **Honesty doctrine.** Report real metrics and failure modes. In clinical ML, evaluation design (splits,
-   leakage, LOSO-CV) outranks any single accuracy number. Never present a misleading score as a win.
-5. **Privacy & compliance.** Raw video stays on-device; PHI is isolated via RLS; secrets never enter the repo;
-   external papers are linked, not mirrored.
-6. **Source of truth.** This document is the canonical plan. Update it when decisions change; keep
-   `docs/research_library.md` and the roadmap in sync.
+# Part 9 — Strict operating & Git rules
+1. **No AI signatures anywhere** — never add "Generated by…", "AI-generated", "Co-Authored-By:", robot emoji,
+   or any machine-authorship metadata to code, comments, commits, PRs, or docs. The repo must read as
+   entirely human-authored.
+2. **Commit identity:** all commits authored as **`k4ssymzhomart`** (`kassymzhomart.shubay@nu.edu.kz`); plain,
+   signature-free messages.
+3. **Branch discipline:** feature branch per phase (`feature/<phase>`); PRs for review when asked.
+4. **Honesty doctrine:** report real metrics + failure modes; evaluation design (splits, leakage, LOSO-CV)
+   outranks any single number; never present a misleading score as a win (see the FoG baseline).
+5. **Privacy & compliance:** raw video stays on-device; PHI isolated via RLS; secrets never in the repo;
+   external papers linked, never mirrored.
+6. **Source of truth:** this document. Keep it, `docs/research_library.md`, and the roadmap in sync.
