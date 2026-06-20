@@ -53,7 +53,7 @@
 with a rigorous generalization evaluation (cross-device, cross-position, subject-disjoint).
 **Owner:** ML · **Milestone:** M1 · **Depends on:** Epic 0.
 
-- [ ] **Issue 1.1 — Stand up the GPU training environment** · `P0` · `M`
+- [~] **Issue 1.1 — Stand up the training environment** · `P0` · `M` — _GPU cluster unavailable → pivoted to **local Apple-Silicon MPS** (`.venv312`, torch 2.12 + Lightning 2.6); `fast_dev_run` smoke passes. Cluster steps below kept for when access returns._
   - [ ] Connect Kerio VPN; `ssh-copy-id mova-gpu`; `scripts/deploy_to_gpu.sh --dry-run` then real sync
   - [ ] Create **Python 3.12** venv on `mova-gpu` (3.14 lacks torch wheels); `pip install -e ".[ml]"`
   - [x] _(prep)_ `[ml]` extra pinned for py3.12 (torch/pytorch-lightning/torchmetrics/wandb) + `requirements-gpu.txt` authored
@@ -90,7 +90,7 @@ with a rigorous generalization evaluation (cross-device, cross-position, subject
   - [ ] Label-efficiency curves (1% / 10% / 100% labels) — SSL vs from-scratch
   - **DoD:** results table in `docs/`; SSL beats from-scratch at low-label regime; W&B run links.
 
-- [ ] **Issue 1.6 — Clinical FoG fine-tuning + evaluation** · `P0` · `L` — _binary head + FoG imbalance sampler wired (`task=fog`); event-level metrics + training pending GPU_
+- [~] **Issue 1.6 — Clinical FoG fine-tuning + evaluation** · `P0` · `L` — _clinical metrics (sensitivity/specificity/AUROC/macro-F1) in `eval/clinical.py`; training locally on MPS via `scripts/fog_local_demo.py` + `notebooks/train_local.ipynb`_
   - [ ] FoG detection head on Daphnet windows (freeze vs no-freeze)
   - [ ] Clinically meaningful metrics: sensitivity, specificity, AUROC, event-level F1 (not just window acc)
   - [ ] Subject-disjoint eval; report per-subject variance; threshold calibration
