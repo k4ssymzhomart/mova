@@ -57,18 +57,6 @@ def main(cfg: DictConfig) -> None:
         freeze_encoder=cfg.finetune.freeze_encoder,
     )
 
-    monitor, mode = ("val/loss", "min") if cfg.task == "ssl" else ("val/macro_f1", "max")
-    callbacks = [
-        ModelCheckpoint(
-            dirpath="checkpoints",
-            filename=f"mova-{cfg.task}-{{epoch:02d}}",
-            monitor=monitor,
-            mode=mode,
-            save_top_k=2,
-            save_last=True,
-        ),
-        LearningRateMonitor(logging_interval="step"),
-    ]
     logger: WandbLogger | bool = (
         False
         if cfg.wandb.mode == "disabled"
@@ -80,6 +68,20 @@ def main(cfg: DictConfig) -> None:
             save_dir="outputs",
         )
     )
+
+    monitor, mode = ("val/loss", "min") if cfg.task == "ssl" else ("val/macro_f1", "max")
+    callbacks: list[pl.Callback] = [
+        ModelCheckpoint(
+            dirpath="checkpoints",
+            filename=f"mova-{cfg.task}-{{epoch:02d}}",
+            monitor=monitor,
+            mode=mode,
+            save_top_k=2,
+            save_last=True,
+        ),
+    ]
+    if logger:  # LearningRateMonitor requires a logger
+        callbacks.append(LearningRateMonitor(logging_interval="step"))
 
     trainer = pl.Trainer(
         accelerator=cfg.trainer.accelerator,

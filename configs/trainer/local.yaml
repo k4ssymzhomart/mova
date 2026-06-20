@@ -1,0 +1,11 @@
+# Local trainer (Apple Silicon MPS / CPU). No CUDA, no bf16.
+# Use with:  python scripts/train.py trainer=local task=fog wandb.mode=disabled num_workers=2
+accelerator: auto # picks "mps" on Apple Silicon, else "cpu"
+devices: 1
+precision: 32-true # MPS/CPU: keep full fp32
+max_epochs: 15
+gradient_clip_val: 1.0
+accumulate_grad_batches: 1
+log_every_n_steps: 20
+deterministic: false
+fast_dev_run: false

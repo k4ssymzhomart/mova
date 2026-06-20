@@ -234,7 +234,7 @@ def make_dataloaders(
             shuffle=shuffle,
             sampler=sampler,
             num_workers=num_workers,
-            pin_memory=pin_memory,
+            pin_memory=pin_memory and torch.cuda.is_available(),  # pinning only helps CUDA
             drop_last=(split == "train"),
             persistent_workers=num_workers > 0,
         )
