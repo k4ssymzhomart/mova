@@ -1,0 +1,120 @@
+# MOVA — Supabase local/dev configuration.
+# Source of truth for the app backend (Part 1.5, Part 6 of docs/MOVA_MASTER_DOCUMENT.md).
+# Secrets are NEVER inlined here — they are read from the environment via env(...).
+# Start the stack:  supabase start    Apply schema + seed:  supabase db reset
+
+project_id = "mova"
+
+[api]
+enabled = true
+port = 54321
+# Schemas exposed over PostgREST. `app` stays private (helpers + auth hook only).
+schemas = ["public", "graphql_public"]
+extra_search_path = ["public", "extensions"]
+max_rows = 1000
+
+[api.tls]
+enabled = false
+
+[db]
+port = 54322
+shadow_port = 54320
+# Supabase-stable Postgres. The schema targets standard Postgres 15+ features only.
+major_version = 15
+
+[db.pooler]
+enabled = false
+port = 54329
+pool_mode = "transaction"
+default_pool_size = 20
+max_client_conn = 100
+
+[db.seed]
+enabled = true
+sql_paths = ["./seed.sql"]
+
+[realtime]
+enabled = true
+
+[studio]
+enabled = true
+port = 54323
+api_url = "http://127.0.0.1:54321"
+
+# Local mailbox for auth emails during development.
+[inbucket]
+enabled = true
+port = 54324
+
+[storage]
+enabled = true
+file_size_limit = "50MiB"
+# Buckets are created in migration 0013_storage.sql so their RLS policies live
+# beside them and apply identically on hosted projects.
+
+[auth]
+enabled = true
+site_url = "http://127.0.0.1:3000"
+additional_redirect_urls = ["http://127.0.0.1:3000", "https://localhost:3000"]
+jwt_expiry = 3600
+enable_refresh_token_rotation = true
+refresh_token_reuse_interval = 10
+enable_signup = true
+enable_anonymous_sign_ins = false
+minimum_password_length = 10
+# Defense-in-depth: require mixed character classes for password auth.
+password_requirements = "lower_upper_letters_digits_symbols"
+
+[auth.email]
+enable_signup = true
+double_confirm_changes = true
+enable_confirmations = true
+secure_password_change = true
+max_frequency = "1m"
+otp_length = 6
+otp_expiry = 3600
+
+[auth.sessions]
+# PHI posture: bound session lifetime and idle timeout.
+timebox = "24h"
+inactivity_timeout = "8h"
+
+# Multi-factor auth (TOTP). Required posture for clinician accounts; enforced in-app.
+[auth.mfa]
+max_enrolled_factors = 10
+
+[auth.mfa.totp]
+enroll_enabled = true
+verify_enabled = true
+
+[auth.mfa.phone]
+enroll_enabled = false
+verify_enabled = false
+
+# OAuth providers. Secrets come from the environment, never the repo.
+[auth.external.google]
+enabled = true
+client_id = "env(SUPABASE_AUTH_GOOGLE_CLIENT_ID)"
+secret = "env(SUPABASE_AUTH_GOOGLE_SECRET)"
+skip_nonce_check = false
+
+[auth.external.apple]
+enabled = true
+client_id = "env(SUPABASE_AUTH_APPLE_CLIENT_ID)"
+secret = "env(SUPABASE_AUTH_APPLE_SECRET)"
+
+[auth.external.github]
+enabled = false
+client_id = "env(SUPABASE_AUTH_GITHUB_CLIENT_ID)"
+secret = "env(SUPABASE_AUTH_GITHUB_SECRET)"
+
+# Inject app_role + clinic_id into the JWT so clients and Edge Functions read the
+# caller's role without an extra round-trip. RLS remains authoritative via app.* helpers.
+[auth.hook.custom_access_token]
+enabled = true
+uri = "pg-functions://postgres/app/custom_access_token_hook"
+
+[edge_runtime]
+enabled = true
+policy = "oneshot"
+inspector_port = 8083

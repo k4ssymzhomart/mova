@@ -253,6 +253,16 @@ Build: Supabase project; full schema + migrations; RLS policy matrix (role×tabl
 Storage buckets; Realtime channels; the Supabase↔Python-inference contract; environments dev/staging/prod;
 seed data. **DoD:** a patient + clinician can be created, isolated by RLS, with auth working end to end.
 
+> **Status (delivered on `feature/phase-1-supabase-backend`):** `supabase/` project with 16 migrations
+> (`0001`–`0016`) covering all Part-6 tables, enums + the body-site ontology, `app.*` SECURITY-DEFINER RLS
+> helpers, the full RLS matrix, audit triggers, storage buckets, the realtime publication, the new-user +
+> custom-access-token auth hooks, and `inference_jobs`. Plus `supabase/seed.sql` (demo clinic/clinician/patient
+> + the honest FoG baseline), pgTAP isolation tests (`supabase/tests/`), the typed inference contract
+> (`contracts/inference/v1/`: JSON-Schema source of truth + Pydantic + TS + HMAC signing), and docs
+> (`docs/PHASE_1_RLS_MATRIX.md`, `docs/PHASE_1_ERD.md`, `supabase/README.md`). Every SQL artifact is
+> syntax-validated against the PostgreSQL grammar via `scripts/db/validate_sql.py`. **Pending live verify:**
+> `supabase db reset` + `supabase test db` need Docker + the Supabase CLI (unavailable in the build env).
+
 ### Phase 2 — Data Platform & Pipelines
 Build: keep canonical schema + adapters; DVC versioning; adapters for CAPTURE-24, AMASS, KIMORE/UI-PRMD,
 TotalCapture/DIP-IMU; pose-capture feature pipeline; frozen subject-disjoint + LOSO split artifacts; the
