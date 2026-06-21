@@ -60,8 +60,10 @@ Legend: ✅ allowed · ⛔ denied · **own** = own row(s) · **patient** = `can_
 | `inference_jobs` | R/W **patient** | R/W **patient** | R/W **patient** | R/W all | ⛔ |
 
 Notes:
-- `profiles`: a `BEFORE UPDATE` guard (`app.enforce_profile_guard`) blocks anyone but an admin
-  from changing their own `role` or `clinic_id` (privilege-escalation defense).
+- `profiles`: a `BEFORE UPDATE` guard (`app.enforce_profile_guard`) blocks an authenticated end
+  user from changing their own `role` or `clinic_id` (privilege-escalation defense). Trusted
+  contexts are exempt — the platform admin, and any session with no end-user JWT
+  (`auth.uid()` is null: the `service_role` backend, the superuser, and `seed.sql`).
 - `audit_log`: no client write policy exists — only the SECURITY DEFINER `app.audit_row()`
   trigger inserts. Reads are admin / clinic_admin only.
 - Reference/catalog writes are admin-only; the backend seeds them via `service_role`.

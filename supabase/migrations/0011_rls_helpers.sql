@@ -97,13 +97,17 @@ returns trigger
 language plpgsql security definer set search_path = ''
 as $$
 begin
-  if not app.is_admin() then
-    if new.role is distinct from old.role then
-      raise exception 'role is not self-editable' using errcode = '42501';
-    end if;
-    if new.clinic_id is distinct from old.clinic_id then
-      raise exception 'clinic_id is not self-editable' using errcode = '42501';
-    end if;
+  -- Trusted contexts may reassign role/clinic: the platform admin, and any non-end-user
+  -- session where auth.uid() is null — the service_role backend, the superuser, and
+  -- seed.sql. The guard only constrains an AUTHENTICATED end user editing their own profile.
+  if auth.uid() is null or app.is_admin() then
+    return new;
+  end if;
+  if new.role is distinct from old.role then
+    raise exception 'role is not self-editable' using errcode = '42501';
+  end if;
+  if new.clinic_id is distinct from old.clinic_id then
+    raise exception 'clinic_id is not self-editable' using errcode = '42501';
   end if;
   return new;
 end;
