@@ -60,7 +60,10 @@ select is((select count(*) from public.sessions)::int, 1, 'patient A sees exactl
 select is((select count(*) from public.sessions where patient_id = 'a0000000-0000-0000-0000-0000000000b1')::int, 0,
   'patient A cannot see patient B''s session');
 select is((select count(*) from public.session_metrics)::int, 1, 'patient A sees own session_metrics');
-select is((select count(*) from public.exercises)::int, 1, 'patient A can read the exercise catalog');
+-- The catalog is globally readable reference data, so seed.sql rows are visible too;
+-- assert on our own inserted row to stay independent of seed contents.
+select is((select count(*) from public.exercises where slug = 't-ex')::int, 1,
+  'patient A can read the exercise catalog');
 select is((select count(*) from public.audit_log)::int, 0, 'patient A cannot read the audit log');
 select is((select count(*) from public.patients)::int, 1, 'patient A sees only their own patient row');
 
