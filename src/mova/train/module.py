@@ -22,6 +22,7 @@ from torch.optim.lr_scheduler import CosineAnnealingLR, LinearLR, SequentialLR
 from torchmetrics.classification import MulticlassAccuracy, MulticlassF1Score
 
 from mova.models.encoder import ClassifierHead, EncoderConfig, LIMUBertEncoder, ReconstructionHead
+from mova.train.losses import class_weighted_ce, focal_loss
 
 
 class MovaLitModule(pl.LightningModule):
@@ -42,6 +43,9 @@ class MovaLitModule(pl.LightningModule):
         mask_span: int = 10,
         pretrained_ckpt: str | None = None,
         freeze_encoder: bool = False,
+        loss_type: str = "ce",  # ce | weighted_ce | focal
+        class_weights: list[float] | None = None,
+        focal_gamma: float = 2.0,
     ) -> None:
         super().__init__()
         self.save_hyperparameters()
@@ -101,7 +105,7 @@ class MovaLitModule(pl.LightningModule):
         x_in = torch.where(m & (r >= 0.8) & (r < 0.9), torch.randn_like(x), x_in)  # 10% random
         h = self.encoder(x_in, pid, did)
         recon = self.head(h)
-        return F.mse_loss(recon[mask], x[mask])
+        return F.smooth_l1_loss(recon[mask], x[mask])
 
     # ---- classification -------------------------------------------------------
     def _cls_forward(self, batch: dict[str, torch.Tensor]) -> tuple[torch.Tensor, torch.Tensor]:
@@ -109,13 +113,24 @@ class MovaLitModule(pl.LightningModule):
         logits = self.head(LIMUBertEncoder.pool(h))
         return logits, batch["label"]
 
+    def _cls_loss(self, logits: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
+        """Imbalance-aware classification loss (FoG uses focal/weighted-CE, HAR uses plain CE)."""
+        w = None
+        if self.hparams.class_weights is not None:
+            w = torch.tensor(self.hparams.class_weights, device=logits.device, dtype=logits.dtype)
+        if self.hparams.loss_type == "focal":
+            return focal_loss(logits, y, gamma=float(self.hparams.focal_gamma), alpha=w)
+        if self.hparams.loss_type == "weighted_ce":
+            return class_weighted_ce(logits, y, weight=w)
+        return F.cross_entropy(logits, y)
+
     # ---- Lightning steps ------------------------------------------------------
     def training_step(self, batch: dict[str, torch.Tensor], _: int) -> torch.Tensor:
         if self.hparams.task == "ssl":
             loss = self._mlm_loss(batch)
         else:
             logits, y = self._cls_forward(batch)
-            loss = F.cross_entropy(logits, y)
+            loss = self._cls_loss(logits, y)
         self.log("train/loss", loss, prog_bar=True, on_step=True, on_epoch=True)
         return loss
 
@@ -128,7 +143,7 @@ class MovaLitModule(pl.LightningModule):
         self.val_f1(logits, y)
         self.log_dict(
             {
-                "val/loss": F.cross_entropy(logits, y),
+                "val/loss": self._cls_loss(logits, y),
                 "val/acc": self.val_acc,
                 "val/macro_f1": self.val_f1,
             },

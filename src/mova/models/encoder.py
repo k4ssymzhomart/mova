@@ -58,7 +58,9 @@ class LIMUBertEncoder(nn.Module):
             batch_first=True,
             norm_first=True,
         )
-        self.encoder = nn.TransformerEncoder(layer, num_layers=cfg.n_layers)
+        # enable_nested_tensor=False keeps a static graph (fixed 200-step windows, no padding) so
+        # the encoder exports cleanly to ONNX for edge deployment.
+        self.encoder = nn.TransformerEncoder(layer, num_layers=cfg.n_layers, enable_nested_tensor=False)
         self.out_norm = nn.LayerNorm(cfg.hidden)
         self.apply(self._init_weights)
 
@@ -128,6 +130,38 @@ class ClassifierHead(nn.Module):
             nn.LayerNorm(hidden),
             nn.Dropout(dropout),
             nn.Linear(hidden, num_classes),
+        )
+
+    def forward(self, pooled: torch.Tensor) -> torch.Tensor:
+        return self.net(pooled)
+
+
+class ProjectionHead(nn.Module):
+    """MLP projection head for contrastive (NT-Xent) pretraining; discarded after pretrain."""
+
+    def __init__(self, hidden: int, proj_dim: int = 128) -> None:
+        super().__init__()
+        self.net = nn.Sequential(
+            nn.Linear(hidden, hidden),
+            nn.GELU(),
+            nn.Linear(hidden, proj_dim),
+        )
+
+    def forward(self, pooled: torch.Tensor) -> torch.Tensor:
+        return self.net(pooled)
+
+
+class RegressionHead(nn.Module):
+    """Pooled-representation regressor for movement-quality / ROM scores."""
+
+    def __init__(self, hidden: int, out_dim: int = 1, dropout: float = 0.1) -> None:
+        super().__init__()
+        self.net = nn.Sequential(
+            nn.LayerNorm(hidden),
+            nn.Dropout(dropout),
+            nn.Linear(hidden, hidden // 2),
+            nn.GELU(),
+            nn.Linear(hidden // 2, out_dim),
         )
 
     def forward(self, pooled: torch.Tensor) -> torch.Tensor:
