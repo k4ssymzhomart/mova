@@ -105,53 +105,34 @@ def make_capture24(root: Path, subjects: list[str]) -> None:
             fh.write("\n".join(rows) + "\n")
 
 
-def make_totalcapture(root: Path, subjects: list[str]) -> None:
-    d = root / "totalcapture"
-    d.mkdir(parents=True, exist_ok=True)
-    rate = 60
-    n = int(SECONDS * rate)
-    n_sensors = 13
-    for si, s in enumerate(subjects):
-        rng = np.random.default_rng(400 + si)
-        # per sensor: quat(4 normalized) + acc(3) + gyro(3) + mag(3)
-        blocks = []
-        for _ in range(n_sensors):
-            q = rng.standard_normal((n, 4))
-            q /= np.linalg.norm(q, axis=1, keepdims=True)
-            acc = np.column_stack([_sig(n, 0, rng), _sig(n, 0, rng), _sig(n, 1, rng)])
-            gyr = np.column_stack([_sig(n, 0, rng) for _ in range(3)])
-            mag = np.column_stack([_sig(n, 0, rng) for _ in range(3)])
-            blocks.append(np.column_stack([q, acc, gyr, mag]))
-        mat = np.column_stack(blocks)
-        with (d / f"{s}_acting1_Xsens_AuxFields.sensors").open("w") as fh:
-            fh.write(f"{n_sensors} {n}\n")
-            np.savetxt(fh, mat, fmt="%.5f")
-
-
 def make_dip(root: Path, subjects: list[str]) -> None:
+    """Real DIP layout: dip_imu/<s_XX>/NN.pkl (subject = parent dir, activity = filename)."""
     from mova.synth.rotations import axis_angle_to_matrix
 
     d = root / "dip_imu"
-    d.mkdir(parents=True, exist_ok=True)
     n = int(SECONDS * 60)
     for si, s in enumerate(subjects):
-        rng = np.random.default_rng(500 + si)
-        acc = rng.standard_normal((n, 17, 3)) * 2.0  # m/s^2
-        aa = np.cumsum(rng.standard_normal((n, 17, 3)) * 0.02, axis=0)
-        ori = axis_angle_to_matrix(aa)  # [n,17,3,3]
-        gt = rng.standard_normal((n, 72)) * 0.1
-        with (d / f"{s}.pkl").open("wb") as fh:
-            pickle.dump({"imu_acc": acc, "imu_ori": ori, "gt": gt}, fh)
+        sd = d / s
+        sd.mkdir(parents=True, exist_ok=True)
+        for act in ("01", "02"):  # the activity number repeats across subjects
+            rng = np.random.default_rng(500 + si * 10 + int(act))
+            acc = rng.standard_normal((n, 17, 3)) * 2.0  # m/s^2
+            aa = np.cumsum(rng.standard_normal((n, 17, 3)) * 0.02, axis=0)
+            ori = axis_angle_to_matrix(aa)  # [n,17,3,3]
+            gt = rng.standard_normal((n, 72)) * 0.1
+            with (sd / f"{act}.pkl").open("wb") as fh:
+                pickle.dump({"imu_acc": acc, "imu_ori": ori, "gt": gt}, fh)
 
 
-def make_amass(root: Path, subjects: list[str]) -> None:
+def make_amass(root: Path, actors: list[str]) -> None:
+    """Real AMASS layout: amass/<group>/<actor>/seq.npz (subject = group_actor)."""
     n = int(SECONDS * 60)
-    for si, s in enumerate(subjects):
+    for si, s in enumerate(actors):
         rng = np.random.default_rng(600 + si)
         poses = np.zeros((n, 156))
         poses[:, :66] = np.cumsum(rng.standard_normal((n, 66)) * 0.01, axis=0)
         trans = np.cumsum(rng.standard_normal((n, 3)) * 0.01, axis=0)
-        sd = root / "amass" / s
+        sd = root / "amass" / "HDM05" / s
         sd.mkdir(parents=True, exist_ok=True)
         np.savez(sd / "seq1.npz", poses=poses, trans=trans, mocap_framerate=60.0)
 
@@ -209,8 +190,7 @@ def make_all(out: Path) -> Path:
     make_daphnet(out, ["S01", "S02", "S03", "S04"])
     make_realdisp(out, [f"subject{i}" for i in range(1, 5)])
     make_capture24(out, ["P001", "P002", "P003"])
-    make_totalcapture(out, ["S1", "S2", "S3"])
-    make_dip(out, [f"S{i:02d}" for i in range(1, 4)])
+    make_dip(out, [f"s_{i:02d}" for i in range(1, 4)])
     make_amass(out, imu_subjects)
     make_kimore(out, [f"Subject{i}" for i in range(1, 4)])
     make_uiprmd(out, [f"s{i:02d}" for i in range(1, 4)])

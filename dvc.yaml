@@ -13,7 +13,6 @@ stages:
       daphnet_fog:  {raw: data/raw/daphnet_fog,  module: daphnet_adapter}
       realdisp:     {raw: data/raw/realdisp,     module: realdisp_adapter}
       capture24:    {raw: data/raw/capture24,    module: capture24_adapter}
-      totalcapture: {raw: data/raw/totalcapture, module: totalcapture_adapter}
       dip_imu:      {raw: data/raw/dip_imu,      module: dip_imu_adapter}
     do:
       cmd: python -m mova.data.adapters.${item.module} --raw-dir ${item.raw} --out-dir data/interim
@@ -33,6 +32,7 @@ stages:
       - src/mova/data/adapters/amass_adapter.py
       - src/mova/synth/amass.py
       - src/mova/synth/rotations.py
+      - src/mova/synth/smpl.py
     params:
       - seed
       - flywheel.virtual_imu_placements
@@ -61,7 +61,6 @@ stages:
       - data/interim/dataset=daphnet_fog
       - data/interim/dataset=realdisp
       - data/interim/dataset=capture24
-      - data/interim/dataset=totalcapture
       - data/interim/dataset=dip_imu
       - data/interim/dataset=amass
       - src/mova/preprocess/pipeline.py

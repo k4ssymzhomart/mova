@@ -26,7 +26,6 @@ from mova.data.adapters import (  # noqa: E402
     hhar_adapter,
     kimore_adapter,
     realdisp_adapter,
-    totalcapture_adapter,
     uiprmd_adapter,
 )
 from mova.flywheel import etl  # noqa: E402
@@ -37,7 +36,6 @@ SCHEMA = str(REPO / "data_manifests" / "schemas" / "canonical.json")
 
 IMU_ADAPTERS = [
     (capture24_adapter, "capture24"),
-    (totalcapture_adapter, "totalcapture"),
     (dip_imu_adapter, "dip_imu"),
     (hhar_adapter, "hhar"),
     (daphnet_adapter, "daphnet_fog"),
@@ -92,8 +90,8 @@ def test_full_pipeline_zero_leakage(tmp_path, monkeypatch):
     meta = json.loads((processed / "meta.json").read_text())
     assert meta["total_windows"] > 0
     datasets = {d["dataset"] for d in meta["windows_by_dataset"]}
-    # the four new IMU adapters must contribute windows alongside the original three
-    assert {"capture24", "totalcapture", "dip_imu", "amass"} <= datasets
+    # the new IMU adapters must contribute windows alongside the original three
+    assert {"capture24", "dip_imu", "amass"} <= datasets
     assert {"hhar", "daphnet_fog", "realdisp"} <= datasets
 
 

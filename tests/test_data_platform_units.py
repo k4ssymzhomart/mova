@@ -19,7 +19,6 @@ from mova.data.adapters import (  # noqa: E402
     amass_adapter,
     capture24_adapter,
     dip_imu_adapter,
-    totalcapture_adapter,
 )
 from mova.data.adapters._canonical import CANONICAL_COLUMNS  # noqa: E402
 from mova.pose import features as pf  # noqa: E402
@@ -117,8 +116,7 @@ def test_new_imu_adapters_conform(tmp_path):
     raw = tmp_path / "raw"
     make_fixtures.make_all(raw)
     interim = tmp_path / "interim"
-    for mod, sub in [(capture24_adapter, "capture24"), (totalcapture_adapter, "totalcapture"),
-                     (dip_imu_adapter, "dip_imu")]:
+    for mod, sub in [(capture24_adapter, "capture24"), (dip_imu_adapter, "dip_imu")]:
         assert mod.main(["--raw-dir", str(raw / sub), "--out-dir", str(interim),
                          "--schema", SCHEMA, "--log-level", "ERROR"]) == 0
     assert amass_adapter.main(["--raw-dir", str(raw / "amass"), "--out-dir", str(interim),
@@ -129,7 +127,13 @@ def test_new_imu_adapters_conform(tmp_path):
     df = pl.scan_parquet(str(interim / "**" / "*.parquet"), hive_partitioning=True).collect()
     for col in CANONICAL_COLUMNS:
         assert col in df.columns
-    for ds in ("capture24", "totalcapture", "dip_imu", "amass"):
+    for ds in ("capture24", "dip_imu", "amass"):
         sub = df.filter(pl.col("dataset") == ds)
         assert sub.height > 0
         assert sub.get_column("ax").is_finite().all()
+    # DIP subject must come from the parent dir (s_01 -> S01), not the activity filename.
+    dip = df.filter(pl.col("dataset") == "dip_imu")
+    assert set(dip.get_column("subject_id").unique().to_list()) == {"S01", "S02", "S03"}
+    # AMASS subject must come from the performer dir (HDM05_<actor>), disjoint per actor.
+    am = df.filter(pl.col("dataset") == "amass")
+    assert am.get_column("subject_id").n_unique() == 4

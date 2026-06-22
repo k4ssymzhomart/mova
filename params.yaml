@@ -22,7 +22,8 @@ splits:
     enabled_for: [daphnet_fog, kimore, ui_prmd]
 
 datasets:
-  imu:        [hhar, daphnet_fog, realdisp, capture24, totalcapture, dip_imu]
+  # TotalCapture dropped (access denied — permanently out of scope, Phase 3).
+  imu:        [hhar, daphnet_fog, realdisp, capture24, dip_imu]
   pose:       [kimore, ui_prmd]
   synthetic:  [amass]
 
