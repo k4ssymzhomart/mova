@@ -46,6 +46,7 @@ dev = [
   "pre-commit>=3.7",
   "pandas-stubs",
   "types-PyYAML",
+  "pglast>=6",        # PostgreSQL-grammar gate for supabase/ SQL (scripts/db/validate_sql.py)
 ]
 
 [project.scripts]
