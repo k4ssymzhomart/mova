@@ -269,6 +269,16 @@ TotalCapture/DIP-IMU; pose-capture feature pipeline; frozen subject-disjoint + L
 flywheel ETL (session pose+IMU → virtual-IMU → gated shards); dataset cards. **DoD:** reproducible from one
 command; leakage = 0; data cards published.
 
+> **Status (delivered on `feature/phase-2-data-platform`):** canonical schema extended (6 new dataset specs +
+> pose schema); 6 new adapters (CAPTURE-24, AMASS via SMPL→virtual-IMU in `synth/`, KIMORE, UI-PRMD,
+> TotalCapture, DIP-IMU with orientation→derived-gyro); pose feature pipeline (`pose/`: joint angles, ROM,
+> LDLJ smoothness, symmetry); `preprocess/loso.py` (LOSO folds) + `data/leakage.py` (the leakage=0 gate);
+> `flywheel/etl.py` (session pose → gated virtual-IMU); the reproducible DAG (`dvc.yaml` + `params.yaml`); and
+> 9 dataset cards. Verified end-to-end on synthetic fixtures (`tests/fixtures/make_fixtures.py`, 11 pytest):
+> 7 IMU datasets → 543 windows, subject-disjoint + LOSO, **leakage_free=true**; pose features + flywheel run.
+> See `docs/PHASE_2_DATA_PLATFORM.md`. **Pending live run:** `dvc pull` + `dvc repro` need the license-gated
+> raw datasets (AMASS/DIP/CAPTURE-24/…) — new adapters carry `format_verified_against_real_data: false`.
+
 ### Phase 3 — Motion-Intelligence ML Core
 Build: SSL pretrain (masked+contrastive) on 672k windows; fine-tune FoG/HAR/quality with **LOSO-CV** +
 class-weighting + threshold tuning; IMU↔vision fusion; virtual-IMU generator; ONNX export; model registry +

@@ -1,0 +1,37 @@
+# DVC parameters for the MOVA data platform (Phase 2).
+# `dvc repro` reads these; changing a value invalidates only the dependent stages.
+
+seed: 1337
+
+canonical:
+  rate_hz: 50
+  window_samples: 200      # 4 s @ 50 Hz
+  window_seconds: 4
+
+preprocess:
+  default_stride: 100      # 50% overlap for HAR
+  stride_by_dataset:
+    daphnet_fog: 50        # 75% overlap so short freezes are not missed
+  shard_size: 20000
+
+splits:
+  ratios: [0.8, 0.1, 0.1]
+  policy: subject_disjoint_per_dataset
+  loso:
+    # Clinical / small-subject sets get leave-one-subject-out CV (Part 1.4.3).
+    enabled_for: [daphnet_fog, kimore, ui_prmd]
+
+datasets:
+  imu:        [hhar, daphnet_fog, realdisp, capture24, totalcapture, dip_imu]
+  pose:       [kimore, ui_prmd]
+  synthetic:  [amass]
+
+pose:
+  rate_hz: 30
+  smoothness_eps: 1.0e-8
+
+flywheel:
+  # Gate: a synthesized virtual-IMU shard is admitted only if it does not hurt
+  # held-out validation by more than this margin (Part 1.4.6 — the moat is gated).
+  min_val_gain: 0.0
+  virtual_imu_placements: [pelvis, l_wrist, r_wrist, l_shank, r_shank, head, sternum]

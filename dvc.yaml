@@ -1,0 +1,121 @@
+# MOVA data platform DAG. Reproduce the whole thing with one command:
+#   dvc repro
+# Raw datasets are DVC-tracked pointers (data/raw/*.dvc); `dvc pull` fetches them, then
+# `dvc repro` rebuilds canonical interim -> 50 Hz windows -> splits -> LOSO -> leakage gate.
+# Manifests under data_manifests/ are kept in git (cache: false); heavy interim/processed
+# data is DVC-cached. params live in params.yaml.
+
+stages:
+  # ── IMU adapters: raw -> canonical interim (one stage per dataset via foreach) ──
+  adapt:
+    foreach:
+      hhar:         {raw: data/raw/hhar,         module: hhar_adapter}
+      daphnet_fog:  {raw: data/raw/daphnet_fog,  module: daphnet_adapter}
+      realdisp:     {raw: data/raw/realdisp,     module: realdisp_adapter}
+      capture24:    {raw: data/raw/capture24,    module: capture24_adapter}
+      totalcapture: {raw: data/raw/totalcapture, module: totalcapture_adapter}
+      dip_imu:      {raw: data/raw/dip_imu,      module: dip_imu_adapter}
+    do:
+      cmd: python -m mova.data.adapters.${item.module} --raw-dir ${item.raw} --out-dir data/interim
+      deps:
+        - ${item.raw}
+        - src/mova/data/adapters/${item.module}.py
+        - src/mova/data/adapters/_canonical.py
+        - data_manifests/schemas/canonical.json
+      outs:
+        - data/interim/dataset=${key}
+
+  # ── AMASS -> virtual IMU (SMPL forward kinematics; own CLI) ──
+  adapt_amass:
+    cmd: python -m mova.data.adapters.amass_adapter --raw-dir data/raw/amass --out-dir data/interim --seed ${seed}
+    deps:
+      - data/raw/amass
+      - src/mova/data/adapters/amass_adapter.py
+      - src/mova/synth/amass.py
+      - src/mova/synth/rotations.py
+    params:
+      - seed
+      - flywheel.virtual_imu_placements
+    outs:
+      - data/interim/dataset=amass
+
+  # ── Pose adapters: raw -> long-format pose interim ──
+  adapt_pose:
+    foreach:
+      kimore:  {raw: data/raw/kimore,  module: kimore_adapter}
+      ui_prmd: {raw: data/raw/ui_prmd, module: uiprmd_adapter}
+    do:
+      cmd: python -m mova.data.adapters.${item.module} --raw-dir ${item.raw} --out-dir data/interim/pose
+      deps:
+        - ${item.raw}
+        - src/mova/data/adapters/${item.module}.py
+        - src/mova/pose/io.py
+      outs:
+        - data/interim/pose/dataset=${key}
+
+  # ── Preprocess: align 50 Hz -> window -> subject-disjoint split -> shards + norm stats ──
+  preprocess:
+    cmd: python -m mova.preprocess.pipeline --interim data/interim --out data/processed --splits data_manifests/splits/subject_splits.json --seed ${seed} --shard-size ${preprocess.shard_size}
+    deps:
+      - data/interim/dataset=hhar
+      - data/interim/dataset=daphnet_fog
+      - data/interim/dataset=realdisp
+      - data/interim/dataset=capture24
+      - data/interim/dataset=totalcapture
+      - data/interim/dataset=dip_imu
+      - data/interim/dataset=amass
+      - src/mova/preprocess/pipeline.py
+      - src/mova/preprocess/align.py
+      - src/mova/preprocess/window.py
+      - src/mova/preprocess/split.py
+    params:
+      - seed
+      - canonical.window_samples
+      - preprocess.default_stride
+      - preprocess.stride_by_dataset
+      - preprocess.shard_size
+    outs:
+      - data/processed
+      - data_manifests/norm_stats/train_stats.json:
+          cache: false
+      - data_manifests/splits/subject_splits.json:
+          cache: false
+
+  # ── Pose feature pipeline: skeleton -> joint angles + movement-quality features ──
+  pose_features:
+    cmd: python -m mova.pose.pipeline --interim data/interim/pose --out data/processed/pose
+    deps:
+      - data/interim/pose/dataset=kimore
+      - data/interim/pose/dataset=ui_prmd
+      - src/mova/pose/pipeline.py
+      - src/mova/pose/features.py
+    outs:
+      - data/processed/pose
+
+  # ── LOSO folds for the clinical / small-subject sets ──
+  loso:
+    cmd: >-
+      python -m mova.preprocess.loso --interim data/interim --datasets daphnet_fog --out data_manifests/splits/loso &&
+      python -m mova.preprocess.loso --interim data/interim/pose --datasets kimore,ui_prmd --out data_manifests/splits/loso
+    deps:
+      - data/interim/dataset=daphnet_fog
+      - data/interim/pose/dataset=kimore
+      - data/interim/pose/dataset=ui_prmd
+      - src/mova/preprocess/loso.py
+    params:
+      - splits.loso.enabled_for
+    outs:
+      - data_manifests/splits/loso:
+          cache: false
+
+  # ── Leakage gate: fail loudly if any subject crosses a split or LOSO fold ──
+  leakage:
+    cmd: python -m mova.data.leakage --splits data_manifests/splits/subject_splits.json --loso data_manifests/splits/loso --processed data/processed/index.parquet --out data_manifests/leakage_report.json
+    deps:
+      - data_manifests/splits/subject_splits.json
+      - data_manifests/splits/loso
+      - data/processed/index.parquet
+      - src/mova/data/leakage.py
+    outs:
+      - data_manifests/leakage_report.json:
+          cache: false

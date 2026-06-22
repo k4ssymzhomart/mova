@@ -1,5 +1,5 @@
 {
-  "schema_version": "1.0.0",
+  "schema_version": "1.1.0",
   "name": "mova-canonical-imu",
   "description": "Single intermediate representation that every dataset adapter emits. Adapters normalize units, body-placement labels, time, and metadata. Resampling to the canonical rate and acc/gyro time-alignment happen later in the preprocess stage (not in adapters).",
   "canonical": {
@@ -54,8 +54,9 @@
     ]
   },
   "placement_vocabulary": [
-    "head", "sternum", "chest", "back", "waist",
+    "head", "neck", "sternum", "chest", "back", "lower_back", "waist", "pelvis",
     "l_upper_arm", "r_upper_arm", "l_forearm", "r_forearm", "l_wrist", "r_wrist", "wrist",
+    "l_hand", "r_hand",
     "l_thigh", "r_thigh", "thigh", "l_shank", "r_shank", "l_calf", "r_calf",
     "l_ankle", "r_ankle", "ankle", "l_foot", "r_foot", "unspecified"
   ],
@@ -166,6 +167,106 @@
         "1": "walking", "2": "jogging", "3": "running", "33": "cycling"
       },
       "subjects": 17
+    },
+    "capture24": {
+      "task": "ssl",
+      "role": "large real free-living pretraining corpus (~3883 h wrist accel)",
+      "native_sampling_rate_hz": 100,
+      "file_glob": "P[0-9][0-9][0-9].csv.gz",
+      "delimiter": "comma",
+      "raw_columns": ["time", "x", "y", "z", "annotation"],
+      "timestamp": { "primary": "time", "primary_unit": "iso8601_or_seconds" },
+      "units": { "accelerometer": { "raw": "g", "to_g": 1.0 }, "gyroscope": null },
+      "placement_default": "wrist",
+      "modality_emitted": "acc",
+      "activity_canonical_map": {
+        "sleep": "lying", "sitting": "sitting", "sit-stand": "standing",
+        "standing": "standing", "walking": "walking", "bicycling": "cycling",
+        "mixed-activity": "null"
+      },
+      "subjects_pattern": "P001..P151",
+      "access": "free academic registration (ora.ox.ac.uk)",
+      "format_verified_against_real_data": false
+    },
+    "totalcapture": {
+      "task": "pose",
+      "role": "real IMU + Vicon mocap; sim-to-real and joint-angle eval anchor",
+      "native_sampling_rate_hz": 60,
+      "modality_emitted": "imu",
+      "delimiter": "whitespace",
+      "imu_file_glob": "*_Xsens_AuxFields.sensors",
+      "header": "first line: <n_sensors> <n_frames>; then per frame, per sensor 13 values",
+      "sensor_order": ["Head", "Sternum", "Pelvis", "L_UpArm", "R_UpArm", "L_LowArm", "R_LowArm", "L_UpLeg", "R_UpLeg", "L_LowLeg", "R_LowLeg", "L_Foot", "R_Foot"],
+      "per_sensor_channels": ["quat_w", "quat_x", "quat_y", "quat_z", "acc_x", "acc_y", "acc_z", "gyr_x", "gyr_y", "gyr_z", "mag_x", "mag_y", "mag_z"],
+      "placement_map": {
+        "Head": "head", "Sternum": "sternum", "Pelvis": "pelvis",
+        "L_UpArm": "l_upper_arm", "R_UpArm": "r_upper_arm",
+        "L_LowArm": "l_forearm", "R_LowArm": "r_forearm",
+        "L_UpLeg": "l_thigh", "R_UpLeg": "r_thigh",
+        "L_LowLeg": "l_shank", "R_LowLeg": "r_shank", "L_Foot": "l_foot", "R_Foot": "r_foot"
+      },
+      "units": { "accelerometer": { "raw": "g", "to_g": 1.0 }, "gyroscope": { "raw": "rad/s", "to_rad_s": 1.0 }, "orientation": "unit_quaternion" },
+      "pose": { "source": "Vicon mocap", "provides": "3d_joints + joint_angles" },
+      "subjects": ["S1", "S2", "S3", "S4", "S5"],
+      "access": "free academic registration (cvssp.org/data/totalcapture)",
+      "format_verified_against_real_data": false
+    },
+    "dip_imu": {
+      "task": "pose",
+      "role": "real sparse-IMU + SMPL pose; canonical sparse-IMU pose benchmark",
+      "native_sampling_rate_hz": 60,
+      "modality_emitted": "imu",
+      "file_glob": "*.pkl",
+      "pickle_keys": { "imu_acc": "acc [T,17,3]", "imu_ori": "ori [T,17,3,3]", "gt": "SMPL pose [T,72] axis-angle" },
+      "sensor_order_17": ["head", "spine", "l_upper_arm", "r_upper_arm", "l_forearm", "r_forearm", "l_hand", "r_hand", "pelvis", "l_thigh", "r_thigh", "l_shank", "r_shank", "l_foot", "r_foot", "l_toe", "r_toe"],
+      "sparse6": ["head", "l_forearm", "r_forearm", "l_shank", "r_shank", "pelvis"],
+      "units": { "accelerometer": { "raw": "m/s^2", "to_g": 0.10197162129779283 }, "orientation": "rotation_matrix" },
+      "pose": { "source": "SMPL pose params (72)", "provides": "smpl_pose + joint_angles" },
+      "subjects": ["S01", "S02", "S03", "S04", "S05", "S06", "S07", "S08", "S09", "S10"],
+      "access": "license — register at dip.is.tue.mpg.de",
+      "format_verified_against_real_data": false
+    },
+    "amass": {
+      "task": "synthetic_imu_and_pose",
+      "role": "SMPL mocap -> virtual IMU with exact joint angles at unlimited scale",
+      "native_sampling_rate_hz": "variable (mocap_framerate per file, typically 60-120)",
+      "file_glob": "**/*.npz",
+      "npz_keys": ["poses (T,156) SMPL-H axis-angle", "trans (T,3)", "betas (16)", "gender", "mocap_framerate"],
+      "smpl": { "model_required_for": "exact 3D joints + mesh-vertex virtual IMU", "joints_used": 22 },
+      "virtual_imu": {
+        "gyro": "body-frame angular velocity from joint orientation derivative",
+        "accel": "double-differentiated joint position + gravity, rotated into the body frame",
+        "degradations": ["axis_bias", "gyro_drift", "gravity_leakage", "calibration_jitter", "dropout", "rate_jitter"],
+        "placements": ["pelvis", "l_wrist", "r_wrist", "l_shank", "r_shank", "head", "sternum"]
+      },
+      "provides": "exact joint_angles (deg)",
+      "access": "license — register at amass.is.tue.mpg.de",
+      "format_verified_against_real_data": false
+    },
+    "kimore": {
+      "task": "movement_quality",
+      "role": "rehab exercises with clinician quality scores (CG healthy vs GPP)",
+      "modality_emitted": "pose",
+      "native_sampling_rate_hz": 30,
+      "skeleton": { "source": "Kinect v2", "n_joints": 25, "per_joint": ["x", "y", "z"] },
+      "file_glob": "JointPosition*.csv",
+      "exercises": ["Es1_lifting_arms", "Es2_lateral_trunk_tilt", "Es3_trunk_rotation", "Es4_pelvis_rotation", "Es5_squatting"],
+      "groups": ["CG_healthy", "GPP_stroke_parkinson_lowbackpain"],
+      "labels": { "clinical_scores": "clinical Total Score (cTS) + perceptual (PO) per exercise" },
+      "access": "free academic request (KIMORE webpage)",
+      "format_verified_against_real_data": false
+    },
+    "ui_prmd": {
+      "task": "movement_quality",
+      "role": "physical-rehab movements with correct/incorrect + quality scores",
+      "modality_emitted": "pose",
+      "native_sampling_rate_hz": 30,
+      "skeleton": { "source": "Vicon/Kinect", "n_joints": 22, "per_joint": ["x", "y", "z"] },
+      "file_glob": "*_positions.txt",
+      "movements": 10,
+      "labels": { "correct_vs_incorrect": true, "quality_scores": true },
+      "access": "public (webpages.uidaho.edu/ui-prmd)",
+      "format_verified_against_real_data": false
     }
   }
 }
