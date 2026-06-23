@@ -1,0 +1,27 @@
+{
+  "name": "har",
+  "task": "har",
+  "opset": 17,
+  "encoder_onnx": "checkpoints/onnx/har_encoder.onnx",
+  "model_onnx": "checkpoints/onnx/har.onnx",
+  "encoder_parity_max_abs": 9.5367431640625e-07,
+  "model_parity_max_abs": 1.1920928955078125e-06,
+  "input_signature": {
+    "window": [
+      null,
+      200,
+      6
+    ],
+    "placement_id": [
+      null
+    ],
+    "dataset_id": [
+      null
+    ]
+  },
+  "encoder": {
+    "hidden": 128,
+    "n_layers": 3,
+    "params": 623872
+  }
+}

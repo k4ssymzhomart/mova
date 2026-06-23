@@ -1,3 +1,5 @@
+import Link from "next/link";
+
 import MetricCard from "@/components/dashboard/MetricCard";
 import PosePlaceholder from "@/components/dashboard/PosePlaceholder";
 import StreamStatus from "@/components/dashboard/StreamStatus";
@@ -19,7 +21,22 @@ export default function DashboardPage() {
             </div>
           </div>
           <div className="header-meta">
-            SESSION —
+            <Link
+              href="/session"
+              style={{
+                display: "inline-block",
+                border: "1px solid rgba(255,255,255,0.4)",
+                padding: "6px 14px",
+                fontFamily: "var(--font-mono, ui-monospace, monospace)",
+                fontSize: 11,
+                letterSpacing: "0.12em",
+                textTransform: "uppercase",
+                color: "inherit",
+                textDecoration: "none",
+              }}
+            >
+              Start session →
+            </Link>
             <br />
             MODEL: mock · v0.1.0
           </div>

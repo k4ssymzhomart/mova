@@ -1,0 +1,27 @@
+{
+  "name": "fog",
+  "task": "fog",
+  "opset": 17,
+  "encoder_onnx": "checkpoints/onnx/fog_encoder.onnx",
+  "model_onnx": "checkpoints/onnx/fog.onnx",
+  "encoder_parity_max_abs": 7.152557373046875e-07,
+  "model_parity_max_abs": 4.76837158203125e-07,
+  "input_signature": {
+    "window": [
+      null,
+      200,
+      6
+    ],
+    "placement_id": [
+      null
+    ],
+    "dataset_id": [
+      null
+    ]
+  },
+  "encoder": {
+    "hidden": 128,
+    "n_layers": 3,
+    "params": 623872
+  }
+}
