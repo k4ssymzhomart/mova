@@ -65,13 +65,26 @@ def _load_pickle(path: Path) -> dict[str, Any]:
             return pickle.load(fh)
 
 
+def dip_subject_id(path: Path) -> str:
+    """DIP-IMU subject from the parent dir (``DIP_IMU/s_02/01.pkl`` -> ``S02``).
+
+    The activity number is the *file* (``01.pkl``) and repeats across subjects, so the subject
+    must come from the directory; deriving it from the filename would collapse all subjects'
+    ``01.pkl`` into one and silently destroy subject-disjoint splits / LOSO.
+    """
+    parent = path.parent.name  # e.g. s_02
+    if parent.lower().startswith("s_") and parent[2:].strip("_").isdigit():
+        return f"S{int(parent[2:]):02d}"
+    return parent or path.stem
+
+
 def _process_file(path: Path, spec: DipSpec) -> pl.DataFrame:
     data = _load_pickle(path)
     acc = np.asarray(data["imu_acc"], dtype=np.float64)   # [T, 17, 3]
     ori = np.asarray(data["imu_ori"], dtype=np.float64)   # [T, 17, 3, 3]
     n_frames, n_sensors = acc.shape[0], acc.shape[1]
-    subject_id = path.stem.split("_", 1)[0]
-    session_id = path.stem
+    subject_id = dip_subject_id(path)
+    session_id = f"{subject_id}_{path.stem}"
     dt = 1.0 / spec.native_rate
     t = np.arange(n_frames, dtype=np.float64) * dt
 

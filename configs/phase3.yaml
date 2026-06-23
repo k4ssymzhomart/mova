@@ -1,0 +1,58 @@
+# Phase 3 — ML core run configuration (Apple-Silicon MPS, single GPU).
+# These mirror the CLI defaults of the training entrypoints so a run is reproducible from one file.
+# Encoder is shared across SSL pretraining and every head (warm-start requires identical dims).
+
+encoder:
+  in_channels: 6
+  max_len: 200          # 4 s @ 50 Hz
+  hidden: 128
+  n_layers: 3
+  n_heads: 8
+
+ssl_pretrain:            # mova.train.pretrain
+  datasets: [hhar, realdisp]   # no Daphnet (LOSO target), no HAR test windows -> leakage-free
+  objective: masked_smooth_l1 + nt_xent_contrastive
+  mask_ratio: 0.15
+  mask_span: 10
+  temperature: 0.2
+  contrastive_weight: 1.0
+  augmentations: [rotation_15deg, time_warp, scaling, jitter, sensor_dropout]
+  batch_size: 128
+  max_steps: 1500
+  lr: 3.0e-4
+  weight_decay: 0.05
+
+fog_loso:                # mova.train.fog_loso
+  protocol: leave_one_subject_out
+  test_subjects: freeze_positive_only   # 8 of 10 Daphnet subjects (S04, S10 have no freezes)
+  loss: focal
+  focal_gamma: 2.0
+  sampler: class_balanced
+  threshold_policy: sensitivity_at_specificity
+  min_specificity: 0.85
+  max_epochs: 6
+  samples_per_epoch: 12000
+  batch_size: 128
+  lr: 3.0e-4
+
+har:                     # mova.train.har
+  protocol: subject_disjoint_test
+  loss: cross_entropy
+  max_epochs: 3
+  samples_per_epoch: 30000
+  batch_size: 128
+  lr: 3.0e-4
+
+movement_quality:        # mova.train.quality  (synthetic proxy — KIMORE/UI-PRMD pending)
+  source: amass_virtual_imu
+  target: log_dimensionless_jerk
+  placement: l_wrist
+  steps: 400
+
+export:
+  onnx_opset: 17
+  models: [fog, har]
+  parity_atol: 2.0e-4
+
+baseline:
+  fog_auroc: 0.551       # the honest number Phase 3 exists to beat

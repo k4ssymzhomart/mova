@@ -1,6 +1,6 @@
 """Canonical pose representation + skeleton definitions.
 
-Pose datasets (KIMORE, UI-PRMD, and the mocap side of TotalCapture/DIP/AMASS) are stored as
+Pose datasets (KIMORE, UI-PRMD, and the mocap side of DIP/AMASS) are stored as
 long-format per-frame, per-joint Parquet so the pose feature pipeline reads them uniformly,
 mirroring how the IMU adapters share the canonical IMU schema.
 """

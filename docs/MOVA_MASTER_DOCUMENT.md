@@ -285,6 +285,18 @@ class-weighting + threshold tuning; IMU↔vision fusion; virtual-IMU generator; 
 model cards; benchmark harness emitting the leaderboard JSON. **DoD:** FoG **beats the 0.55 baseline** toward
 target, reported as LOSO mean±std with honest failure analysis; metrics flow to the Benchmark page.
 
+> **Status (delivered on `feature/phase-3-ml-core`):** SSL encoder pretrained (masked smooth-L1 + NT-Xent
+> contrastive) on the leakage-free HHAR+REALDISP train corpus (no Daphnet, no HAR test windows). **FoG
+> LOSO-CV over the 8 freeze-positive Daphnet subjects: AUROC 0.723 ± 0.051 — beats the 0.551 baseline
+> (+0.172); from-scratch ablation 0.685 ± 0.064, so SSL adds +0.038.** DoD met. Honest caveat: at the
+> tuned operating point (spec ≥ 0.85) sensitivity is only 0.31 ± 0.19 — a ranking win, not yet a deployable
+> detector (accel-only Daphnet ceiling, per-subject threshold drift). HAR macro-F1 0.405 (under-trained,
+> 37-class) + cross-position drop 0.18→0.53; movement-quality **synthetic proxy** Pearson r 0.61 (KIMORE/
+> UI-PRMD pending). Fusion + virtual-IMU engine built + unit-tested; ONNX export parity < 2e-4; model
+> registry + cards + `benchmark/leaderboard.json` published. TotalCapture dropped (access denied), SMPL
+> mocked (download blocked). Full numbers + failure analysis: [`reports/PHASE_3_METRICS_REPORT.md`](../reports/PHASE_3_METRICS_REPORT.md);
+> design: [`docs/PHASE_3_ML_CORE.md`](PHASE_3_ML_CORE.md).
+
 ### Phase 4 — Real-Time CV "Spider-Web" Engine
 Build: on-device pose pipeline, smoothing, A-pose calibration, joint-angle extraction, occlusion confidence,
 the spider-web renderer, IMU-fusion runtime; the **Train/Live Session** page; **Devices** page (BLE pairing +

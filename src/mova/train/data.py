@@ -108,7 +108,7 @@ class MovaWindowDataset(Dataset):
 
     def __init__(
         self,
-        split: str,
+        split: str | None,
         mode: Mode = "ssl",
         processed_dir: Path = DEFAULT_PROCESSED,
         stats_path: Path = DEFAULT_STATS,
@@ -116,6 +116,8 @@ class MovaWindowDataset(Dataset):
         normalize: bool = True,
         transform: Callable[[np.ndarray], np.ndarray] | None = None,
         channels_first: bool = False,
+        include_datasets: list[str] | None = None,
+        subjects: list[str] | None = None,
     ) -> None:
         self.split = split
         self.mode = mode
@@ -126,13 +128,22 @@ class MovaWindowDataset(Dataset):
         self.vocabs = vocabs or build_vocabs(self.processed_dir)
         self.mean, self.std = load_norm_stats(stats_path)
 
-        idx = pl.read_parquet(self.processed_dir / "index.parquet").filter(pl.col("split") == split)
+        idx = pl.read_parquet(self.processed_dir / "index.parquet")
+        if split is not None:  # split=None -> all splits (used for subject-defined LOSO folds)
+            idx = idx.filter(pl.col("split") == split)
+        if include_datasets is not None:  # leakage-safe SSL: pretrain only on chosen datasets
+            idx = idx.filter(pl.col("dataset").is_in(include_datasets))
+        if subjects is not None:  # LOSO fold membership is defined by subject, not by split
+            idx = idx.filter(pl.col("subject").is_in(subjects))
         if mode == "har":
             idx = idx.filter((pl.col("task") == "har") & pl.col("label").is_not_null())
         elif mode == "fog":
             idx = idx.filter(pl.col("task") == "fog")
         if idx.height == 0:
-            raise ValueError(f"no windows for split={split!r} mode={mode!r}")
+            raise ValueError(
+                f"no windows for split={split!r} mode={mode!r} "
+                f"datasets={include_datasets} subjects={subjects}"
+            )
         self.index = idx
 
         # Materialize hot columns to numpy for fast __getitem__.
