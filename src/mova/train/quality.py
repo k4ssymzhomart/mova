@@ -56,7 +56,18 @@ def build_windows(amass_dir: Path, max_files: int, stride: int, mean, std):
     """-> (X[N,WIN,6] normalized, y[N] smoothness, subjects[N])."""
     skel = SmplSkeleton.mock()
     joint = PLACEMENT_JOINTS[PLACEMENT]
-    files = sorted(amass_dir.rglob("*.npz"))[:max_files]
+    # Round-robin across performers so the sample spans all actors (a flat sort would take only
+    # the alphabetically-first actor's files and collapse the subject-disjoint split).
+    by_subj: dict[str, list[Path]] = {}
+    for p in sorted(amass_dir.rglob("*.npz")):
+        by_subj.setdefault(_amass_subject(p.relative_to(amass_dir)), []).append(p)
+    files: list[Path] = []
+    depth = 0
+    while len(files) < max_files and any(depth < len(v) for v in by_subj.values()):
+        for v in by_subj.values():
+            if depth < len(v) and len(files) < max_files:
+                files.append(v[depth])
+        depth += 1
     X, y, subj = [], [], []
     for path in files:
         d = load_amass_npz(str(path))
@@ -100,14 +111,22 @@ def run_quality(
     y_mu, y_sd = float(y[tr].mean()), float(y[tr].std() + 1e-6)
     dev = _device()
 
-    cfg = EncoderConfig(in_channels=6, max_len=WIN, hidden=hidden, n_layers=n_layers,
-                        n_placements=32, n_datasets=8)
-    enc = LIMUBertEncoder(cfg).to(dev)
-    head = RegressionHead(hidden, 1).to(dev)
+    # Match the conditioning-embedding sizes to the SSL checkpoint so warm-start fits exactly.
+    n_placements, n_datasets = 32, 8
+    enc_state = None
     if pretrained_ckpt:
         ckpt = torch.load(pretrained_ckpt, map_location="cpu", weights_only=False)
         state = ckpt.get("state_dict", ckpt)
         enc_state = {k[len("encoder."):]: v for k, v in state.items() if k.startswith("encoder.")}
+        if "placement_emb.weight" in enc_state:
+            n_placements = enc_state["placement_emb.weight"].shape[0]
+            n_datasets = enc_state["dataset_emb.weight"].shape[0]
+
+    cfg = EncoderConfig(in_channels=6, max_len=WIN, hidden=hidden, n_layers=n_layers,
+                        n_placements=n_placements, n_datasets=n_datasets)
+    enc = LIMUBertEncoder(cfg).to(dev)
+    head = RegressionHead(hidden, 1).to(dev)
+    if enc_state is not None:
         missing, _ = enc.load_state_dict(enc_state, strict=False)
         logger.info("warm-started encoder (missing=%d)", len(missing))
 

@@ -1,0 +1,125 @@
+{
+  "schema": "mova-benchmark/v1",
+  "generated_utc": "2026-06-23T11:30:16.065441+00:00",
+  "git_sha": "f779609",
+  "baseline": {
+    "fog_auroc": 0.551,
+    "note": "from-scratch, 12-epoch, single-subject (S08), plain CE, threshold 0.5"
+  },
+  "entries": [
+    {
+      "model_id": "mova-fog-ssl-loso",
+      "task": "freezing_of_gait",
+      "protocol": "LOSO-CV (8 freeze-positive subjects)",
+      "warm_start": "ssl",
+      "primary_metric": "auroc",
+      "metrics": {
+        "auroc": {
+          "mean": 0.722806217298558,
+          "std": 0.050999969358219724
+        },
+        "auprc": {
+          "mean": 0.25882955497692317,
+          "std": 0.13148616467570606
+        },
+        "sensitivity": {
+          "mean": 0.3119298440095961,
+          "std": 0.1928908228289357
+        },
+        "specificity": {
+          "mean": 0.8591667765533233,
+          "std": 0.10907709840977914
+        },
+        "balanced_accuracy": {
+          "mean": 0.5855483102814596,
+          "std": 0.05319125335035781
+        },
+        "macro_f1": {
+          "mean": 0.5398165043700756,
+          "std": 0.06202419472351052
+        }
+      },
+      "auroc_mean": 0.722806217298558,
+      "beats_baseline": true,
+      "delta_vs_baseline": 0.1718
+    },
+    {
+      "model_id": "mova-fog-scratch-loso",
+      "task": "freezing_of_gait",
+      "protocol": "LOSO-CV (8 freeze-positive subjects)",
+      "warm_start": "from_scratch",
+      "primary_metric": "auroc",
+      "metrics": {
+        "auroc": {
+          "mean": 0.685075675629722,
+          "std": 0.06385337030749663
+        },
+        "auprc": {
+          "mean": 0.21242893718396447,
+          "std": 0.09662132203495427
+        },
+        "sensitivity": {
+          "mean": 0.2749395991182214,
+          "std": 0.14314471947098564
+        },
+        "specificity": {
+          "mean": 0.8514512536381023,
+          "std": 0.06515291500955617
+        },
+        "balanced_accuracy": {
+          "mean": 0.5631954263781618,
+          "std": 0.04283918290949739
+        },
+        "macro_f1": {
+          "mean": 0.5226122790833506,
+          "std": 0.041296890000749126
+        }
+      },
+      "auroc_mean": 0.685075675629722,
+      "beats_baseline": true,
+      "delta_vs_baseline": 0.1341
+    },
+    {
+      "model_id": "mova-har",
+      "task": "human_activity_recognition",
+      "protocol": "subject-disjoint test split",
+      "warm_start": "ssl",
+      "primary_metric": "macro_f1",
+      "macro_f1_overall": 0.40540067388850193,
+      "by_dataset": {
+        "hhar": {
+          "n": 8268,
+          "macro_f1": 0.45255566349453114
+        },
+        "realdisp": {
+          "n": 7353,
+          "macro_f1": 0.3349655545592331
+        }
+      },
+      "generalization": {
+        "placement_macro_f1_min": 0.17910394863316104,
+        "placement_macro_f1_max": 0.5304736186418265,
+        "placement_drop_max_minus_min": 0.3513696700086655,
+        "note": "subjects disjoint; placements/devices seen in training. Leave-placement-out / leave-device-out is future work."
+      }
+    }
+  ],
+  "ablations": {
+    "ssl_vs_scratch_fog_auroc_delta": 0.0377
+  },
+  "movement_quality": {
+    "task": "movement_quality",
+    "status": "synthetic_proxy",
+    "data_note": "AMASS virtual-IMU input; target = pose-derived LDLJ smoothness. Real clinician-scored eval (KIMORE/UI-PRMD) PENDING data access.",
+    "warm_start": "ssl",
+    "target": "log_dimensionless_jerk (smoothness)",
+    "placement": "l_wrist",
+    "n_windows": 2087,
+    "n_subjects": 4,
+    "test_subject": "HDM05_tr",
+    "n_test": 470,
+    "pearson_r": 0.6085618734359741,
+    "mae": 0.5613532066345215,
+    "correlation_target": 0.7
+  }
+}

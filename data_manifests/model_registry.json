@@ -1,0 +1,95 @@
+{
+  "schema": "mova-model-registry/v1",
+  "updated_utc": "2026-06-23T11:30:16.064370+00:00",
+  "models": [
+    {
+      "model_id": "mova-fog-ssl-loso",
+      "task": "freezing_of_gait",
+      "description": "SSL-pretrained LIMU-BERT encoder fine-tuned for FoG; LOSO-CV over 8 freeze-positive Daphnet subjects with focal loss + tuned operating point.",
+      "metrics": {
+        "auroc": {
+          "mean": 0.722806217298558,
+          "std": 0.050999969358219724,
+          "n": 8
+        },
+        "auprc": {
+          "mean": 0.25882955497692317,
+          "std": 0.13148616467570606,
+          "n": 8
+        },
+        "sensitivity": {
+          "mean": 0.3119298440095961,
+          "std": 0.1928908228289357,
+          "n": 8
+        },
+        "specificity": {
+          "mean": 0.8591667765533233,
+          "std": 0.10907709840977914,
+          "n": 8
+        }
+      },
+      "encoder": {
+        "hidden": 128,
+        "n_layers": 3
+      },
+      "training_data": {
+        "datasets": [
+          "daphnet_fog"
+        ],
+        "protocol": "LOSO-CV (8 subjects)",
+        "ssl_pretraining": "HHAR+REALDISP masked+contrastive (no Daphnet)",
+        "leakage_control": "test subject never in train/val or SSL pretraining",
+        "baseline_auroc": 0.551
+      },
+      "artifacts": {
+        "checkpoint": "checkpoints/fog_model.ckpt",
+        "onnx": "checkpoints/onnx/fog.onnx",
+        "eval_json": "reports/fog_loso_ssl.json"
+      },
+      "provenance": {
+        "intended_use": "Decision support for clinicians; not a diagnostic device.",
+        "limitations": [
+          "Daphnet is accelerometer-only \u2014 gyro channels are zero-filled.",
+          "SSL minus scratch AUROC delta = +0.038.",
+          "Per-subject variance is high (see std); a few subjects dominate error.",
+          "Compute-bounded SSL (single Apple-Silicon GPU)."
+        ]
+      },
+      "created_utc": "2026-06-23T11:30:16.024893+00:00",
+      "git_sha": "f779609"
+    },
+    {
+      "model_id": "mova-har",
+      "task": "human_activity_recognition",
+      "description": "SSL-pretrained encoder fine-tuned for HAR with cross-device/position breakdown.",
+      "metrics": {
+        "macro_f1_overall": 0.40540067388850193
+      },
+      "encoder": {
+        "hidden": 128,
+        "n_layers": 3
+      },
+      "training_data": {
+        "datasets": [
+          "hhar",
+          "realdisp"
+        ],
+        "protocol": "subject-disjoint test split",
+        "ssl_pretraining": "HHAR+REALDISP masked+contrastive",
+        "leakage_control": "subject-disjoint; no test windows in SSL"
+      },
+      "artifacts": {
+        "checkpoint": "checkpoints/har_model.ckpt",
+        "onnx": "checkpoints/onnx/har.onnx",
+        "eval_json": "reports/har.json"
+      },
+      "provenance": {
+        "limitations": [
+          "Placements/devices seen in training; true leave-placement-out is future work."
+        ]
+      },
+      "created_utc": "2026-06-23T11:30:16.049996+00:00",
+      "git_sha": "f779609"
+    }
+  ]
+}

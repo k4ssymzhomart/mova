@@ -54,23 +54,38 @@ def main() -> int:
     fog_common = {"focal_gamma": 2.0, "min_specificity": 0.85, "samples_per_epoch": 12000,
                   "max_epochs": args.fog_epochs, "num_workers": 0, **common}
 
-    # 1-2. FoG LOSO — SSL vs from-scratch ablation
+    # 1-2. FoG LOSO — SSL vs from-scratch ablation (resumable: reuse existing JSONs)
     fog_ssl_json = args.reports / "fog_loso_ssl.json"
     fog_scratch_json = args.reports / "fog_loso_scratch.json"
-    fog_ssl = run_loso(args.processed_dir, fog_ssl_json, pretrained_ckpt=args.ssl_ckpt, **fog_common)
-    fog_scratch = run_loso(args.processed_dir, fog_scratch_json, pretrained_ckpt=None, **fog_common)
+
+    def _loso_or_cached(out_json: Path, *, pretrained_ckpt):
+        if out_json.is_file():
+            log.info("reusing cached LOSO result %s (delete to recompute)", out_json)
+            return json.loads(out_json.read_text())
+        return run_loso(args.processed_dir, out_json, pretrained_ckpt=pretrained_ckpt, **fog_common)
+
+    fog_ssl = _loso_or_cached(fog_ssl_json, pretrained_ckpt=args.ssl_ckpt)
+    fog_scratch = _loso_or_cached(fog_scratch_json, pretrained_ckpt=None)
 
     # 3. deployable FoG model (all-but-one subject) for export/serving
     fog_ckpt = args.ckpt_dir / "fog_model.ckpt"
-    fog_dep = train_and_save_fog(args.processed_dir, fog_ckpt, pretrained_ckpt=args.ssl_ckpt,
-                                 max_epochs=args.fog_epochs, focal_gamma=2.0, min_specificity=0.85,
-                                 samples_per_epoch=12000, **common)
+    if fog_ckpt.is_file() and fog_ckpt.with_suffix(".json").is_file():
+        log.info("reusing cached deployable FoG model %s", fog_ckpt)
+        fog_dep = json.loads(fog_ckpt.with_suffix(".json").read_text())
+    else:
+        fog_dep = train_and_save_fog(args.processed_dir, fog_ckpt, pretrained_ckpt=args.ssl_ckpt,
+                                     max_epochs=args.fog_epochs, focal_gamma=2.0, min_specificity=0.85,
+                                     samples_per_epoch=12000, **common)
 
     # 4. HAR
     har_json = args.reports / "har.json"
     har_ckpt = args.ckpt_dir / "har_model.ckpt"
-    har = run_har(args.processed_dir, har_json, pretrained_ckpt=args.ssl_ckpt, max_epochs=args.har_epochs,
-                  samples_per_epoch=30000, num_workers=0, save_ckpt=har_ckpt, **common)
+    if har_json.is_file() and har_ckpt.is_file():
+        log.info("reusing cached HAR result %s", har_json)
+        har = json.loads(har_json.read_text())
+    else:
+        har = run_har(args.processed_dir, har_json, pretrained_ckpt=args.ssl_ckpt, max_epochs=args.har_epochs,
+                      samples_per_epoch=30000, num_workers=0, save_ckpt=har_ckpt, **common)
 
     # 5. movement-quality proxy
     quality_json = args.reports / "movement_quality.json"

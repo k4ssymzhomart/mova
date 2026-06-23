@@ -1,0 +1,15 @@
+{
+  "task": "movement_quality",
+  "status": "synthetic_proxy",
+  "data_note": "AMASS virtual-IMU input; target = pose-derived LDLJ smoothness. Real clinician-scored eval (KIMORE/UI-PRMD) PENDING data access.",
+  "warm_start": "ssl",
+  "target": "log_dimensionless_jerk (smoothness)",
+  "placement": "l_wrist",
+  "n_windows": 2087,
+  "n_subjects": 4,
+  "test_subject": "HDM05_tr",
+  "n_test": 470,
+  "pearson_r": 0.6085618734359741,
+  "mae": 0.5613532066345215,
+  "correlation_target": 0.7
+}

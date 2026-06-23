@@ -1,0 +1,16 @@
+{
+  "fog_ssl_auroc": {
+    "mean": 0.722806217298558,
+    "std": 0.050999969358219724,
+    "n": 8
+  },
+  "fog_scratch_auroc": {
+    "mean": 0.685075675629722,
+    "std": 0.06385337030749663,
+    "n": 8
+  },
+  "fog_deploy_threshold": 0.7540510892868042,
+  "har_macro_f1": 0.40540067388850193,
+  "quality_pearson_r": 0.6085618734359741,
+  "beats_baseline": true
+}
