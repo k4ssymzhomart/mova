@@ -80,6 +80,10 @@ services/frontend/dist/
 services/frontend/.turbo/
 *.tsbuildinfo
 
+# ── Supabase CLI local state ───────────────────────────────────────────────
+supabase/.branches/
+supabase/.temp/
+
 # ── OS / IDE ───────────────────────────────────────────────────────────────
 .DS_Store
 .idea/
