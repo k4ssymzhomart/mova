@@ -1,17 +1,15 @@
 "use client";
 
-// useOnnxModel — onnxruntime-web (WASM) loader for the Phase-3 FoG/HAR exports.
+// useOnnxModel — onnxruntime-web (WASM) loader + runner for one Phase-3 export.
 //
-// Wires the full WASM backend: it dynamically imports onnxruntime-web, points the runtime at the CDN
-// wasm artifacts, and creates an InferenceSession from a model served out of /public/models. The
-// Phase-3 ONNX signature is fixed by the encoder architecture:
-//   window      float32 [B, 200, 6]   (50 Hz · 4 s · acc+gyro)
+// Wires the full WASM backend: dynamically imports onnxruntime-web, points the runtime at the CDN wasm
+// artifacts, runs inference off the main thread (wasm proxy worker) so the camera/render loop stays
+// smooth, and creates an InferenceSession from a model served out of /public/models. Signature (fixed
+// by the encoder):
+//   window      float32 [B, 200, 6]   (50 Hz · 4 s · acc+gyro, train-normalized)
 //   placement_id int64   [B]
 //   dataset_id   int64   [B]            ->  logits float32 [B, C]
-//
-// For Phase 4 the inputs are mocked (random window) — the point is to prove the browser can load and
-// execute the real exported graph end-to-end. If the model file is absent the hook reports
-// "unavailable" rather than throwing, so the CV/game loop is never blocked on it.
+// A missing model file reports "unavailable" instead of throwing, so the CV/game loop is never blocked.
 
 import { useCallback, useRef, useState } from "react";
 
@@ -35,14 +33,21 @@ export interface InferenceResult {
   latencyMs: number;
 }
 
+type Session = {
+  run: (feeds: Record<string, unknown>) => Promise<Record<string, { data: Float32Array; dims: number[] }>>;
+  inputNames: readonly string[];
+  outputNames: readonly string[];
+};
+
 export function useOnnxModel(modelUrl: string) {
-  const sessionRef = useRef<unknown>(null);
+  const sessionRef = useRef<Session | null>(null);
   const ortRef = useRef<typeof OrtNS | null>(null);
   const [status, setStatus] = useState<OnnxStatus>("idle");
   const [error, setError] = useState<string | null>(null);
   const [io, setIo] = useState<{ inputs: string[]; outputs: string[] } | null>(null);
 
   const load = useCallback(async () => {
+    if (sessionRef.current) return;
     setStatus("loading");
     setError(null);
     try {
@@ -54,11 +59,12 @@ export function useOnnxModel(modelUrl: string) {
       }
       const ort = (await import(/* webpackIgnore: true */ ORT_ESM_URL)) as typeof OrtNS;
       ort.env.wasm.wasmPaths = ORT_CDN_DIST;
+      ort.env.wasm.proxy = true; // run the session in a worker -> never blocks the UI thread
       ortRef.current = ort;
-      const session = await ort.InferenceSession.create(modelUrl, {
+      const session = (await ort.InferenceSession.create(modelUrl, {
         executionProviders: ["wasm"],
         graphOptimizationLevel: "all",
-      });
+      })) as unknown as Session;
       sessionRef.current = session;
       setIo({ inputs: [...session.inputNames], outputs: [...session.outputNames] });
       setStatus("ready");
@@ -68,28 +74,32 @@ export function useOnnxModel(modelUrl: string) {
     }
   }, [modelUrl]);
 
+  /** Run the real graph on a [200,6] train-normalized window. Returns logits + latency. */
+  const run = useCallback(
+    async (window: Float32Array, placementId: number, datasetId: number): Promise<InferenceResult | null> => {
+      const ort = ortRef.current;
+      const session = sessionRef.current;
+      if (!ort || !session) return null;
+      const feeds: Record<string, unknown> = {
+        window: new ort.Tensor("float32", window, [1, WINDOW_LEN, CHANNELS]),
+        placement_id: new ort.Tensor("int64", new BigInt64Array([BigInt(placementId)]), [1]),
+        dataset_id: new ort.Tensor("int64", new BigInt64Array([BigInt(datasetId)]), [1]),
+      };
+      const t0 = performance.now();
+      const out = await session.run(feeds);
+      const latencyMs = performance.now() - t0;
+      const headOut = out[session.outputNames[0]];
+      return { logits: Array.from(headOut.data), outputDims: headOut.dims, latencyMs };
+    },
+    [],
+  );
+
+  /** Run on a random window — used by the standalone loader panel to smoke-test the WASM backend. */
   const runMock = useCallback(async (): Promise<InferenceResult | null> => {
-    const ort = ortRef.current;
-    const session = sessionRef.current as {
-      run: (feeds: Record<string, unknown>) => Promise<Record<string, { data: Float32Array; dims: number[] }>>;
-      inputNames: readonly string[];
-      outputNames: readonly string[];
-    } | null;
-    if (!ort || !session) return null;
+    const w = new Float32Array(WINDOW_LEN * CHANNELS);
+    for (let i = 0; i < w.length; i += 1) w[i] = (Math.random() - 0.5) * 2;
+    return run(w, 0, 0);
+  }, [run]);
 
-    const window = new Float32Array(WINDOW_LEN * CHANNELS);
-    for (let i = 0; i < window.length; i += 1) window[i] = (Math.random() - 0.5) * 2;
-    const feeds: Record<string, unknown> = {
-      window: new ort.Tensor("float32", window, [1, WINDOW_LEN, CHANNELS]),
-      placement_id: new ort.Tensor("int64", new BigInt64Array([0n]), [1]),
-      dataset_id: new ort.Tensor("int64", new BigInt64Array([0n]), [1]),
-    };
-    const t0 = performance.now();
-    const out = await session.run(feeds);
-    const latencyMs = performance.now() - t0;
-    const head = out[session.outputNames[0]];
-    return { logits: Array.from(head.data), outputDims: head.dims, latencyMs };
-  }, []);
-
-  return { status, error, io, load, runMock };
+  return { status, error, io, load, run, runMock };
 }

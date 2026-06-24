@@ -1,0 +1,113 @@
+{
+  "har_labels": [
+    "arms_inner_rotation",
+    "cycling",
+    "elliptical_bike",
+    "frontal_crossing_arms",
+    "frontal_elevation_arms",
+    "frontal_hand_claps",
+    "heels_to_backside",
+    "jogging",
+    "jump_front_back",
+    "jump_legs_arms_open_close",
+    "jump_rope",
+    "jump_sideways",
+    "jump_up",
+    "knees_bending_crouching",
+    "knees_bending_forward",
+    "knees_to_breast",
+    "lateral_bend",
+    "lateral_bend_arm_up",
+    "lateral_elevation_arms",
+    "reach_heels_backwards",
+    "repetitive_forward_stretching",
+    "rotation_on_knees",
+    "rowing",
+    "running",
+    "shoulders_high_rotation",
+    "shoulders_low_rotation",
+    "sitting",
+    "stairs_down",
+    "stairs_up",
+    "standing",
+    "trunk_twist_arms_out",
+    "trunk_twist_elbows_bent",
+    "upper_lower_opposite_twist",
+    "waist_bend_reach_foot",
+    "waist_bends_forward",
+    "waist_rotation",
+    "walking"
+  ],
+  "fog_labels": [
+    "no_freeze",
+    "freeze"
+  ],
+  "placement_vocab": {
+    "ankle": 0,
+    "back": 1,
+    "l_calf": 2,
+    "l_forearm": 3,
+    "l_thigh": 4,
+    "l_upper_arm": 5,
+    "r_calf": 6,
+    "r_forearm": 7,
+    "r_thigh": 8,
+    "r_upper_arm": 9,
+    "thigh": 10,
+    "waist": 11,
+    "wrist": 12
+  },
+  "dataset_vocab": {
+    "daphnet_fog": 0,
+    "hhar": 1,
+    "realdisp": 2
+  },
+  "placements_by_index": [
+    "ankle",
+    "back",
+    "l_calf",
+    "l_forearm",
+    "l_thigh",
+    "l_upper_arm",
+    "r_calf",
+    "r_forearm",
+    "r_thigh",
+    "r_upper_arm",
+    "thigh",
+    "waist",
+    "wrist"
+  ],
+  "datasets_by_index": [
+    "daphnet_fog",
+    "hhar",
+    "realdisp"
+  ],
+  "norm_stats": {
+    "channels": [
+      "ax",
+      "ay",
+      "az",
+      "gx",
+      "gy",
+      "gz"
+    ],
+    "mean": [
+      -0.47636758532599494,
+      0.006497779662907853,
+      0.2734698984611343,
+      0.004453928765436913,
+      0.004927808791857665,
+      -0.003845690895445667
+    ],
+    "std": [
+      0.7242854861982194,
+      0.4144449844486134,
+      0.5425563378933717,
+      0.8501659170649909,
+      0.8468596402786494,
+      0.8273799331255062
+    ],
+    "count_samples": 114546600
+  },
+  "note": "Generated from build_vocabs over the 672k-window training index. logit index order = sorted label order."
+}
