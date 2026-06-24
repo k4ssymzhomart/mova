@@ -108,6 +108,9 @@ function Body({ sessions }: { sessions: SessionRecord[] }) {
         )}
       </div>
 
+      {/* freeze-risk — folds the live FoG/HAR readout into a longitudinal + intra-session timeline */}
+      <FreezeRisk sessions={sessions} />
+
       {/* insights */}
       <h2 className="mt-12 font-serif text-3xl italic text-ink">Insights for you</h2>
       <div className="mt-5 grid gap-4 md:grid-cols-2 lg:grid-cols-3">
@@ -147,6 +150,107 @@ function Body({ sessions }: { sessions: SessionRecord[] }) {
         ))}
       </div>
     </>
+  );
+}
+
+/**
+ * Freeze-risk timeline. Two views, both from the on-device FoG model already recorded per session:
+ * (1) across sessions — mean risk over time, filled = lower-limb (valid), hollow = upper-limb preview;
+ * (2) the latest bout's intra-session risk trace. The most-tracked activity (HAR) is folded in as context.
+ */
+function FreezeRisk({ sessions }: { sessions: SessionRecord[] }) {
+  const withFog = sessions.filter((s) => s.fogRiskMean !== null);
+  if (!withFog.length) return null;
+  const last = [...sessions].reverse().find((s) => (s.fogSeries?.length ?? 0) >= 2) ?? null;
+  const HAR = (s: string | null) => (s ? s.replace(/_/g, " ") : "—");
+
+  return (
+    <>
+      <h2 className="mt-12 font-serif text-3xl italic text-ink">Freeze-risk</h2>
+      <p className="mt-2 max-w-2xl text-[13px] leading-relaxed text-ink-soft">
+        Live output from the on-device FoG model. Gait bouts feed it a lower-limb (ankle/shank) signal, so
+        those readings are in-distribution; reaching bouts are an upper-limb preview. Research-grade, not a diagnosis.
+      </p>
+      <div className="mt-5 grid gap-5 lg:grid-cols-2">
+        {/* across sessions */}
+        <div className="rounded-card border border-line bg-card p-6 shadow-soft">
+          <div className="flex items-baseline justify-between">
+            <span className="text-[11px] font-medium uppercase tracking-[0.2em] text-ink-faint">Across sessions</span>
+            <span className="font-mono text-xs text-ink-faint">lower is calmer</span>
+          </div>
+          <RiskTimeline data={withFog.map((s) => ({ risk: s.fogRiskMean ?? 0, valid: s.fogValid }))} />
+          <div className="mt-3 flex items-center gap-4 font-mono text-[10px] uppercase tracking-[0.12em] text-ink-faint">
+            <span className="flex items-center gap-1.5">
+              <span className="h-2 w-2 rounded-full bg-signal" /> lower-limb · valid
+            </span>
+            <span className="flex items-center gap-1.5">
+              <span className="h-2 w-2 rounded-full border border-ink-faint" /> upper-limb · preview
+            </span>
+          </div>
+        </div>
+
+        {/* last bout intra-session */}
+        <div className="rounded-card border border-line bg-card p-6 shadow-soft">
+          <div className="flex items-baseline justify-between">
+            <span className="text-[11px] font-medium uppercase tracking-[0.2em] text-ink-faint">Last bout · over time</span>
+            <span className="font-mono text-xs text-ink-faint">
+              {last ? `${last.fogValid ? "valid" : "preview"} · ${HAR(last.harTop)}` : "—"}
+            </span>
+          </div>
+          {last?.fogSeries && last.fogSeries.length >= 2 ? (
+            <RiskTrace data={last.fogSeries} />
+          ) : (
+            <p className="mt-6 font-mono text-sm text-ink-faint">Run a session to record a freeze-risk trace.</p>
+          )}
+        </div>
+      </div>
+    </>
+  );
+}
+
+/** Per-session mean freeze-risk as dots+line. Filled dot = valid (lower-limb), hollow = preview. */
+function RiskTimeline({ data }: { data: { risk: number; valid: boolean }[] }) {
+  if (data.length < 2) {
+    return <p className="mt-6 font-mono text-sm text-ink-faint">Two+ scored sessions plot the trend.</p>;
+  }
+  const w = 720;
+  const h = 120;
+  const pad = 10;
+  const x = (i: number) => pad + (i / (data.length - 1)) * (w - 2 * pad);
+  const y = (r: number) => pad + (1 - Math.max(0, Math.min(1, r))) * (h - 2 * pad);
+  const line = data.map((d, i) => `${x(i).toFixed(1)},${y(d.risk).toFixed(1)}`).join(" ");
+  const midY = y(0.5);
+  return (
+    <svg viewBox={`0 0 ${w} ${h}`} className="mt-4 h-32 w-full" preserveAspectRatio="none">
+      <line x1={pad} y1={midY} x2={w - pad} y2={midY} stroke="rgba(18,19,17,0.18)" strokeWidth="1" strokeDasharray="4 5" />
+      <polyline points={line} fill="none" stroke="#16a35b" strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" opacity="0.55" />
+      {data.map((d, i) =>
+        d.valid ? (
+          <circle key={i} cx={x(i)} cy={y(d.risk)} r="3.5" fill="#16a35b" />
+        ) : (
+          <circle key={i} cx={x(i)} cy={y(d.risk)} r="3.5" fill="#ffffff" stroke="#8A8B82" strokeWidth="1.5" />
+        ),
+      )}
+    </svg>
+  );
+}
+
+/** Intra-session freeze-risk trace as an area, with the 50% reference line. */
+function RiskTrace({ data }: { data: number[] }) {
+  const w = 720;
+  const h = 120;
+  const pad = 10;
+  const x = (i: number) => pad + (i / (data.length - 1)) * (w - 2 * pad);
+  const y = (r: number) => pad + (1 - Math.max(0, Math.min(1, r))) * (h - 2 * pad);
+  const line = data.map((v, i) => `${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(" ");
+  const area = `${pad},${h - pad} ${line} ${(w - pad).toFixed(1)},${(h - pad).toFixed(1)}`;
+  const midY = y(0.5);
+  return (
+    <svg viewBox={`0 0 ${w} ${h}`} className="mt-4 h-32 w-full" preserveAspectRatio="none">
+      <polygon points={area} fill="#16a35b" opacity="0.1" />
+      <line x1={pad} y1={midY} x2={w - pad} y2={midY} stroke="rgba(18,19,17,0.18)" strokeWidth="1" strokeDasharray="4 5" />
+      <polyline points={line} fill="none" stroke="#16a35b" strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" />
+    </svg>
   );
 }
 

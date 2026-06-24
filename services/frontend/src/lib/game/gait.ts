@@ -36,10 +36,12 @@ interface Leg {
   flashAt: number; // last successful-step timestamp (for the hit flash)
 }
 
-const STEP_PERIOD_MS = 900; // ~67 steps/min — a gentle, FoG-safe starting cadence
+const DEFAULT_PERIOD_MS = 900; // ~67 steps/min — a gentle, FoG-safe default cadence
+const MIN_SPM = 40; // cadence floor (slow, deliberate weight shifts)
+const MAX_SPM = 110; // cadence ceiling (brisk marching)
 const HIT_LIFT = 0.5; // normalized lift that counts as a completed step
 const RELEASE_LIFT = 0.22; // foot must drop below this to re-arm the next step
-const HIT_WINDOW_MS = STEP_PERIOD_MS * 0.85; // how long after the cue a step still counts
+const HIT_WINDOW_FRAC = 0.85; // fraction of the beat in which a step still counts
 
 function emptyLeg(footX: number): Leg {
   return { lift: 0, baseY: 0.9, baseInit: false, armed: true, footX, flashAt: -1 };
@@ -49,6 +51,8 @@ export class GaitGame {
   width = 0;
   height = 0;
   lead: Side = "right";
+  stepPeriodMs = DEFAULT_PERIOD_MS;
+  cadenceTargetSpm = Math.round(60000 / DEFAULT_PERIOD_MS);
 
   stats: GaitStats = {
     steps: 0,
@@ -62,6 +66,7 @@ export class GaitGame {
 
   private legs: Record<Side, Leg> = { left: emptyLeg(0), right: emptyLeg(0) };
   private startedAt = 0;
+  private lastNow = 0;
   private beatIndex = -1;
   private beatHit = false;
   private cuedSide: Side = "right";
@@ -70,6 +75,19 @@ export class GaitGame {
   resize(width: number, height: number): void {
     this.width = width;
     this.height = height;
+  }
+
+  /** Set the cued cadence (steps/min). Preserves the current beat phase so the cue never jumps. */
+  setTempoSpm(spm: number): void {
+    const clamped = Math.max(MIN_SPM, Math.min(MAX_SPM, Math.round(spm)));
+    const p = 60000 / clamped;
+    if (this.startedAt && this.lastNow) {
+      const phase = ((this.lastNow - this.startedAt) % this.stepPeriodMs) / this.stepPeriodMs;
+      this.startedAt = this.lastNow - phase * p;
+      this.beatIndex = Math.floor((this.lastNow - this.startedAt) / p);
+    }
+    this.stepPeriodMs = p;
+    this.cadenceTargetSpm = clamped;
   }
 
   reset(): void {
@@ -112,6 +130,7 @@ export class GaitGame {
   update(s: GaitSample | null, now: number): void {
     if (this.width === 0 || this.height === 0) return;
     if (this.startedAt === 0) this.startedAt = now;
+    this.lastNow = now;
 
     if (s) {
       this.updateLeg(this.legs.left, s.left.ankleY, s.left.kneeY, s.hipY, s.left.footX);
@@ -122,7 +141,7 @@ export class GaitGame {
     }
 
     // Metronome: a new beat alternates the cued foot and closes out the previous cue.
-    const idx = Math.floor((now - this.startedAt) / STEP_PERIOD_MS);
+    const idx = Math.floor((now - this.startedAt) / this.stepPeriodMs);
     if (idx !== this.beatIndex) {
       if (this.beatIndex >= 0 && !this.beatHit) {
         // a cue elapsed unstepped → break the streak
@@ -140,9 +159,9 @@ export class GaitGame {
     }
 
     // Score the cued foot if it crosses the lift threshold within the beat window.
-    const beatStart = this.startedAt + idx * STEP_PERIOD_MS;
+    const beatStart = this.startedAt + idx * this.stepPeriodMs;
     const cued = this.legs[this.cuedSide];
-    if (!this.beatHit && cued.armed && cued.lift >= HIT_LIFT && now - beatStart <= HIT_WINDOW_MS) {
+    if (!this.beatHit && cued.armed && cued.lift >= HIT_LIFT && now - beatStart <= this.stepPeriodMs * HIT_WINDOW_FRAC) {
       this.beatHit = true;
       cued.armed = false;
       cued.flashAt = now;
@@ -204,8 +223,8 @@ export class GaitGame {
   private drawBeat(ctx: CanvasRenderingContext2D, now: number): void {
     const cx = this.width / 2;
     const cy = this.height * 0.12;
-    const beatStart = this.startedAt + this.beatIndex * STEP_PERIOD_MS;
-    const phase = Math.max(0, Math.min(1, (now - beatStart) / STEP_PERIOD_MS));
+    const beatStart = this.startedAt + this.beatIndex * this.stepPeriodMs;
+    const phase = Math.max(0, Math.min(1, (now - beatStart) / this.stepPeriodMs));
     const pop = 1 - phase; // bright right on the beat, fading toward the next
     ctx.save();
     ctx.strokeStyle = "rgba(18,19,17,0.18)";
@@ -220,11 +239,11 @@ export class GaitGame {
     ctx.arc(cx, cy, 6 + 7 * pop, 0, Math.PI * 2);
     ctx.stroke();
     ctx.restore();
-    // tempo label
+    // tempo label — live cadence target
     ctx.fillStyle = "rgba(18,19,17,0.40)";
     ctx.font = "10px ui-monospace, monospace";
     ctx.textAlign = "center";
-    ctx.fillText("STEP TO THE BEAT", cx, cy + 30);
+    ctx.fillText(`STEP TO THE BEAT · ${this.cadenceTargetSpm} SPM`, cx, cy + 30);
   }
 
   private drawPad(ctx: CanvasRenderingContext2D, side: Side, floorY: number, now: number): void {
@@ -265,8 +284,8 @@ export class GaitGame {
 
     // cue phase bar across the top of the active pad (counts down the beat window)
     if (cued && !this.beatHit) {
-      const beatStart = this.startedAt + this.beatIndex * STEP_PERIOD_MS;
-      const remain = Math.max(0, 1 - (now - beatStart) / HIT_WINDOW_MS);
+      const beatStart = this.startedAt + this.beatIndex * this.stepPeriodMs;
+      const remain = Math.max(0, 1 - (now - beatStart) / (this.stepPeriodMs * HIT_WINDOW_FRAC));
       ctx.fillStyle = "#16a35b";
       ctx.fillRect(cx - half, top - 4, padW * remain, 3);
     }

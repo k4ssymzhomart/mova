@@ -34,6 +34,21 @@ const MODES: { id: SessionMode; eyebrow: string; title: string }[] = [
   { id: "gait", eyebrow: "Live session · gait & balance", title: "Step to the beat." },
 ];
 
+/** Reduce a raw per-frame risk stream to at most `n` mean-bucketed samples for the stored timeline. */
+function downsample(values: number[], n: number): number[] {
+  if (values.length <= n) return values.map((v) => Math.round(v * 1000) / 1000);
+  const out: number[] = [];
+  const bucket = values.length / n;
+  for (let i = 0; i < n; i += 1) {
+    const a = Math.floor(i * bucket);
+    const b = Math.floor((i + 1) * bucket);
+    let s = 0;
+    for (let k = a; k < b; k += 1) s += values[k];
+    out.push(Math.round((s / Math.max(1, b - a)) * 1000) / 1000);
+  }
+  return out;
+}
+
 export default function SessionPage() {
   const pipeline = useRef(new VirtualImuPipeline());
   const sideRef = useRef<Side>("right");
@@ -48,6 +63,7 @@ export default function SessionPage() {
 
   const [mode, setMode] = useState<SessionMode>("reach");
   const [side, setSide] = useState<Side>("right");
+  const [tempoSpm, setTempoSpm] = useState(67);
   const [showVideo, setShowVideo] = useState(false);
   const [reach, setReach] = useState<ReachingStats>(ZERO_REACH);
   const [gait, setGait] = useState<GaitStats>(ZERO_GAIT);
@@ -62,6 +78,7 @@ export default function SessionPage() {
   const reachTimes = useRef<number[]>([]);
   const gaitRef = useRef<GaitStats>(ZERO_GAIT);
   const fogAccum = useRef({ sum: 0, n: 0 });
+  const fogSamples = useRef<number[]>([]);
   const harCounts = useRef<Record<string, number>>({});
 
   const running = pose.status === "running";
@@ -95,6 +112,7 @@ export default function SessionPage() {
     reachTimes.current = [];
     gaitRef.current = ZERO_GAIT;
     fogAccum.current = { sum: 0, n: 0 };
+    fogSamples.current = [];
     harCounts.current = {};
     setReach(ZERO_REACH);
     setGait(ZERO_GAIT);
@@ -140,6 +158,7 @@ export default function SessionPage() {
             }
           : undefined,
       fogRiskMean,
+      fogSeries: downsample(fogSamples.current, 48),
       fogValid: m === "gait",
       harTop,
       inferenceCount: inferences,
@@ -170,6 +189,7 @@ export default function SessionPage() {
       if (pred.fog) {
         fogAccum.current.sum += pred.fog.risk;
         fogAccum.current.n += 1;
+        fogSamples.current.push(pred.fog.risk);
       }
       if (pred.har) harCounts.current[pred.har.label] = (harCounts.current[pred.har.label] ?? 0) + 1;
     }, INFER_MS);
@@ -206,6 +226,7 @@ export default function SessionPage() {
               showVideo={showVideo}
               mode={mode}
               side={side}
+              tempoSpm={tempoSpm}
               onStats={onStats}
             />
             {mode === "gait" ? (
@@ -261,10 +282,34 @@ export default function SessionPage() {
                   </PillButton>
                 </div>
                 {mode === "gait" && (
-                  <p className="text-[12px] leading-relaxed text-ink-soft">
-                    Stand in full view of the camera and march in place, lifting the cued knee on each beat.
-                    Only your ankle/shank motion drives the FoG model.
-                  </p>
+                  <div className="space-y-3">
+                    <div>
+                      <div className="mb-1.5 flex items-baseline justify-between">
+                        <span className="text-[11px] font-medium uppercase tracking-[0.18em] text-ink-faint">
+                          Cadence target
+                        </span>
+                        <span className="font-mono text-sm tabular-nums text-ink">{tempoSpm} spm</span>
+                      </div>
+                      <input
+                        type="range"
+                        min={40}
+                        max={110}
+                        step={1}
+                        value={tempoSpm}
+                        onChange={(e) => setTempoSpm(Number(e.target.value))}
+                        aria-label="Cadence target in steps per minute"
+                        className="w-full accent-signal"
+                      />
+                      <div className="mt-1 flex justify-between font-mono text-[10px] uppercase tracking-[0.12em] text-ink-faint">
+                        <span>40 · gentle</span>
+                        <span>110 · brisk</span>
+                      </div>
+                    </div>
+                    <p className="text-[12px] leading-relaxed text-ink-soft">
+                      Stand in full view of the camera and march in place, lifting the cued knee on each beat.
+                      Only your ankle/shank motion drives the FoG model.
+                    </p>
+                  </div>
                 )}
               </div>
             </Panel>

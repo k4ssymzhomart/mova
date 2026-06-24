@@ -26,6 +26,7 @@ export interface SessionRecord {
   reachMs: { mean: number; best: number }; // movement-time proxy (spawn -> contact)
   gait?: GaitMetrics; // present for gait bouts
   fogRiskMean: number | null; // mean freeze-risk over the bout
+  fogSeries?: number[]; // downsampled per-bout freeze-risk samples (0..1) for the timeline
   fogValid: boolean; // true when FoG ran on a lower-limb (in-distribution) window
   harTop: string | null; // most-frequent live activity label
   inferenceCount: number;

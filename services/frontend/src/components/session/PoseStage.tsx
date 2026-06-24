@@ -21,6 +21,7 @@ interface PoseStageProps {
   showVideo: boolean;
   mode: SessionMode;
   side: "left" | "right";
+  tempoSpm?: number; // gait cadence target (steps/min)
   onStats?: (s: StageStats) => void;
 }
 
@@ -37,6 +38,7 @@ export default function PoseStage({
   showVideo,
   mode,
   side,
+  tempoSpm = 67,
   onStats,
 }: PoseStageProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -46,11 +48,14 @@ export default function PoseStage({
   const showVideoRef = useRef(showVideo);
   const modeRef = useRef(mode);
   const sideRef = useRef(side);
+  const tempoRef = useRef(tempoSpm);
+  const appliedTempoRef = useRef(-1);
   const runningRef = useRef(running);
   const statsTick = useRef(0);
   showVideoRef.current = showVideo;
   modeRef.current = mode;
   sideRef.current = side;
+  tempoRef.current = tempoSpm;
   runningRef.current = running;
 
   useEffect(() => {
@@ -98,6 +103,10 @@ export default function PoseStage({
         if (modeRef.current === "gait") {
           drawLegAccent(ctx, lm, { width: w, height: h, mirror: true });
           gait.lead = sideRef.current;
+          if (appliedTempoRef.current !== tempoRef.current) {
+            gait.setTempoSpm(tempoRef.current);
+            appliedTempoRef.current = tempoRef.current;
+          }
           gait.update(sampleLowerBody(lm, w, h), now);
           gait.draw(ctx, now);
         } else {
