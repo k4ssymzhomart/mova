@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 
+import FogEventsFeed from "@/components/clinician/FogEventsFeed";
 import { RiskChip } from "@/components/clinician/RiskChip";
 import { caseloadSummary, computeCaseMetrics } from "@/lib/clinic/metrics";
 import { getRoster } from "@/lib/clinic/mockData";
@@ -65,6 +66,11 @@ export default function ClinicOverview() {
         {rows.map(({ p, m }) => (
           <PatientCard key={p.profile.id} p={p} m={m} />
         ))}
+      </div>
+
+      {/* live freezing-of-gait telemetry streamed from real sessions (RLS-scoped) */}
+      <div className="mt-10">
+        <FogEventsFeed limit={12} />
       </div>
     </main>
   );
