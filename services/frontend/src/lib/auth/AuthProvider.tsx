@@ -1,12 +1,15 @@
 "use client";
 
 // App-wide auth state. Wraps Supabase Auth (Google OAuth + email/password) and a local "guest" mode
-// so the product is usable without a backend. Privacy-first: only the session lives client-side.
+// so the product is usable without a backend. It reads the session from the cookie-based @supabase/ssr
+// browser client — the SAME session the /app middleware refreshes and the live-telemetry writes use —
+// so a single sign-in (via /signin → MinimalAuthPage) authenticates the whole client product, not just
+// the SSR /app area. Privacy-first: only the session lives client-side.
 
 import type { Session, User } from "@supabase/supabase-js";
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
 
-import { getSupabase, isSupabaseConfigured } from "@/lib/supabase/client";
+import { createClient, isSupabaseConfigured } from "@/lib/supabase/client";
 
 type Result = { error?: string; info?: string };
 
@@ -27,34 +30,33 @@ interface AuthState {
 const GUEST_KEY = "mova.guest";
 const Ctx = createContext<AuthState | null>(null);
 
-function redirectTo(path = "/session"): string {
-  if (typeof window === "undefined") return path;
-  return `${window.location.origin}${path}`;
+/** Build an absolute callback URL that the /auth/callback route exchanges into a cookie session. */
+function callbackTo(next = "/app"): string {
+  if (typeof window === "undefined") return next;
+  return `${window.location.origin}/auth/callback?next=${encodeURIComponent(next)}`;
 }
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const configured = isSupabaseConfigured();
+  // One cookie-backed browser client for the whole app; null when env is unset (guest-only mode).
+  const [supabase] = useState(() => (configured ? createClient() : null));
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
   const [isGuest, setIsGuest] = useState(false);
 
   useEffect(() => {
     setIsGuest(typeof window !== "undefined" && window.localStorage.getItem(GUEST_KEY) === "1");
-    let unsub: (() => void) | undefined;
-    getSupabase().then((supabase) => {
-      if (!supabase) {
-        setLoading(false);
-        return;
-      }
-      supabase.auth.getSession().then(({ data }) => {
-        setSession(data.session);
-        setLoading(false);
-      });
-      const { data: sub } = supabase.auth.onAuthStateChange((_e, s) => setSession(s));
-      unsub = () => sub.subscription.unsubscribe();
+    if (!supabase) {
+      setLoading(false);
+      return;
+    }
+    supabase.auth.getSession().then(({ data }) => {
+      setSession(data.session);
+      setLoading(false);
     });
-    return () => unsub?.();
-  }, []);
+    const { data: sub } = supabase.auth.onAuthStateChange((_e, s) => setSession(s));
+    return () => sub.subscription.unsubscribe();
+  }, [supabase]);
 
   const value = useMemo<AuthState>(
     () => ({
@@ -65,27 +67,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       isGuest,
       authed: Boolean(session) || isGuest,
       async signInWithGoogle() {
-        const supabase = await getSupabase();
         if (!supabase) return { error: "Sign-in isn't configured yet — continue as guest, or add Supabase keys." };
         const { error } = await supabase.auth.signInWithOAuth({
           provider: "google",
-          options: { redirectTo: redirectTo("/session") },
+          options: { redirectTo: callbackTo("/app") },
         });
         return error ? { error: error.message } : {};
       },
       async signInWithEmail(email, password) {
-        const supabase = await getSupabase();
         if (!supabase) return { error: "Sign-in isn't configured yet — continue as guest." };
         const { error } = await supabase.auth.signInWithPassword({ email, password });
         return error ? { error: error.message } : {};
       },
       async signUpWithEmail(email, password) {
-        const supabase = await getSupabase();
         if (!supabase) return { error: "Sign-up isn't configured yet — continue as guest." };
         const { data, error } = await supabase.auth.signUp({
           email,
           password,
-          options: { emailRedirectTo: redirectTo("/session") },
+          options: { emailRedirectTo: callbackTo("/app") },
         });
         if (error) return { error: error.message };
         if (!data.session) return { info: "Account created — check your email to confirm, then sign in." };
@@ -98,12 +97,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       async signOut() {
         if (typeof window !== "undefined") window.localStorage.removeItem(GUEST_KEY);
         setIsGuest(false);
-        const supabase = await getSupabase();
         await supabase?.auth.signOut();
         setSession(null);
       },
     }),
-    [session, loading, configured, isGuest],
+    [session, loading, configured, isGuest, supabase],
   );
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
