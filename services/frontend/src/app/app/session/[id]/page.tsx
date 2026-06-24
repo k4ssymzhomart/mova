@@ -4,6 +4,7 @@ import { ChevronLeft } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 
 import FinishSessionButton from "./FinishSessionButton";
+import LiveCapturePanel from "./LiveCapturePanel";
 
 type Metrics = {
   reps: number | null;
@@ -38,7 +39,7 @@ export default async function SessionDetail({
   const done = session.status === "completed";
 
   return (
-    <div className="mx-auto max-w-2xl space-y-8">
+    <div className="mx-auto max-w-shell space-y-8">
       <a
         href="/app"
         className="inline-flex items-center gap-1 text-sm text-ink-soft hover:text-ink"
@@ -65,16 +66,28 @@ export default async function SessionDetail({
       </div>
 
       {!done ? (
-        <div className="rounded-card border border-line bg-card p-6">
-          <h2 className="font-serif text-xl text-ink">Finish this session</h2>
-          <p className="mt-2 text-sm text-ink-soft">
-            Record the session as completed and save its aggregate metrics. The
-            values below are <strong>simulated</strong> placeholders — the live
-            CV/IMU pipeline writes the real ones via the inference contract.
-          </p>
-          <div className="mt-5">
-            <FinishSessionButton sessionId={session.id} />
+        <div className="space-y-5">
+          <div>
+            <h2 className="font-serif text-xl text-ink">Live capture</h2>
+            <p className="mt-2 text-sm text-ink-soft">
+              Start the on-device pose + virtual-IMU pipeline. Derived keypoints and
+              freezing-of-gait telemetry stream into this session in real time;
+              finishing saves the aggregate metrics computed from the stream.
+            </p>
           </div>
+          <LiveCapturePanel sessionId={session.id} />
+          <details className="rounded-card border border-line bg-card p-4">
+            <summary className="cursor-pointer text-sm text-ink-soft">
+              Finish manually without capture
+            </summary>
+            <p className="mt-2 text-sm text-ink-faint">
+              Closes the session with placeholder metrics — use this only if you're
+              not running a live capture.
+            </p>
+            <div className="mt-4">
+              <FinishSessionButton sessionId={session.id} />
+            </div>
+          </details>
         </div>
       ) : (
         <div>
