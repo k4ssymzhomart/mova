@@ -5,22 +5,39 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import AppHeader from "@/components/app/AppHeader";
 import RequireAuth from "@/components/auth/RequireAuth";
-import PoseStage from "@/components/session/PoseStage";
+import PoseStage, { type SessionMode, type StageStats } from "@/components/session/PoseStage";
 import SessionTelemetry from "@/components/session/SessionTelemetry";
 import { Metric, Panel, PillButton, Toggle } from "@/components/session/ui";
 import { VirtualImuPipeline } from "@/lib/cv/imuWindow";
 import { useMediaPipePose } from "@/lib/cv/useMediaPipePose";
+import type { GaitStats } from "@/lib/game/gait";
+import type { ReachingStats } from "@/lib/game/reaching";
 import { computeInsights } from "@/lib/insights/engine";
 import { loadSessions, makeId, saveSession } from "@/lib/insights/store";
 import type { Insight, SessionRecord, Side } from "@/lib/insights/types";
 import { type LivePrediction, useLiveInference } from "@/lib/onnx/useLiveInference";
-import type { ReachingStats } from "@/lib/game/reaching";
 
 const INFER_MS = 600;
+const ZERO_REACH: ReachingStats = { score: 0, attempts: 0, lastReachMs: null };
+const ZERO_GAIT: GaitStats = {
+  steps: 0,
+  beats: 0,
+  cadenceSpm: 0,
+  rhythmPct: 0,
+  currentStreak: 0,
+  bestStreak: 0,
+  lastErrMs: null,
+};
+
+const MODES: { id: SessionMode; eyebrow: string; title: string }[] = [
+  { id: "reach", eyebrow: "Live session · upper-limb reaching", title: "Move, and the model watches." },
+  { id: "gait", eyebrow: "Live session · gait & balance", title: "Step to the beat." },
+];
 
 export default function SessionPage() {
   const pipeline = useRef(new VirtualImuPipeline());
   const sideRef = useRef<Side>("right");
+  const modeRef = useRef<SessionMode>("reach");
 
   const pose = useMediaPipePose({
     onFrame: (f) => pipeline.current.push(f.worldLandmarks, f.timestampMs),
@@ -29,9 +46,11 @@ export default function SessionPage() {
   const liveRef = useRef(live);
   liveRef.current = live;
 
+  const [mode, setMode] = useState<SessionMode>("reach");
   const [side, setSide] = useState<Side>("right");
   const [showVideo, setShowVideo] = useState(false);
-  const [stats, setStats] = useState<ReachingStats>({ score: 0, attempts: 0, lastReachMs: null });
+  const [reach, setReach] = useState<ReachingStats>(ZERO_REACH);
+  const [gait, setGait] = useState<GaitStats>(ZERO_GAIT);
   const [prediction, setPrediction] = useState<LivePrediction | null>(null);
   const [fill, setFill] = useState(0);
   const [inferences, setInferences] = useState(0);
@@ -41,27 +60,44 @@ export default function SessionPage() {
   const startedAt = useRef(0);
   const prevScore = useRef(0);
   const reachTimes = useRef<number[]>([]);
+  const gaitRef = useRef<GaitStats>(ZERO_GAIT);
   const fogAccum = useRef({ sum: 0, n: 0 });
   const harCounts = useRef<Record<string, number>>({});
 
   const running = pose.status === "running";
+  const meta = MODES.find((m) => m.id === mode)!;
+
   useEffect(() => {
     sideRef.current = side;
     pipeline.current.side = side;
   }, [side]);
 
-  const onStats = useCallback((s: ReachingStats) => {
-    setStats(s);
-    if (s.score > prevScore.current && s.lastReachMs != null) reachTimes.current.push(s.lastReachMs);
-    prevScore.current = s.score;
+  useEffect(() => {
+    modeRef.current = mode;
+    pipeline.current.segment = mode === "gait" ? "shank" : "forearm";
+  }, [mode]);
+
+  const onStats = useCallback((s: StageStats) => {
+    if (s.mode === "gait") {
+      setGait(s.gait);
+      gaitRef.current = s.gait;
+    } else {
+      setReach(s.reach);
+      if (s.reach.score > prevScore.current && s.reach.lastReachMs != null)
+        reachTimes.current.push(s.reach.lastReachMs);
+      prevScore.current = s.reach.score;
+    }
   }, []);
 
   const start = useCallback(async () => {
     setSummary(null);
     prevScore.current = 0;
     reachTimes.current = [];
+    gaitRef.current = ZERO_GAIT;
     fogAccum.current = { sum: 0, n: 0 };
     harCounts.current = {};
+    setReach(ZERO_REACH);
+    setGait(ZERO_GAIT);
     setInferences(0);
     setPrediction(null);
     pipeline.current.reset();
@@ -72,31 +108,49 @@ export default function SessionPage() {
 
   const stop = useCallback(() => {
     pose.stop();
+    const m = modeRef.current;
+    const now = Date.now();
+    const durationSec = Math.max(0, Math.round((now - (startedAt.current || now)) / 1000));
+    const harTop = Object.entries(harCounts.current).sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
+    const fogRiskMean = fogAccum.current.n ? fogAccum.current.sum / fogAccum.current.n : null;
     const rt = reachTimes.current;
-    const harTop =
-      Object.entries(harCounts.current).sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
+    const g = gaitRef.current;
+
     const record: SessionRecord = {
       id: makeId(),
-      startedAt: startedAt.current || Date.now(),
-      endedAt: Date.now(),
-      exercise: "reaching",
+      startedAt: startedAt.current || now,
+      endedAt: now,
+      exercise: m === "gait" ? "gait" : "reaching",
       side: sideRef.current,
-      durationSec: Math.max(0, Math.round((Date.now() - (startedAt.current || Date.now())) / 1000)),
-      reaches: stats.score,
-      attempts: stats.attempts,
+      durationSec,
+      reaches: m === "gait" ? 0 : reach.score,
+      attempts: m === "gait" ? g.beats : reach.attempts,
       reachMs: {
         mean: rt.length ? Math.round(rt.reduce((a, b) => a + b, 0) / rt.length) : 0,
         best: rt.length ? Math.min(...rt) : 0,
       },
-      fogRiskMean: fogAccum.current.n ? fogAccum.current.sum / fogAccum.current.n : null,
+      gait:
+        m === "gait"
+          ? {
+              steps: g.steps,
+              beats: g.beats,
+              cadenceSpm: g.cadenceSpm,
+              rhythmPct: g.rhythmPct,
+              bestStreak: g.bestStreak,
+            }
+          : undefined,
+      fogRiskMean,
+      fogValid: m === "gait",
       harTop,
       inferenceCount: inferences,
     };
-    if (record.reaches > 0 || record.inferenceCount > 0) {
+
+    const did = m === "gait" ? record.gait!.steps > 0 || record.inferenceCount > 0 : record.reaches > 0 || record.inferenceCount > 0;
+    if (did) {
       saveSession(record);
       setSummary({ record, insights: computeInsights(loadSessions()) });
     }
-  }, [pose, stats.score, stats.attempts, inferences]);
+  }, [pose, reach.score, reach.attempts, inferences]);
 
   // Inference loop — decoupled from the render loop, off-main-thread (ort proxy), so the camera stays smooth.
   useEffect(() => {
@@ -109,7 +163,7 @@ export default function SessionPage() {
       if (l.status !== "ready") return;
       const w = pipeline.current.window(now);
       if (!w) return;
-      const pred = await l.infer(w);
+      const pred = await l.infer(w, modeRef.current, sideRef.current);
       if (!alive || !pred) return;
       setPrediction(pred);
       setInferences((c) => c + 1);
@@ -134,11 +188,9 @@ export default function SessionPage() {
         <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
           <div>
             <div className="text-[11px] font-medium uppercase tracking-[0.22em] text-ink-faint">
-              Live session · upper-limb reaching
+              {meta.eyebrow}
             </div>
-            <h1 className="mt-2 font-serif text-4xl italic leading-none text-ink">
-              Move, and the model watches.
-            </h1>
+            <h1 className="mt-2 font-serif text-4xl italic leading-none text-ink">{meta.title}</h1>
           </div>
           <div className="font-mono text-xs uppercase tracking-[0.14em] text-ink-faint">
             {pose.fps} fps · {pose.status}
@@ -152,18 +204,27 @@ export default function SessionPage() {
               landmarks={pose.latest}
               running={running}
               showVideo={showVideo}
+              mode={mode}
               side={side}
               onStats={onStats}
             />
-            <div className="grid grid-cols-3 gap-4">
-              <Metric label="Reaches" value={String(stats.score)} />
-              <Metric label="Attempts" value={String(stats.attempts)} />
-              <Metric
-                label="Last reach"
-                value={stats.lastReachMs == null ? "—" : String(stats.lastReachMs)}
-                unit={stats.lastReachMs == null ? undefined : "ms"}
-              />
-            </div>
+            {mode === "gait" ? (
+              <div className="grid grid-cols-3 gap-4">
+                <Metric label="Steps" value={String(gait.steps)} />
+                <Metric label="Cadence" value={gait.cadenceSpm ? String(gait.cadenceSpm) : "—"} unit={gait.cadenceSpm ? "spm" : undefined} />
+                <Metric label="On-beat" value={`${Math.round(gait.rhythmPct * 100)}`} unit="%" />
+              </div>
+            ) : (
+              <div className="grid grid-cols-3 gap-4">
+                <Metric label="Reaches" value={String(reach.score)} />
+                <Metric label="Attempts" value={String(reach.attempts)} />
+                <Metric
+                  label="Last reach"
+                  value={reach.lastReachMs == null ? "—" : String(reach.lastReachMs)}
+                  unit={reach.lastReachMs == null ? undefined : "ms"}
+                />
+              </div>
+            )}
             {(pose.status === "denied" || pose.status === "error") && (
               <div className="rounded-card border border-line bg-night px-4 py-3 font-mono text-xs text-paper-soft">
                 {pose.error}
@@ -174,6 +235,14 @@ export default function SessionPage() {
           <aside className="space-y-5">
             <Panel label="Session control">
               <div className="space-y-4">
+                <div className="grid grid-cols-2 gap-2">
+                  <PillButton active={mode === "reach"} onClick={() => setMode("reach")} disabled={running}>
+                    Upper-limb reach
+                  </PillButton>
+                  <PillButton active={mode === "gait"} onClick={() => setMode("gait")} disabled={running}>
+                    Gait &amp; balance
+                  </PillButton>
+                </div>
                 <div className="flex gap-2">
                   <PillButton active={running} onClick={start} disabled={running || pose.status === "loading"}>
                     {pose.status === "loading" ? "Starting…" : "Start session"}
@@ -185,16 +254,22 @@ export default function SessionPage() {
                 <Toggle label="Show camera (off by default)" on={showVideo} onClick={() => setShowVideo((v) => !v)} />
                 <div className="flex gap-2">
                   <PillButton active={side === "left"} onClick={() => setSide("left")}>
-                    Left hand
+                    {mode === "gait" ? "Lead left" : "Left hand"}
                   </PillButton>
                   <PillButton active={side === "right"} onClick={() => setSide("right")}>
-                    Right hand
+                    {mode === "gait" ? "Lead right" : "Right hand"}
                   </PillButton>
                 </div>
+                {mode === "gait" && (
+                  <p className="text-[12px] leading-relaxed text-ink-soft">
+                    Stand in full view of the camera and march in place, lifting the cued knee on each beat.
+                    Only your ankle/shank motion drives the FoG model.
+                  </p>
+                )}
               </div>
             </Panel>
 
-            <SessionTelemetry status={live.status} prediction={prediction} fill={fill} inferences={inferences} />
+            <SessionTelemetry status={live.status} prediction={prediction} mode={mode} fill={fill} inferences={inferences} />
 
             <Panel label="Privacy">
               <p className="text-[13px] leading-relaxed text-ink-soft">
@@ -220,6 +295,7 @@ function PostSession({
   onRestart: () => void;
 }) {
   const r = summary.record;
+  const isGait = r.exercise === "gait";
   const toneRing: Record<string, string> = {
     positive: "border-signal/40",
     watch: "border-ink/30",
@@ -246,9 +322,19 @@ function PostSession({
       </div>
 
       <div className="mt-6 grid gap-3 sm:grid-cols-3">
-        <Metric label="Reaches" value={String(r.reaches)} />
-        <Metric label="Avg reach" value={r.reachMs.mean ? String(r.reachMs.mean) : "—"} unit={r.reachMs.mean ? "ms" : undefined} />
-        <Metric label="Duration" value={String(r.durationSec)} unit="s" />
+        {isGait ? (
+          <>
+            <Metric label="Steps" value={String(r.gait?.steps ?? 0)} />
+            <Metric label="Cadence" value={r.gait?.cadenceSpm ? String(r.gait.cadenceSpm) : "—"} unit={r.gait?.cadenceSpm ? "spm" : undefined} />
+            <Metric label="Duration" value={String(r.durationSec)} unit="s" />
+          </>
+        ) : (
+          <>
+            <Metric label="Reaches" value={String(r.reaches)} />
+            <Metric label="Avg reach" value={r.reachMs.mean ? String(r.reachMs.mean) : "—"} unit={r.reachMs.mean ? "ms" : undefined} />
+            <Metric label="Duration" value={String(r.durationSec)} unit="s" />
+          </>
+        )}
       </div>
 
       <div className="mt-4 grid gap-3 md:grid-cols-2">

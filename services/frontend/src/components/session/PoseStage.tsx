@@ -2,41 +2,54 @@
 
 import { type MutableRefObject, type RefObject, useEffect, useRef } from "react";
 
-import { drawSkeleton, wristPx } from "@/lib/cv/drawSkeleton";
+import { drawLegAccent, drawSkeleton, landmarkPx, wristPx } from "@/lib/cv/drawSkeleton";
 import type { Landmark } from "@/lib/cv/landmarks";
+import { POSE_LANDMARKS } from "@/lib/cv/landmarks";
+import { GaitGame, type GaitStats } from "@/lib/game/gait";
 import { ReachingGame, type ReachingStats } from "@/lib/game/reaching";
+
+export type SessionMode = "reach" | "gait";
+
+export type StageStats =
+  | { mode: "reach"; reach: ReachingStats }
+  | { mode: "gait"; gait: GaitStats };
 
 interface PoseStageProps {
   videoRef: RefObject<HTMLVideoElement>;
   landmarks: MutableRefObject<Landmark[] | null>;
   running: boolean;
   showVideo: boolean;
+  mode: SessionMode;
   side: "left" | "right";
-  onStats?: (s: ReachingStats) => void;
+  onStats?: (s: StageStats) => void;
 }
 
 /**
- * The session stage. A pure white clinical surface: the camera frame never appears unless explicitly
- * toggled on (privacy-first); by default only the black skeletal wireframe + the reaching game render.
- * One requestAnimationFrame loop owns drawing; landmarks arrive through a ref so detection never
- * re-renders React.
+ * The session stage. A pure paper clinical surface: the camera frame never appears unless explicitly
+ * toggled on (privacy-first); by default only the ink skeletal wireframe + the active exercise game
+ * render. One requestAnimationFrame loop owns drawing; landmarks arrive through a ref so detection never
+ * re-renders React. The `mode` selects upper-limb reaching vs lower-limb gait/balance.
  */
 export default function PoseStage({
   videoRef,
   landmarks,
   running,
   showVideo,
+  mode,
   side,
   onStats,
 }: PoseStageProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const gameRef = useRef<ReachingGame>(new ReachingGame());
+  const reachRef = useRef<ReachingGame>(new ReachingGame());
+  const gaitRef = useRef<GaitGame>(new GaitGame());
   const rafRef = useRef<number | null>(null);
   const showVideoRef = useRef(showVideo);
+  const modeRef = useRef(mode);
   const sideRef = useRef(side);
   const runningRef = useRef(running);
   const statsTick = useRef(0);
   showVideoRef.current = showVideo;
+  modeRef.current = mode;
   sideRef.current = side;
   runningRef.current = running;
 
@@ -45,7 +58,8 @@ export default function PoseStage({
     if (!canvas) return;
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
-    const game = gameRef.current;
+    const reach = reachRef.current;
+    const gait = gaitRef.current;
 
     const fit = () => {
       const dpr = window.devicePixelRatio || 1;
@@ -56,7 +70,8 @@ export default function PoseStage({
         canvas.height = Math.round(h * dpr);
       }
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      game.resize(w, h);
+      reach.resize(w, h);
+      gait.resize(w, h);
       return { w, h };
     };
 
@@ -77,17 +92,32 @@ export default function PoseStage({
         ctx.restore();
       }
 
+      const now = performance.now();
       if (runningRef.current && lm) {
         drawSkeleton(ctx, lm, { width: w, height: h, mirror: true, ink: "#121311" });
-        const wrist = wristPx(lm, sideRef.current, w, h, true);
-        game.update(wrist, performance.now());
-        game.draw(ctx, performance.now());
+        if (modeRef.current === "gait") {
+          drawLegAccent(ctx, lm, { width: w, height: h, mirror: true });
+          gait.lead = sideRef.current;
+          gait.update(sampleLowerBody(lm, w, h), now);
+          gait.draw(ctx, now);
+        } else {
+          const wrist = wristPx(lm, sideRef.current, w, h, true);
+          reach.update(wrist, now);
+          reach.draw(ctx, now);
+        }
       } else {
-        idleStage(ctx, w, h, runningRef.current);
+        if (modeRef.current === "gait") gait.update(null, now);
+        idleStage(ctx, w, h, runningRef.current, modeRef.current);
       }
 
       statsTick.current += 1;
-      if (onStats && statsTick.current % 6 === 0) onStats({ ...game.stats });
+      if (onStats && statsTick.current % 6 === 0) {
+        onStats(
+          modeRef.current === "gait"
+            ? { mode: "gait", gait: { ...gait.stats } }
+            : { mode: "reach", reach: { ...reach.stats } },
+        );
+      }
       rafRef.current = requestAnimationFrame(render);
     };
 
@@ -106,7 +136,32 @@ export default function PoseStage({
   );
 }
 
-function idleStage(ctx: CanvasRenderingContext2D, w: number, h: number, running: boolean) {
+/** Build the gait engine's lower-body sample from image-space landmarks (mirror only affects foot x). */
+function sampleLowerBody(lm: Landmark[], w: number, h: number) {
+  const la = lm[POSE_LANDMARKS.leftAnkle];
+  const ra = lm[POSE_LANDMARKS.rightAnkle];
+  const lk = lm[POSE_LANDMARKS.leftKnee];
+  const rk = lm[POSE_LANDMARKS.rightKnee];
+  const lh = lm[POSE_LANDMARKS.leftHip];
+  const rh = lm[POSE_LANDMARKS.rightHip];
+  if (!la || !ra || !lk || !rk || !lh || !rh) return null;
+  const hipY = (lh.y + rh.y) / 2;
+  const leftFoot = landmarkPx(lm, POSE_LANDMARKS.leftAnkle, w, h, true, 0.3);
+  const rightFoot = landmarkPx(lm, POSE_LANDMARKS.rightAnkle, w, h, true, 0.3);
+  return {
+    left: { footX: leftFoot ? leftFoot[0] : NaN, ankleY: la.y, kneeY: lk.y },
+    right: { footX: rightFoot ? rightFoot[0] : NaN, ankleY: ra.y, kneeY: rk.y },
+    hipY,
+  };
+}
+
+function idleStage(
+  ctx: CanvasRenderingContext2D,
+  w: number,
+  h: number,
+  running: boolean,
+  mode: SessionMode,
+) {
   ctx.strokeStyle = "rgba(18,19,17,0.06)";
   ctx.lineWidth = 1;
   const step = 40;
@@ -123,8 +178,9 @@ function idleStage(ctx: CanvasRenderingContext2D, w: number, h: number, running:
   ctx.fillStyle = "rgba(18,19,17,0.40)";
   ctx.font = "11px ui-monospace, monospace";
   ctx.textAlign = "center";
+  const hint = mode === "gait" ? "step in view of the camera" : "reach for the targets";
   ctx.fillText(
-    running ? "Acquiring pose…" : "Camera idle — start your session to begin",
+    running ? "Acquiring pose…" : `Camera idle — start your session to ${hint}`,
     w / 2,
     h / 2,
   );

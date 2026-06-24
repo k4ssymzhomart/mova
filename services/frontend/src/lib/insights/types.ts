@@ -3,8 +3,16 @@
 // derived from real in-session measurements (reach count, reach time, live FoG/HAR readouts) — no
 // invented numbers.
 
-export type Exercise = "reaching";
+export type Exercise = "reaching" | "gait";
 export type Side = "left" | "right";
+
+export interface GaitMetrics {
+  steps: number; // cued lifts landed on the beat
+  beats: number; // cues issued
+  cadenceSpm: number; // measured steps / minute
+  rhythmPct: number; // 0..1 — fraction of cues stepped on time
+  bestStreak: number;
+}
 
 export interface SessionRecord {
   id: string;
@@ -13,10 +21,12 @@ export interface SessionRecord {
   exercise: Exercise;
   side: Side;
   durationSec: number;
-  reaches: number; // targets successfully reached
+  reaches: number; // targets successfully reached (reaching)
   attempts: number;
   reachMs: { mean: number; best: number }; // movement-time proxy (spawn -> contact)
-  fogRiskMean: number | null; // mean freeze-risk over the bout (arm-derived preview)
+  gait?: GaitMetrics; // present for gait bouts
+  fogRiskMean: number | null; // mean freeze-risk over the bout
+  fogValid: boolean; // true when FoG ran on a lower-limb (in-distribution) window
   harTop: string | null; // most-frequent live activity label
   inferenceCount: number;
 }
@@ -35,9 +45,12 @@ export interface Insight {
 export interface ProgressSummary {
   totalSessions: number;
   totalReaches: number;
+  totalSteps: number;
   streakDays: number;
   weekSessions: number;
   avgReachMs: number | null;
   bestReachMs: number | null;
   reachTrendPct: number | null; // negative = faster (improving)
+  bestCadenceSpm: number | null;
+  rhythmTrendPct: number | null; // positive = more on-beat steps (improving)
 }

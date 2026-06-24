@@ -43,8 +43,8 @@ function Empty() {
   return (
     <div className="mt-10 rounded-card border border-line bg-paper-soft p-10 text-center">
       <p className="mx-auto max-w-md text-ink-soft">
-        No sessions yet. Complete your first reaching bout and Mova starts charting your range, speed,
-        and consistency — and surfaces personalised insights here.
+        No sessions yet. Complete a reaching or gait bout and Mova starts charting your range, speed,
+        cadence, and consistency — and surfaces personalised insights here.
       </p>
       <Link
         href="/session"
@@ -59,31 +59,53 @@ function Empty() {
 function Body({ sessions }: { sessions: SessionRecord[] }) {
   const s = summarize(sessions);
   const insights = computeInsights(sessions);
-  const trend = sessions.map((x) => x.reachMs.mean).filter((v) => v > 0);
+  const reachTrend = sessions.filter((x) => x.exercise === "reaching").map((x) => x.reachMs.mean).filter((v) => v > 0);
+  const gaitTrend = sessions
+    .filter((x) => x.exercise === "gait" && x.gait)
+    .map((x) => Math.round(x.gait!.rhythmPct * 100));
+
+  // up to four most-relevant headline tiles
+  const tiles: { label: string; value: number; suffix?: string }[] = [
+    { label: "Sessions", value: s.totalSessions },
+    { label: "Day streak", value: s.streakDays },
+  ];
+  if (s.totalReaches > 0) tiles.push({ label: "Targets reached", value: s.totalReaches });
+  if (s.totalSteps > 0) tiles.push({ label: "Cued steps", value: s.totalSteps });
+  if (tiles.length < 4 && s.bestCadenceSpm) tiles.push({ label: "Best cadence", value: s.bestCadenceSpm, suffix: " spm" });
+  if (tiles.length < 4 && s.bestReachMs) tiles.push({ label: "Best reach", value: s.bestReachMs, suffix: " ms" });
 
   return (
     <>
       {/* summary tiles */}
       <div className="mt-10 grid grid-cols-2 gap-px overflow-hidden rounded-card border border-line bg-line md:grid-cols-4">
-        <Tile label="Sessions" value={s.totalSessions} />
-        <Tile label="Day streak" value={s.streakDays} />
-        <Tile label="Targets reached" value={s.totalReaches} />
-        <Tile label="Best reach" value={s.bestReachMs ?? 0} suffix=" ms" />
+        {tiles.slice(0, 4).map((t) => (
+          <Tile key={t.label} label={t.label} value={t.value} suffix={t.suffix} />
+        ))}
       </div>
 
-      {/* trend */}
-      <div className="mt-5 rounded-card border border-line bg-card p-6 shadow-soft">
-        <div className="flex items-baseline justify-between">
-          <span className="text-[11px] font-medium uppercase tracking-[0.2em] text-ink-faint">
-            Reach-time trend
-          </span>
-          <span className="font-mono text-xs text-ink-faint">
-            {s.reachTrendPct === null
-              ? "more sessions needed"
-              : `${s.reachTrendPct > 0 ? "+" : ""}${s.reachTrendPct}% · lower is faster`}
-          </span>
-        </div>
-        <Sparkline data={trend} />
+      {/* trends */}
+      <div className="mt-5 grid gap-5 lg:grid-cols-2">
+        {reachTrend.length >= 2 && (
+          <TrendCard
+            title="Reach-time trend"
+            note={s.reachTrendPct === null ? "more sessions needed" : `${s.reachTrendPct > 0 ? "+" : ""}${s.reachTrendPct}% · lower is faster`}
+            data={reachTrend}
+            invert
+          />
+        )}
+        {gaitTrend.length >= 2 && (
+          <TrendCard
+            title="On-beat stepping trend"
+            note={s.rhythmTrendPct === null ? "more gait bouts needed" : `${s.rhythmTrendPct > 0 ? "+" : ""}${s.rhythmTrendPct}% · higher is steadier`}
+            data={gaitTrend}
+          />
+        )}
+        {reachTrend.length < 2 && gaitTrend.length < 2 && (
+          <div className="rounded-card border border-line bg-card p-6 shadow-soft">
+            <span className="text-[11px] font-medium uppercase tracking-[0.2em] text-ink-faint">Trends</span>
+            <p className="mt-4 font-mono text-sm text-ink-faint">Two+ sessions of an exercise unlock its trend line.</p>
+          </div>
+        )}
       </div>
 
       {/* insights */}
@@ -105,12 +127,22 @@ function Body({ sessions }: { sessions: SessionRecord[] }) {
             }`}
           >
             <span className="text-ink">{new Date(x.startedAt).toLocaleDateString()}</span>
-            <span className="font-mono tabular-nums text-ink-soft">{x.reaches} reaches</span>
             <span className="font-mono tabular-nums text-ink-soft">
-              {x.reachMs.mean ? `${x.reachMs.mean} ms` : "—"}
+              {x.exercise === "gait" ? `${x.gait?.steps ?? 0} steps` : `${x.reaches} reaches`}
+            </span>
+            <span className="font-mono tabular-nums text-ink-soft">
+              {x.exercise === "gait"
+                ? x.gait?.cadenceSpm
+                  ? `${x.gait.cadenceSpm} spm`
+                  : "—"
+                : x.reachMs.mean
+                  ? `${x.reachMs.mean} ms`
+                  : "—"}
             </span>
             <span className="font-mono tabular-nums text-ink-soft">{x.durationSec}s</span>
-            <span className="truncate text-ink-faint">{x.harTop?.replace(/_/g, " ") ?? "—"}</span>
+            <span className="truncate text-ink-faint">
+              {x.exercise === "gait" ? "gait · FoG valid" : "reaching"}
+            </span>
           </div>
         ))}
       </div>
@@ -148,8 +180,23 @@ function InsightCard({ ins }: { ins: Insight }) {
   );
 }
 
-/** Minimal monochrome+emerald sparkline. Reach time per session; the line falling = getting faster. */
-function Sparkline({ data }: { data: number[] }) {
+function TrendCard({ title, note, data, invert = false }: { title: string; note: string; data: number[]; invert?: boolean }) {
+  return (
+    <div className="rounded-card border border-line bg-card p-6 shadow-soft">
+      <div className="flex items-baseline justify-between">
+        <span className="text-[11px] font-medium uppercase tracking-[0.2em] text-ink-faint">{title}</span>
+        <span className="font-mono text-xs text-ink-faint">{note}</span>
+      </div>
+      <Sparkline data={data} invert={invert} />
+    </div>
+  );
+}
+
+/**
+ * Minimal paper+emerald sparkline. `invert` maps a *lower* raw value to a *higher* point (used for reach
+ * time, where falling = faster); otherwise higher value = higher point (rhythm %, where rising = better).
+ */
+function Sparkline({ data, invert = false }: { data: number[]; invert?: boolean }) {
   if (data.length < 2) {
     return <p className="mt-6 font-mono text-sm text-ink-faint">Two+ sessions needed to plot a trend.</p>;
   }
@@ -161,7 +208,9 @@ function Sparkline({ data }: { data: number[] }) {
   const span = max - min || 1;
   const pts = data.map((v, i) => {
     const x = pad + (i / (data.length - 1)) * (w - 2 * pad);
-    const y = pad + (1 - (v - min) / span) * (h - 2 * pad);
+    const norm = (v - min) / span; // 0..1
+    const up = invert ? 1 - norm : norm;
+    const y = pad + (1 - up) * (h - 2 * pad);
     return [x, y] as const;
   });
   const line = pts.map((p) => `${p[0].toFixed(1)},${p[1].toFixed(1)}`).join(" ");

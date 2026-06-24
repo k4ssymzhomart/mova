@@ -68,3 +68,65 @@ export function wristPx(
   if (!l || (l.visibility ?? 1) < minVisibility) return null;
   return px(l, width, height, mirror);
 }
+
+/** Pixel position of any landmark index, or null if missing / below the visibility floor. */
+export function landmarkPx(
+  landmarks: Landmark[],
+  idx: number,
+  width: number,
+  height: number,
+  mirror = true,
+  minVisibility = 0.5,
+): [number, number] | null {
+  const l = landmarks?.[idx];
+  if (!l || (l.visibility ?? 1) < minVisibility) return null;
+  return px(l, width, height, mirror);
+}
+
+const LEG_EDGES: ReadonlyArray<readonly [number, number]> = [
+  [POSE_LANDMARKS.leftHip, POSE_LANDMARKS.leftKnee],
+  [POSE_LANDMARKS.leftKnee, POSE_LANDMARKS.leftAnkle],
+  [POSE_LANDMARKS.rightHip, POSE_LANDMARKS.rightKnee],
+  [POSE_LANDMARKS.rightKnee, POSE_LANDMARKS.rightAnkle],
+];
+
+/** Re-draw the lower-limb chain in the emerald signal colour — used in gait mode to focus the legs. */
+export function drawLegAccent(
+  ctx: CanvasRenderingContext2D,
+  landmarks: Landmark[],
+  opts: DrawOptions,
+): void {
+  const { width, height, mirror = true, minVisibility = 0.5 } = opts;
+  if (!landmarks?.length) return;
+  ctx.save();
+  ctx.lineWidth = 3;
+  ctx.strokeStyle = "#16a35b";
+  ctx.fillStyle = "#16a35b";
+  ctx.lineCap = "round";
+  for (const [a, b] of LEG_EDGES) {
+    const la = landmarks[a];
+    const lb = landmarks[b];
+    if (!la || !lb) continue;
+    if ((la.visibility ?? 1) < minVisibility || (lb.visibility ?? 1) < minVisibility) continue;
+    const [ax, ay] = px(la, width, height, mirror);
+    const [bx, by] = px(lb, width, height, mirror);
+    ctx.beginPath();
+    ctx.moveTo(ax, ay);
+    ctx.lineTo(bx, by);
+    ctx.stroke();
+  }
+  for (const idx of [
+    POSE_LANDMARKS.leftKnee,
+    POSE_LANDMARKS.rightKnee,
+    POSE_LANDMARKS.leftAnkle,
+    POSE_LANDMARKS.rightAnkle,
+  ]) {
+    const l = landmarks[idx];
+    if (!l || (l.visibility ?? 1) < minVisibility) continue;
+    const [x, y] = px(l, width, height, mirror);
+    ctx.beginPath();
+    ctx.arc(x, y, 4, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.restore();
+}

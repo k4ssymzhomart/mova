@@ -57,36 +57,59 @@ function matTMat(A: Mat3, B: Mat3): Mat3 {
   return out;
 }
 
-const SEG = {
-  left: [POSE_LANDMARKS.leftShoulder, POSE_LANDMARKS.leftElbow, POSE_LANDMARKS.leftWrist],
-  right: [POSE_LANDMARKS.rightShoulder, POSE_LANDMARKS.rightElbow, POSE_LANDMARKS.rightWrist],
-} as const;
+// A virtual sensor lives on a limb *segment*, built from three joints: proximal → mid → distal.
+// The body frame's long axis runs mid→distal and the sensor "sits" at the distal joint — so the
+// forearm sensor reads like a wrist/forearm IMU and the shank sensor reads like an ankle IMU, which is
+// exactly the Daphnet-FoG placement the fog.onnx graph was trained on.
+export type Segment = "forearm" | "shank";
+
+const SEG_JOINTS: Record<Segment, Record<Side, readonly [number, number, number]>> = {
+  forearm: {
+    left: [POSE_LANDMARKS.leftShoulder, POSE_LANDMARKS.leftElbow, POSE_LANDMARKS.leftWrist],
+    right: [POSE_LANDMARKS.rightShoulder, POSE_LANDMARKS.rightElbow, POSE_LANDMARKS.rightWrist],
+  },
+  shank: {
+    left: [POSE_LANDMARKS.leftHip, POSE_LANDMARKS.leftKnee, POSE_LANDMARKS.leftAnkle],
+    right: [POSE_LANDMARKS.rightHip, POSE_LANDMARKS.rightKnee, POSE_LANDMARKS.rightAnkle],
+  },
+};
 
 /**
- * Orthonormal body frame + position for the forearm of `side`, from world landmarks.
- * x = forearm long axis (elbow→wrist); z ⟂ the upper-arm plane; y completes the basis.
- * Returns null if the joints are not confidently tracked.
+ * Orthonormal body frame + position for a limb `segment` of `side`, from world landmarks.
+ * x = segment long axis (mid→distal: elbow→wrist, or knee→ankle); z ⟂ the proximal-link plane;
+ * y completes the basis; the sensor position is the distal joint (wrist / ankle).
+ * Returns null if the three joints are not confidently tracked.
  */
-export function forearmFrame(world: Landmark[], side: Side, minVis = 0.3): { R: Mat3; pos: Vec3 } | null {
-  const [si, ei, wi] = SEG[side];
-  const s = world[si];
-  const e = world[ei];
-  const w = world[wi];
-  if (!s || !e || !w) return null;
-  if ((s.visibility ?? 1) < minVis || (e.visibility ?? 1) < minVis || (w.visibility ?? 1) < minVis)
+export function segmentFrame(
+  world: Landmark[],
+  segment: Segment,
+  side: Side,
+  minVis = 0.3,
+): { R: Mat3; pos: Vec3 } | null {
+  const [pi, mi, di] = SEG_JOINTS[segment][side];
+  const p = world[pi];
+  const m = world[mi];
+  const d = world[di];
+  if (!p || !m || !d) return null;
+  if ((p.visibility ?? 1) < minVis || (m.visibility ?? 1) < minVis || (d.visibility ?? 1) < minVis)
     return null;
-  const S: Vec3 = [s.x, s.y, s.z];
-  const E: Vec3 = [e.x, e.y, e.z];
-  const W: Vec3 = [w.x, w.y, w.z];
-  const x = unit(sub(W, E)); // forearm direction
-  const up = sub(E, S); // upper-arm direction (reference)
+  const P: Vec3 = [p.x, p.y, p.z];
+  const M: Vec3 = [m.x, m.y, m.z];
+  const D: Vec3 = [d.x, d.y, d.z];
+  const x = unit(sub(D, M)); // segment long axis
+  const up = sub(M, P); // proximal link (reference)
   let z = cross(x, up);
   if (norm(z) < EPS) z = cross(x, [x[1], x[2], x[0]]); // degenerate guard
   z = unit(z);
   const y = unit(cross(z, x));
   // column-basis [x|y|z], row-major
   const R: Mat3 = [x[0], y[0], z[0], x[1], y[1], z[1], x[2], y[2], z[2]];
-  return { R, pos: W };
+  return { R, pos: D };
+}
+
+/** Back-compat shorthand for the upper-limb (reaching) sensor. */
+export function forearmFrame(world: Landmark[], side: Side, minVis = 0.3) {
+  return segmentFrame(world, "forearm", side, minVis);
 }
 
 /** Body-frame angular velocity (rad/s) between two orientation samples — ports angular_velocity(). */

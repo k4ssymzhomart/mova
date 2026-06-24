@@ -14,6 +14,12 @@ import { type OnnxStatus, useOnnxModel } from "./useOnnxModel";
 
 const CH = 6;
 
+// Which body region the live virtual-IMU window came from. "gait" carries a lower-leg (shank/ankle)
+// signal, which is in-distribution for the Daphnet-trained FoG model; "reach" carries a forearm signal
+// and the FoG readout is only a pipeline preview.
+export type InferMode = "reach" | "gait";
+export type Side = "left" | "right";
+
 export interface ModelMeta {
   har_labels: string[];
   fog_labels: string[];
@@ -24,9 +30,38 @@ export interface ModelMeta {
 
 export interface LivePrediction {
   har: { label: string; prob: number; top: { label: string; p: number }[] } | null;
-  fog: { risk: number } | null;
+  fog: { risk: number; valid: boolean } | null; // valid = window is lower-limb (in-distribution)
+  mode: InferMode;
   latencyMs: number;
   at: number;
+}
+
+/**
+ * Map a capture mode + tracked side onto the encoder's placement/dataset conditioning ids.
+ * - gait: FoG ← ankle / Daphnet (the worn-sensor placement it was trained on), HAR ← that leg's calf /
+ *   REALDISP (whose labels — walking, stairs, knee-bends — are lower-limb).
+ * - reach: unchanged from the original forearm pipeline (HAR ← wrist / HHAR; FoG ← ankle preview).
+ */
+function routeIds(meta: ModelMeta, mode: InferMode, side: Side) {
+  const pv = meta.placement_vocab;
+  const dv = meta.dataset_vocab;
+  if (mode === "gait") {
+    const calf = side === "left" ? pv.l_calf : pv.r_calf;
+    return {
+      harPl: calf ?? pv.ankle ?? 0,
+      harDs: dv.realdisp ?? 2,
+      fogPl: pv.ankle ?? 0,
+      fogDs: dv.daphnet_fog ?? 0,
+      fogValid: true,
+    };
+  }
+  return {
+    harPl: pv.wrist ?? 0,
+    harDs: dv.hhar ?? 1,
+    fogPl: pv.ankle ?? 0,
+    fogDs: dv.daphnet_fog ?? 0,
+    fogValid: false,
+  };
 }
 
 function softmax(logits: number[]): number[] {
@@ -54,7 +89,7 @@ export function useLiveInference() {
 
   /** Normalize a raw [200,6] window in place-ish and run both models. Skips if a run is in flight. */
   const infer = useCallback(
-    async (raw: Float32Array): Promise<LivePrediction | null> => {
+    async (raw: Float32Array, mode: InferMode = "reach", side: Side = "right"): Promise<LivePrediction | null> => {
       const meta = metaRef.current;
       if (busyRef.current || !meta) return null;
       busyRef.current = true;
@@ -66,14 +101,11 @@ export function useLiveInference() {
           const sd = std[c] < 1e-6 ? 1 : std[c];
           x[k] = (raw[k] - mean[c]) / sd;
         }
-        const harDs = meta.dataset_vocab.hhar ?? 1;
-        const harPl = meta.placement_vocab.wrist ?? 0;
-        const fogDs = meta.dataset_vocab.daphnet_fog ?? 0;
-        const fogPl = meta.placement_vocab.ankle ?? 0;
+        const r = routeIds(meta, mode, side);
 
         const [harOut, fogOut] = await Promise.all([
-          har.run(x, harPl, harDs),
-          fog.run(x, fogPl, fogDs),
+          har.run(x, r.harPl, r.harDs),
+          fog.run(x, r.fogPl, r.fogDs),
         ]);
 
         let harPred: LivePrediction["har"] = null;
@@ -87,10 +119,10 @@ export function useLiveInference() {
         let fogPred: LivePrediction["fog"] = null;
         if (fogOut) {
           const probs = softmax(fogOut.logits);
-          fogPred = { risk: probs[1] ?? 0 };
+          fogPred = { risk: probs[1] ?? 0, valid: r.fogValid };
         }
         const latencyMs = Math.max(harOut?.latencyMs ?? 0, fogOut?.latencyMs ?? 0);
-        return { har: harPred, fog: fogPred, latencyMs, at: performance.now() };
+        return { har: harPred, fog: fogPred, mode, latencyMs, at: performance.now() };
       } finally {
         busyRef.current = false;
       }

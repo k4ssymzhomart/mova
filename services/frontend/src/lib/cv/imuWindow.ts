@@ -7,7 +7,15 @@
 // align→50 Hz→window stage.
 
 import type { Landmark } from "./landmarks";
-import { type Mat3, type Side, type Vec3, accelFromPositions, forearmFrame, gyroFromFrames } from "./poseToImu";
+import {
+  type Mat3,
+  type Segment,
+  type Side,
+  type Vec3,
+  accelFromPositions,
+  gyroFromFrames,
+  segmentFrame,
+} from "./poseToImu";
 
 const WIN = 200;
 const RATE = 50;
@@ -30,6 +38,9 @@ export class VirtualImuPipeline {
   private frames: FrameRec[] = []; // rolling last-3 for central differences
   private ring: Sample[] = [];
   side: Side = "right";
+  // Which limb the virtual sensor lives on. "forearm" drives reaching (HAR preview); "shank" makes the
+  // window an ankle/lower-leg IMU so the Daphnet-trained fog.onnx runs in-distribution.
+  segment: Segment = "forearm";
 
   reset(): void {
     this.frames = [];
@@ -38,7 +49,7 @@ export class VirtualImuPipeline {
 
   /** Feed one MediaPipe world-landmark frame. Untracked frames are skipped (interp bridges gaps). */
   push(world: Landmark[], tMs: number): void {
-    const frame = forearmFrame(world, this.side);
+    const frame = segmentFrame(world, this.segment, this.side);
     if (!frame) return;
     this.frames.push({ t: tMs, R: frame.R, pos: frame.pos });
     if (this.frames.length > 3) this.frames.shift();

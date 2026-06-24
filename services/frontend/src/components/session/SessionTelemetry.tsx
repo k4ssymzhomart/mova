@@ -7,6 +7,7 @@ import { Bar, LivePill, Panel } from "./ui";
 interface Props {
   status: "idle" | "loading" | "ready" | "unavailable" | "error";
   prediction: LivePrediction | null;
+  mode: "reach" | "gait";
   fill: number; // buffer 0..1
   inferences: number;
 }
@@ -14,11 +15,19 @@ interface Props {
 const HAR_PRETTY = (s: string) => s.replace(/_/g, " ");
 
 /** Live engineering telemetry — real on-device ONNX output over the pose-derived virtual IMU. */
-export default function SessionTelemetry({ status, prediction, fill, inferences }: Props) {
+export default function SessionTelemetry({ status, prediction, mode, fill, inferences }: Props) {
   const live = status === "ready" && inferences > 0;
+  const fogValid = prediction?.fog?.valid ?? mode === "gait";
+  const region = mode === "gait" ? "lower-limb · ankle" : "upper-limb · forearm";
   return (
     <Panel label="Edge inference · onnxruntime-web" right={<LivePill live={live} />}>
       <div className="space-y-5">
+        {/* sensor region — which virtual IMU is feeding the graphs */}
+        <div className="flex items-center justify-between font-mono text-[10px] uppercase tracking-[0.14em] text-ink-faint">
+          <span>virtual sensor</span>
+          <span className="text-ink-soft">{region}</span>
+        </div>
+
         {/* HAR */}
         <div>
           <div className="mb-2 flex items-baseline justify-between">
@@ -61,15 +70,28 @@ export default function SessionTelemetry({ status, prediction, fill, inferences 
             <span className="text-[11px] font-medium uppercase tracking-[0.18em] text-ink-faint">
               Freeze risk · FoG
             </span>
-            {prediction?.fog && (
-              <span className="font-mono text-xs tabular-nums text-ink-faint">
-                {Math.round(prediction.fog.risk * 100)}%
+            <span className="flex items-center gap-2">
+              <span
+                className={
+                  fogValid
+                    ? "rounded-pill bg-signal/12 px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.14em] text-signal-deep"
+                    : "rounded-pill bg-paper-soft px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.14em] text-ink-faint"
+                }
+              >
+                {fogValid ? "in-distribution" : "preview"}
               </span>
-            )}
+              {prediction?.fog && (
+                <span className="font-mono text-xs tabular-nums text-ink-faint">
+                  {Math.round(prediction.fog.risk * 100)}%
+                </span>
+              )}
+            </span>
           </div>
           <Bar value={prediction?.fog?.risk ?? 0} tone={(prediction?.fog?.risk ?? 0) > 0.5 ? "ink" : "signal"} />
           <p className="mt-2 text-[11px] leading-relaxed text-ink-faint">
-            Arm-derived preview of the on-device FoG model — a live pipeline demonstration, not a clinical reading.
+            {fogValid
+              ? "Lower-limb virtual IMU (ankle/shank) — in-distribution for the Daphnet-trained FoG model. Research-grade readout, not a diagnosis."
+              : "Arm-derived preview of the FoG model — a pipeline demonstration. Switch to Gait & balance for a clinically valid lower-limb readout."}
           </p>
         </div>
 
