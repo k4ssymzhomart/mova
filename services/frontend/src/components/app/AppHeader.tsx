@@ -1,15 +1,26 @@
-import Link from "next/link";
+"use client";
 
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+
+import { useAuth } from "@/lib/auth/AuthProvider";
 import { cn } from "@/lib/utils";
 
 const LINKS = [
   { href: "/session", label: "Session" },
   { href: "/progress", label: "Progress" },
-  { href: "/dashboard", label: "Clinician" },
 ];
 
 /** Slim patient-app header in the editorial system — shared by /session and /progress. */
 export default function AppHeader({ active }: { active?: string }) {
+  const { authed, isGuest, user, signOut } = useAuth();
+  const router = useRouter();
+
+  const onSignOut = async () => {
+    await signOut();
+    router.replace("/signin");
+  };
+
   return (
     <header className="sticky top-0 z-30 border-b border-line bg-paper/85 backdrop-blur-md">
       <div className="mx-auto flex h-16 max-w-shell items-center justify-between px-5 sm:px-8">
@@ -30,12 +41,26 @@ export default function AppHeader({ active }: { active?: string }) {
               {l.label}
             </Link>
           ))}
-          <Link
-            href="/signin"
-            className="ml-1 rounded-pill bg-night px-4 py-1.5 text-sm font-medium text-paper-soft transition-colors hover:bg-ink"
-          >
-            Sign in
-          </Link>
+          {authed ? (
+            <div className="ml-2 flex items-center gap-2">
+              <span className="hidden max-w-[160px] truncate text-sm text-ink-faint sm:inline">
+                {isGuest ? "Guest" : (user?.email ?? "Signed in")}
+              </span>
+              <button
+                onClick={onSignOut}
+                className="rounded-pill border border-line px-3.5 py-1.5 text-sm text-ink transition-colors hover:bg-paper-soft"
+              >
+                Sign out
+              </button>
+            </div>
+          ) : (
+            <Link
+              href="/signin"
+              className="ml-1 rounded-pill bg-night px-4 py-1.5 text-sm font-medium text-paper-soft transition-colors hover:bg-ink"
+            >
+              Sign in
+            </Link>
+          )}
         </nav>
       </div>
     </header>
