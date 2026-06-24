@@ -1,34 +1,31 @@
-import ArchitectureSection from "@/components/landing/ArchitectureSection";
-import DashboardPreview from "@/components/landing/DashboardPreview";
-import Footer from "@/components/landing/Footer";
-import GridBackground from "@/components/landing/GridBackground";
-import Hero from "@/components/landing/Hero";
-import IngestionSection from "@/components/landing/IngestionSection";
-import Nav from "@/components/landing/Nav";
-import Reveal from "@/components/landing/Reveal";
+import CapabilitiesSection from "@/components/site/CapabilitiesSection";
+import EmotionSection from "@/components/site/EmotionSection";
+import FaqSection from "@/components/site/FaqSection";
+import FinalCta from "@/components/site/FinalCta";
+import Footer from "@/components/site/Footer";
+import Hero from "@/components/site/Hero";
+import Nav from "@/components/site/Nav";
+import SmoothScroll from "@/components/site/SmoothScroll";
+import ValuesSection from "@/components/site/ValuesSection";
 
 /**
- * Master landing page — a single scroll-driven narrative:
- *   01 hook (Hero) → 02 ingestion → 03 engine → 04 console portal.
+ * Mova landing — a single scroll-driven narrative:
+ *   hero (video + stats) → capabilities scroll-narrative → pinned storytelling
+ *   beat → values → testimonials → FAQ → CTA.
  */
 export default function Page() {
   return (
-    <>
-      <GridBackground />
+    <SmoothScroll>
       <Nav />
       <main>
         <Hero />
-        <Reveal>
-          <IngestionSection />
-        </Reveal>
-        <Reveal>
-          <ArchitectureSection />
-        </Reveal>
-        <Reveal>
-          <DashboardPreview />
-        </Reveal>
+        <CapabilitiesSection />
+        <EmotionSection />
+        <ValuesSection />
+        <FaqSection />
+        <FinalCta />
       </main>
       <Footer />
-    </>
+    </SmoothScroll>
   );
 }
