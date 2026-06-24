@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import { Inter, Instrument_Serif } from "next/font/google";
 
+import { AuthProvider } from "@/lib/auth/AuthProvider";
+
 import "./globals.css";
 
 const inter = Inter({
@@ -27,7 +29,9 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="en" className={`${inter.variable} ${serif.variable}`}>
-      <body>{children}</body>
+      <body>
+        <AuthProvider>{children}</AuthProvider>
+      </body>
     </html>
   );
 }
