@@ -3,60 +3,195 @@
 @tailwind utilities;
 
 :root {
-  --font-sans: var(--font-sans), 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-  --font-serif: var(--font-serif), 'Instrument Serif', Georgia, serif;
-}
+  --font-inter: "Inter", system-ui, sans-serif;
+  --font-serif: "Instrument Serif", Georgia, serif;
+  --font-mono: "SF Mono", ui-monospace, "JetBrains Mono", Menlo, monospace;
 
-html {
-  scroll-behavior: smooth;
+  --paper: #ffffff;
+  --paper-soft: #f3f4f1;
+  --ink: #121311;
+  --night: #0b0f0c;
+  --signal: #16a35b;
+  --signal-bright: #34d27e;
+
+  /* shadcn token layer (HSL triplets) — mapped onto the Mova palette */
+  --background: 0 0% 100%;
+  --foreground: 60 4% 8%;
+  --primary: 147 76% 36%;
+  --primary-foreground: 0 0% 100%;
+  --secondary: 80 9% 95%;
+  --secondary-foreground: 60 4% 8%;
+  --muted: 80 9% 95%;
+  --muted-foreground: 70 4% 35%;
+  --accent: 80 9% 95%;
+  --accent-foreground: 60 4% 8%;
+  --destructive: 0 72% 50%;
+  --destructive-foreground: 0 0% 100%;
+  --border: 70 6% 88%;
+  --input: 70 6% 88%;
+  --ring: 147 76% 36%;
 }
 
 * {
-  font-family: var(--font-sans);
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: auto;
+  -webkit-text-size-adjust: 100%;
 }
 
 body {
-  background-color: #f9fafb; /* bg-gray-50 */
-  color: #111827; /* text-gray-900 */
+  margin: 0;
+  background-color: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-inter);
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
+  overflow-x: hidden;
 }
 
-/* Scroll-driven reveal: hidden until observed, then eased into place. */
-.reveal {
-  opacity: 0;
-  transform: translateY(18px);
-  transition:
-    opacity 900ms cubic-bezier(0.16, 1, 0.3, 1),
-    transform 900ms cubic-bezier(0.16, 1, 0.3, 1);
-  will-change: opacity, transform;
+/* ---- Lenis ---- */
+html.lenis,
+html.lenis body {
+  height: auto;
 }
-.reveal[data-visible="true"] {
-  opacity: 1;
-  transform: none;
+.lenis.lenis-smooth {
+  scroll-behavior: auto !important;
+}
+.lenis.lenis-smooth [data-lenis-prevent] {
+  overscroll-behavior: contain;
+}
+.lenis.lenis-stopped {
+  overflow: hidden;
 }
 
-/* Staggered hero entrance on mount. */
-@keyframes riseIn {
+/* ---- Custom scrollbar (subtle, branded) ---- */
+::-webkit-scrollbar {
+  width: 10px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(19, 20, 15, 0.18);
+  border-radius: 99px;
+  border: 3px solid transparent;
+  background-clip: content-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(22, 163, 91, 0.5);
+  background-clip: content-box;
+}
+
+/* ---- Typography helpers ---- */
+.display {
+  font-weight: 500;
+  letter-spacing: -0.03em;
+  line-height: 0.98;
+}
+.heading-xl {
+  font-weight: 500;
+  letter-spacing: -0.025em;
+  line-height: 1.02;
+}
+.balance {
+  text-wrap: balance;
+}
+.wordmark {
+  font-family: var(--font-serif);
+  letter-spacing: 0.06em;
+  font-weight: 400;
+}
+
+::selection {
+  background: var(--signal);
+  color: #f4f5ef;
+}
+
+/* ---- Carousels ---- */
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+/* ---- Grain overlay ---- */
+.grain::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.5;
+  mix-blend-mode: overlay;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.55'/%3E%3C/svg%3E");
+}
+
+/* Soft brand glow used behind live elements */
+.glow-signal {
+  box-shadow: 0 0 60px -10px rgba(52, 210, 126, 0.55);
+}
+
+/* ---- Ken Burns ---- */
+@keyframes kenburns {
+  0% {
+    transform: scale(1.08) translate3d(0, 0, 0);
+  }
+  100% {
+    transform: scale(1.22) translate3d(-1.5%, -2%, 0);
+  }
+}
+.kenburns {
+  animation: kenburns 28s ease-out infinite alternate;
+}
+
+/* ---- Marquee ---- */
+@keyframes marquee {
   from {
-    opacity: 0;
-    transform: translateY(22px);
+    transform: translateX(0);
   }
   to {
-    opacity: 1;
-    transform: none;
+    transform: translateX(-50%);
   }
 }
-.animate-rise {
-  animation: riseIn 900ms cubic-bezier(0.16, 1, 0.3, 1) both;
+.marquee-track {
+  animation: marquee 38s linear infinite;
+}
+
+/* ---- Live pulse dot ---- */
+@keyframes livepulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(52, 210, 126, 0.55);
+  }
+  70% {
+    box-shadow: 0 0 0 8px rgba(52, 210, 126, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(52, 210, 126, 0);
+  }
+}
+.live-dot {
+  animation: livepulse 2s ease-out infinite;
+}
+
+/* ---- Animated conic aurora (for dark section backdrops) ---- */
+@keyframes spin-slow {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.aurora {
+  animation: spin-slow 24s linear infinite;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .reveal,
-  .animate-rise {
-    transition: none;
-    animation: none;
-    opacity: 1;
-    transform: none;
+  .kenburns,
+  .marquee-track,
+  .live-dot,
+  .aurora {
+    animation: none !important;
   }
 }
