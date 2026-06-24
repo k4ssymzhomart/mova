@@ -99,6 +99,11 @@ html.lenis body {
 .balance {
   text-wrap: balance;
 }
+/* Tabular numerals — keep data tables and metrics vertically aligned. */
+.tnum {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum";
+}
 .wordmark {
   font-family: var(--font-serif);
   letter-spacing: 0.06em;

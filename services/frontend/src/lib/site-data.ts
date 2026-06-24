@@ -15,6 +15,19 @@ export const NAV_SECONDARY = [
   { label: "Contact", href: "#cta" },
 ];
 
+/**
+ * The Phase 8 credibility surfaces — the "Evidence" cluster. Shared by the
+ * landing nav dropdown, the footer, and the reading-layout sub-nav so all five
+ * routes are reachable from one source of truth.
+ */
+export const EVIDENCE_NAV = [
+  { label: "Model", href: "/model", blurb: "Architecture, recipe & held-out metrics" },
+  { label: "Datasets", href: "/datasets", blurb: "Canonical schema & corpus stats" },
+  { label: "Benchmark", href: "/benchmark", blurb: "Generalization leaderboard" },
+  { label: "Research", href: "/research", blurb: "The cited evidence base" },
+  { label: "Docs", href: "/docs", blurb: "API contract & run guides" },
+];
+
 export const HERO = {
   heading: ["Motion intelligence", "for movement", "rehabilitation"],
   sub: "The only camera-free platform that turns everyday wearable motion into clinical-grade gait, balance and freezing-of-gait insight.",

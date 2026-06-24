@@ -1,0 +1,71 @@
+{
+  "seed": 1337,
+  "ratios": [
+    0.8,
+    0.1,
+    0.1
+  ],
+  "policy": "subject_disjoint_per_dataset",
+  "splits": {
+    "daphnet_fog": {
+      "train": [
+        "S01",
+        "S02",
+        "S03",
+        "S06",
+        "S07",
+        "S09",
+        "S10"
+      ],
+      "val": [
+        "S04",
+        "S05"
+      ],
+      "test": [
+        "S08"
+      ]
+    },
+    "hhar": {
+      "train": [
+        "a",
+        "b",
+        "c",
+        "d",
+        "f",
+        "h",
+        "i"
+      ],
+      "val": [
+        "g"
+      ],
+      "test": [
+        "e"
+      ]
+    },
+    "realdisp": {
+      "train": [
+        "subject1",
+        "subject10",
+        "subject12",
+        "subject13",
+        "subject14",
+        "subject15",
+        "subject16",
+        "subject17",
+        "subject2",
+        "subject3",
+        "subject5",
+        "subject6",
+        "subject8",
+        "subject9"
+      ],
+      "val": [
+        "subject4",
+        "subject7"
+      ],
+      "test": [
+        "subject11"
+      ]
+    }
+  }
+}

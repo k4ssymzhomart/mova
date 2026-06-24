@@ -4,6 +4,9 @@
   "private": true,
   "description": "Mova — motion intelligence for rehabilitation. Light narrative landing + clinician console.",
   "scripts": {
+    "sync:content": "node scripts/sync-content.mjs",
+    "predev": "node scripts/sync-content.mjs",
+    "prebuild": "node scripts/sync-content.mjs",
     "dev": "next dev -p 3000",
     "build": "next build",
     "start": "next start -p 3000",

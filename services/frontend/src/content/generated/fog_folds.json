@@ -1,0 +1,137 @@
+{
+  "_source": "reports/fog_loso_ssl.json",
+  "protocol": "LOSO-CV over freeze-positive Daphnet subjects",
+  "loss": "focal(gamma=2.0) + class-balanced sampler",
+  "threshold_policy": "tuned on val subject, sensitivity@specificity>=0.85",
+  "baseline_auroc": 0.551,
+  "summary": {
+    "auroc": {
+      "mean": 0.722806217298558,
+      "std": 0.050999969358219724,
+      "n": 8
+    },
+    "auprc": {
+      "mean": 0.25882955497692317,
+      "std": 0.13148616467570606,
+      "n": 8
+    },
+    "sensitivity": {
+      "mean": 0.3119298440095961,
+      "std": 0.1928908228289357,
+      "n": 8
+    },
+    "specificity": {
+      "mean": 0.8591667765533233,
+      "std": 0.10907709840977914,
+      "n": 8
+    },
+    "balanced_accuracy": {
+      "mean": 0.5855483102814596,
+      "std": 0.05319125335035781,
+      "n": 8
+    },
+    "macro_f1": {
+      "mean": 0.5398165043700756,
+      "std": 0.06202419472351052,
+      "n": 8
+    }
+  },
+  "folds": [
+    {
+      "test_subject": "S01",
+      "val_subject": "S02",
+      "n_test_windows": 5709,
+      "n_test_freeze": 270,
+      "freeze_prevalence": 0.047293746715712036,
+      "auroc": 0.7495318447699401,
+      "auprc": 0.13272983450988082,
+      "sensitivity": 0.37037037037037035,
+      "specificity": 0.9051296194153337,
+      "threshold": 0.7434103488922119
+    },
+    {
+      "test_subject": "S02",
+      "val_subject": "S03",
+      "n_test_windows": 4251,
+      "n_test_freeze": 543,
+      "freeze_prevalence": 0.1277346506704305,
+      "auroc": 0.7146689950155057,
+      "auprc": 0.20358182678529646,
+      "sensitivity": 0.3443830570902394,
+      "specificity": 0.8060949298813377,
+      "threshold": 0.7474038600921631
+    },
+    {
+      "test_subject": "S03",
+      "val_subject": "S05",
+      "n_test_windows": 6042,
+      "n_test_freeze": 849,
+      "freeze_prevalence": 0.14051638530287985,
+      "auroc": 0.7803479450569615,
+      "auprc": 0.3388761723630217,
+      "sensitivity": 0.41813898704358066,
+      "specificity": 0.8422876949740035,
+      "threshold": 0.7212814092636108
+    },
+    {
+      "test_subject": "S05",
+      "val_subject": "S06",
+      "n_test_windows": 6288,
+      "n_test_freeze": 1437,
+      "freeze_prevalence": 0.22853053435114504,
+      "auroc": 0.7690671215872528,
+      "auprc": 0.43826759896545586,
+      "sensitivity": 0.15866388308977036,
+      "specificity": 0.95856524427953,
+      "threshold": 0.7852984070777893
+    },
+    {
+      "test_subject": "S06",
+      "val_subject": "S07",
+      "n_test_windows": 5985,
+      "n_test_freeze": 384,
+      "freeze_prevalence": 0.06416040100250626,
+      "auroc": 0.6853991381747309,
+      "auprc": 0.09386886177611733,
+      "sensitivity": 0.07552083333333333,
+      "specificity": 0.9359043028030709,
+      "threshold": 0.8001487255096436
+    },
+    {
+      "test_subject": "S07",
+      "val_subject": "S08",
+      "n_test_windows": 4836,
+      "n_test_freeze": 213,
+      "freeze_prevalence": 0.04404466501240695,
+      "auroc": 0.7051606633092955,
+      "auprc": 0.10360245881329358,
+      "sensitivity": 0.6338028169014085,
+      "specificity": 0.6192948301968418,
+      "threshold": 0.7411549091339111
+    },
+    {
+      "test_subject": "S08",
+      "val_subject": "S09",
+      "n_test_windows": 2322,
+      "n_test_freeze": 609,
+      "freeze_prevalence": 0.2622739018087855,
+      "auroc": 0.6163410872330493,
+      "auprc": 0.38846431305294027,
+      "sensitivity": 0.034482758620689655,
+      "specificity": 0.9830706363105662,
+      "threshold": 0.7907878756523132
+    },
+    {
+      "test_subject": "S09",
+      "val_subject": "S01",
+      "n_test_windows": 5235,
+      "n_test_freeze": 789,
+      "freeze_prevalence": 0.1507163323782235,
+      "auroc": 0.7619329432417286,
+      "auprc": 0.3712453735493797,
+      "sensitivity": 0.4600760456273764,
+      "specificity": 0.822986954565902,
+      "threshold": 0.7131186127662659
+    }
+  ]
+}
