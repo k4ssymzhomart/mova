@@ -5,11 +5,9 @@
 // persists it locally, and routes to the personalised live session. The review step also previews the
 // mock FHIR bundle, making the medical-center integration boundary visible.
 
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { type ReactNode, useMemo, useState } from "react";
 
-import RequireAuth from "@/components/auth/RequireAuth";
 import BaselineCapture from "@/components/intake/BaselineCapture";
 import { toFhirBundle } from "@/lib/fhir";
 import { buildProfile, packForCondition, saveProfile } from "@/lib/profile/store";
@@ -51,22 +49,12 @@ export default function IntakePage() {
   };
 
   return (
-    <RequireAuth>
-      <div className="min-h-screen bg-paper text-ink">
-        {/* immersive spatial backdrop */}
-        <div className="pointer-events-none fixed inset-0 -z-10 bg-[radial-gradient(120%_80%_at_50%_-10%,rgba(22,163,91,0.10),transparent_60%)]" />
-
-        <header className="mx-auto flex h-16 max-w-3xl items-center justify-between px-5 sm:px-8">
-          <Link href="/" className="flex items-center gap-2.5">
-            <span className="h-2.5 w-2.5 rounded-full bg-signal" />
-            <span className="font-serif text-xl italic tracking-tight text-ink">Mova</span>
-          </Link>
-          <span className="font-mono text-[11px] uppercase tracking-[0.18em] text-ink-faint">
-            Step {Math.min(step + 1, STEPS.length)} of {STEPS.length} · {STEPS[step]}
-          </span>
-        </header>
-
-        <main className="mx-auto max-w-3xl px-5 pb-16 pt-6 sm:px-8">
+    <div className="mx-auto max-w-3xl">
+      <div className="mb-8 flex items-center justify-end">
+        <span className="font-mono text-[11px] uppercase tracking-[0.18em] text-ink-faint">
+          Step {Math.min(step + 1, STEPS.length)} of {STEPS.length} · {STEPS[step]}
+        </span>
+      </div>
           {/* progress */}
           <div className="mb-10 grid grid-cols-4 gap-2">
             {STEPS.map((s, i) => (
@@ -200,9 +188,7 @@ export default function IntakePage() {
               </Step>
             )}
           </section>
-        </main>
-      </div>
-    </RequireAuth>
+    </div>
   );
 }
 
