@@ -173,27 +173,17 @@ controls.
 
 ---
 
-# Part 3 — Design system (Vercel-native monochrome)
+# Part 3 — Design system (Modern Editorial & Spatial Interface)
 
-- **Color:** strict monochrome. Ink scale (`#0a0a0a → #6b7280 → #e5e5e5` on `#ffffff`; inverted dark mode),
-  one faint hairline `rgba(0,0,0,0.08)`, **one** restrained accent reserved for links/active/primary only. No
-  decorative color, no gradients, no shadows beyond a whisper.
-- **Geometry:** sharp, geometric, **minimal rounding (0–4px)**; squared cards; 1px hairline dividers.
-- **Type:** Geist Sans (prose) + Geist Mono (code/metadata/metrics); tight heading tracking; body line-height
-  ~1.7; reading measure ~68ch.
-- **Spacing/grid:** 4px base scale; 12-col responsive; generous whitespace.
-- **Motion:** near-none; subtle fade/translate on scroll; honor `prefers-reduced-motion`.
-- **Core components:** AppShell (collapsible sidebar + top bar), SidebarNav, Button (primary/ghost/danger),
-  Card (squared), StatTile, Chart (monochrome line/area/bar/heatmap), DataTable, Tabs, Modal/Sheet, Toast,
-  Badge, Avatar, ProgressRing, Stepper (intake), DevicePairing, ChatThread, VideoCall, **SpiderWebCanvas**,
-  **GameStage**, ReadingLayout (sticky TOC + reading-progress + citations + KaTeX + monochrome code),
-  Skeletons, EmptyStates, Forms.
-- **Accessibility:** WCAG AA, keyboard-first, focus rings, captions, i18n-ready (EN/RU/KK).
+Name: Modern Editorial & Spatial Interface.
 
-## 3.6 Reading/education layout
-Single centered column; sticky TOC rail; thin reading-progress bar; right-margin footnotes/citations; KaTeX
-math; monochrome code; citation components from `references.bib`. **Legal rule:** external papers are
-cite+link+summarize+BibTeX — **never host copyrighted PDFs**.
+Typography: Google Fonts Inter (global sans, weights 300-700) paired with Instrument Serif (italic and regular, used strictly for inline accent words in display headlines).
+
+Shapes: Generous, soft bounding boxes. Use rounded-2xl, rounded-3xl (rounded-[2rem]) for main containers, layouts, and media cards. Use rounded-full or rounded-xl for pills, inputs, and buttons. NO sharp corners on main structural elements.
+
+Surfaces: Floating components (navbars, contact cards, sidebars) over immersive background media or soft canvas backgrounds. Use bg-white/60 backdrop-blur-md for floating elements.
+
+Color Palette: Predominantly stark white (bg-white), deep black text (text-gray-900), and soft gray/stone borders/backgrounds (bg-gray-50), letting the immersive videos, images, and user avatars provide the actual color.
 
 ---
 

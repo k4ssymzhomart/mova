@@ -3,18 +3,21 @@
 @tailwind utilities;
 
 :root {
-  --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Display", Inter, system-ui, sans-serif;
-  --font-mono: "SF Mono", ui-monospace, "JetBrains Mono", Menlo, monospace;
+  --font-sans: var(--font-sans), 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-serif: var(--font-serif), 'Instrument Serif', Georgia, serif;
 }
 
 html {
   scroll-behavior: smooth;
 }
 
-body {
-  background-color: #ffffff;
-  color: #18181b;
+* {
   font-family: var(--font-sans);
+}
+
+body {
+  background-color: #f9fafb; /* bg-gray-50 */
+  color: #111827; /* text-gray-900 */
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
 }
