@@ -53,6 +53,9 @@ export class GaitGame {
   lead: Side = "right";
   stepPeriodMs = DEFAULT_PERIOD_MS;
   cadenceTargetSpm = Math.round(60000 / DEFAULT_PERIOD_MS);
+  // Normalised lift required to score a step. Seeded from the baseline knee-raise ROM so a patient with
+  // limited range isn't asked to lift higher than they comfortably can. Default = HIT_LIFT.
+  hitLift = HIT_LIFT;
 
   stats: GaitStats = {
     steps: 0,
@@ -161,7 +164,7 @@ export class GaitGame {
     // Score the cued foot if it crosses the lift threshold within the beat window.
     const beatStart = this.startedAt + idx * this.stepPeriodMs;
     const cued = this.legs[this.cuedSide];
-    if (!this.beatHit && cued.armed && cued.lift >= HIT_LIFT && now - beatStart <= this.stepPeriodMs * HIT_WINDOW_FRAC) {
+    if (!this.beatHit && cued.armed && cued.lift >= this.hitLift && now - beatStart <= this.stepPeriodMs * HIT_WINDOW_FRAC) {
       this.beatHit = true;
       cued.armed = false;
       cued.flashAt = now;

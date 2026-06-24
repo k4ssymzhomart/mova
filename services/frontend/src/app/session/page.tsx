@@ -16,6 +16,8 @@ import { computeInsights } from "@/lib/insights/engine";
 import { loadSessions, makeId, saveSession } from "@/lib/insights/store";
 import type { Insight, SessionRecord, Side } from "@/lib/insights/types";
 import { type LivePrediction, useLiveInference } from "@/lib/onnx/useLiveInference";
+import { abilityFor, loadProfile, startingCadence } from "@/lib/profile/store";
+import type { PatientProfile } from "@/lib/profile/types";
 
 const INFER_MS = 600;
 const ZERO_REACH: ReachingStats = { score: 0, attempts: 0, lastReachMs: null };
@@ -65,6 +67,7 @@ export default function SessionPage() {
   const [side, setSide] = useState<Side>("right");
   const [tempoSpm, setTempoSpm] = useState(67);
   const [showVideo, setShowVideo] = useState(false);
+  const [profile, setProfile] = useState<PatientProfile | null>(null);
   const [reach, setReach] = useState<ReachingStats>(ZERO_REACH);
   const [gait, setGait] = useState<GaitStats>(ZERO_GAIT);
   const [prediction, setPrediction] = useState<LivePrediction | null>(null);
@@ -83,6 +86,17 @@ export default function SessionPage() {
 
   const running = pose.status === "running";
   const meta = MODES.find((m) => m.id === mode)!;
+  const difficulty = abilityFor(profile, mode);
+
+  // Personalise from the intake profile once, on mount: recommended pack, seeded cadence, affected side.
+  useEffect(() => {
+    const p = loadProfile();
+    if (!p) return;
+    setProfile(p);
+    setMode(p.recommendedPack === "gait" ? "gait" : "reach");
+    setTempoSpm(startingCadence(p));
+    if (p.affectedSide !== "bilateral") setSide(p.affectedSide);
+  }, []);
 
   useEffect(() => {
     sideRef.current = side;
@@ -217,6 +231,33 @@ export default function SessionPage() {
           </div>
         </div>
 
+        {profile ? (
+          <div className="mb-5 flex flex-wrap items-center gap-3 rounded-card border border-line bg-paper-soft px-4 py-3">
+            <span className="rounded-pill bg-signal/12 px-2.5 py-0.5 text-[11px] font-medium uppercase tracking-[0.14em] text-signal-deep">
+              Personalised
+            </span>
+            <span className="text-[13px] text-ink-soft">
+              Tuned to your <span className="text-ink">{profile.condition === "parkinsons" ? "Parkinson's" : profile.condition}</span> program
+              {profile.baseline ? " and baseline range" : ""} · affected side <span className="text-ink">{profile.affectedSide}</span>.
+            </span>
+            <Link href="/intake" className="ml-auto text-[13px] text-ink-soft underline-offset-2 transition-colors hover:text-ink hover:underline">
+              Recalibrate
+            </Link>
+          </div>
+        ) : (
+          <div className="mb-5 flex flex-wrap items-center gap-3 rounded-card border border-line bg-paper-soft px-4 py-3">
+            <span className="text-[13px] text-ink-soft">
+              Set up your program in under two minutes — pick your condition and capture a baseline range so the games fit you.
+            </span>
+            <Link
+              href="/intake"
+              className="ml-auto rounded-pill bg-night px-4 py-1.5 text-sm font-medium text-paper-soft transition-colors hover:bg-ink"
+            >
+              Personalise →
+            </Link>
+          </div>
+        )}
+
         <div className="grid gap-5 lg:grid-cols-[1fr_380px]">
           <div className="space-y-5">
             <PoseStage
@@ -227,6 +268,7 @@ export default function SessionPage() {
               mode={mode}
               side={side}
               tempoSpm={tempoSpm}
+              difficulty={difficulty}
               onStats={onStats}
             />
             {mode === "gait" ? (

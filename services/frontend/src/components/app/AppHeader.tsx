@@ -9,6 +9,7 @@ import { cn } from "@/lib/utils";
 const LINKS = [
   { href: "/session", label: "Session" },
   { href: "/progress", label: "Progress" },
+  { href: "/intake", label: "Personalise" },
 ];
 
 /** Slim patient-app header in the editorial system — shared by /session and /progress. */

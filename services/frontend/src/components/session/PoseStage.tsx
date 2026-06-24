@@ -22,6 +22,7 @@ interface PoseStageProps {
   mode: SessionMode;
   side: "left" | "right";
   tempoSpm?: number; // gait cadence target (steps/min)
+  difficulty?: number; // 0..1 ability knob seeded from the baseline ROM
   onStats?: (s: StageStats) => void;
 }
 
@@ -39,6 +40,7 @@ export default function PoseStage({
   mode,
   side,
   tempoSpm = 67,
+  difficulty = 0.5,
   onStats,
 }: PoseStageProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -50,12 +52,14 @@ export default function PoseStage({
   const sideRef = useRef(side);
   const tempoRef = useRef(tempoSpm);
   const appliedTempoRef = useRef(-1);
+  const difficultyRef = useRef(difficulty);
   const runningRef = useRef(running);
   const statsTick = useRef(0);
   showVideoRef.current = showVideo;
   modeRef.current = mode;
   sideRef.current = side;
   tempoRef.current = tempoSpm;
+  difficultyRef.current = difficulty;
   runningRef.current = running;
 
   useEffect(() => {
@@ -103,6 +107,7 @@ export default function PoseStage({
         if (modeRef.current === "gait") {
           drawLegAccent(ctx, lm, { width: w, height: h, mirror: true });
           gait.lead = sideRef.current;
+          gait.hitLift = 0.4 + 0.2 * difficultyRef.current; // limited ROM -> lower lift required
           if (appliedTempoRef.current !== tempoRef.current) {
             gait.setTempoSpm(tempoRef.current);
             appliedTempoRef.current = tempoRef.current;
@@ -110,6 +115,7 @@ export default function PoseStage({
           gait.update(sampleLowerBody(lm, w, h), now);
           gait.draw(ctx, now);
         } else {
+          reach.difficulty = difficultyRef.current;
           const wrist = wristPx(lm, sideRef.current, w, h, true);
           reach.update(wrist, now);
           reach.draw(ctx, now);

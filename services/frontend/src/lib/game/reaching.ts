@@ -29,6 +29,9 @@ const MARGIN = 0.12; // keep targets away from the frame edge (fraction of min d
 export class ReachingGame {
   width = 0;
   height = 0;
+  // 0..1 personalisation knob seeded from the baseline ROM: higher ability -> smaller, wider-spread
+  // targets. Default 0.5 keeps the original behaviour for un-onboarded patients.
+  difficulty = 0.5;
   target: Target | null = null;
   cursor: { x: number; y: number; active: boolean } = { x: 0, y: 0, active: false };
   stats: ReachingStats = { score: 0, attempts: 0, lastReachMs: null };
@@ -47,8 +50,10 @@ export class ReachingGame {
   }
 
   private spawn(now: number): void {
-    const m = MARGIN * Math.min(this.width, this.height);
-    const size = Math.max(44, Math.round(Math.min(this.width, this.height) * 0.11));
+    const d = Math.max(0, Math.min(1, this.difficulty));
+    const min = Math.min(this.width, this.height);
+    const m = MARGIN * (0.7 + 0.7 * d) * min; // harder -> targets reach closer to the edges
+    const size = Math.max(34, Math.round(min * (0.13 - 0.05 * d))); // harder -> smaller targets
     this.target = {
       x: m + this.rng() * (this.width - 2 * m - size),
       y: m + this.rng() * (this.height - 2 * m - size),
