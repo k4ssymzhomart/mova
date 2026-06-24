@@ -1,0 +1,4 @@
+# Model binaries are regenerated/synced, never committed (see README.md).
+*.onnx
+*.task
+!README.md
