@@ -1,0 +1,265 @@
+{
+  "_source": "data_manifests/dataset_cards",
+  "cards": [
+    {
+      "id": "amass",
+      "name": "AMASS (virtual IMU)",
+      "role": "SMPL mocap → virtual IMU with exact joint angles at unlimited scale",
+      "task": "synthetic IMU + pose",
+      "modality": "virtual IMU (acc+gyro+quat) + exact angles",
+      "facts": [
+        {
+          "k": "Access",
+          "v": "License (MPI) — register at [amass.is.tue.mpg.de](https://amass.is.tue.mpg.de/)"
+        },
+        {
+          "k": "Content",
+          "v": "300+ subjects, 40+ hours of optical mocap unified on SMPL"
+        },
+        {
+          "k": "Native rate",
+          "v": "per-file `mocap_framerate` (typically 60–120 Hz)"
+        },
+        {
+          "k": "Native format",
+          "v": "`.npz`: `poses[T,156]` (SMPL-H axis-angle), `trans[T,3]`, `betas`, `mocap_framerate`"
+        }
+      ],
+      "caveats": "Accelerometer fidelity bounded by the approximate skeleton until the SMPL mesh is wired in. Sim-to-real\ngap is a first-class research question (Part 1.4). Licensed.",
+      "evalAxis": "The synthetic stream flows through the same preprocess → window pipeline (`dataset=amass`).",
+      "verified": false
+    },
+    {
+      "id": "capture24",
+      "name": "CAPTURE-24",
+      "role": "large real free-living corpus for SSL pretraining",
+      "task": "SSL (+ coarse HAR)",
+      "modality": "IMU (wrist accelerometer)",
+      "facts": [
+        {
+          "k": "Access",
+          "v": "Free academic registration — [Oxford ORA](https://ora.ox.ac.uk/objects/uuid:99d7c092-d865-4a19-b096-cc16440cd001)"
+        },
+        {
+          "k": "Subjects",
+          "v": "151 participants · ~3,883 hours"
+        },
+        {
+          "k": "Sensor",
+          "v": "Axivity AX3, dominant wrist"
+        },
+        {
+          "k": "Native rate",
+          "v": "100 Hz"
+        },
+        {
+          "k": "Native format",
+          "v": "per-participant `P001.csv.gz`: `time, x, y, z, annotation` (accel already in g)"
+        }
+      ],
+      "caveats": "Wrist-only, accelerometer-only; annotation is coarse and not the focus. Very large — fetch via DVC.",
+      "evalAxis": "Subject-disjoint.",
+      "verified": false
+    },
+    {
+      "id": "daphnet_fog",
+      "name": "Daphnet Freezing-of-Gait",
+      "role": "clinical FoG detection (Parkinson's)",
+      "task": "FoG",
+      "modality": "IMU (accelerometer only)",
+      "facts": [
+        {
+          "k": "Access",
+          "v": "Public — [UCI 245](https://archive.ics.uci.edu/dataset/245/daphnet+freezing+of+gait)"
+        },
+        {
+          "k": "Subjects",
+          "v": "10 (S01–S10); freezes concentrated in a few"
+        },
+        {
+          "k": "Sensors",
+          "v": "ankle/shank, thigh, trunk (tri-axial accel, milli-g)"
+        },
+        {
+          "k": "Native rate",
+          "v": "64 Hz"
+        },
+        {
+          "k": "Native format",
+          "v": "whitespace `.txt` per run: `time_ms` + 9 accel axes + `annotation`"
+        }
+      ],
+      "caveats": "Accelerometer-only → the gyro half of the 6-channel input is zero. Heavy class imbalance (freezing is\nrare). This is the dataset behind the honest baseline (AUROC 0.55, Part 1.4.2).",
+      "evalAxis": "**Freeze-stratified, subject-disjoint** — positive (freeze) subjects are spread across train/val/test\nso each split contains freezes (else sensitivity/AUROC are unmeasurable).",
+      "verified": true
+    },
+    {
+      "id": "dip_imu",
+      "name": "DIP-IMU",
+      "role": "real sparse-IMU + SMPL pose; canonical sparse-IMU pose benchmark",
+      "task": "pose",
+      "modality": "IMU (acc + orientation → derived gyro + quat)",
+      "facts": [
+        {
+          "k": "Access",
+          "v": "License (MPI) — register at [dip.is.tue.mpg.de](https://dip.is.tue.mpg.de/)"
+        },
+        {
+          "k": "Subjects",
+          "v": "10 (S01–S10) · ~330k frames"
+        },
+        {
+          "k": "Sensors",
+          "v": "17 Xsens IMUs; sparse-6 subset for sparse-IMU pose"
+        },
+        {
+          "k": "Native rate",
+          "v": "60 Hz"
+        },
+        {
+          "k": "Native format",
+          "v": "`.pkl`: `imu_acc[T,17,3]` (m/s²), `imu_ori[T,17,3,3]`, `gt[T,72]` (SMPL pose)"
+        }
+      ],
+      "caveats": "Gyro is reconstructed (not measured) — high-frequency content limited by the 60 Hz orientation. Licensed.",
+      "evalAxis": "Subject-disjoint + LOSO.",
+      "verified": false
+    },
+    {
+      "id": "hhar",
+      "name": "HHAR (Heterogeneity Activity Recognition)",
+      "role": "cross-device generalization showcase",
+      "task": "HAR",
+      "modality": "IMU (acc + gyro)",
+      "facts": [
+        {
+          "k": "Access",
+          "v": "Public — [UCI 344](https://archive.ics.uci.edu/dataset/344/heterogeneity+activity+recognition)"
+        },
+        {
+          "k": "Subjects",
+          "v": "9 (a–i)"
+        },
+        {
+          "k": "Devices",
+          "v": "multiple phone + watch models (the device-heterogeneity axis)"
+        },
+        {
+          "k": "Native rate",
+          "v": "variable ~50–200 Hz (device-dependent)"
+        },
+        {
+          "k": "Native format",
+          "v": "CSV: `Index, Arrival_Time, Creation_Time, x, y, z, User, Model, Device, gt`"
+        }
+      ],
+      "caveats": "Corrupt `Creation_Time` on some devices → adapter falls back to `Arrival_Time`. No magnetometer.",
+      "evalAxis": "Subject-disjoint per dataset.",
+      "verified": true
+    },
+    {
+      "id": "kimore",
+      "name": "KIMORE",
+      "role": "rehab exercises with clinician quality scores",
+      "task": "movement quality",
+      "modality": "pose (Kinect skeleton)",
+      "facts": [
+        {
+          "k": "Access",
+          "v": "Free academic request — [KIMORE](https://vrai.dii.univpm.it/content/kimore-dataset)"
+        },
+        {
+          "k": "Subjects",
+          "v": "healthy controls (CG) + motor-impaired (GPP: stroke / Parkinson's / low-back-pain)"
+        },
+        {
+          "k": "Exercises",
+          "v": "5 (lifting arms, lateral trunk tilt, trunk rotation, pelvis rotation, squatting)"
+        },
+        {
+          "k": "Skeleton",
+          "v": "Kinect v2, 25 joints (x, y, z [, confidence])"
+        },
+        {
+          "k": "Native rate",
+          "v": "~30 Hz"
+        },
+        {
+          "k": "Native format",
+          "v": "`JointPosition*.csv` (frame × 25·k) under `.../{CG,GPP}/Es#/Subject#/`"
+        }
+      ],
+      "caveats": "",
+      "evalAxis": "Subject-disjoint + **LOSO** (`splits/loso/kimore.json`).",
+      "verified": false
+    },
+    {
+      "id": "realdisp",
+      "name": "REALDISP",
+      "role": "cross-position generalization showcase",
+      "task": "HAR / movement quality",
+      "modality": "IMU (acc+gyro+mag+quat)",
+      "facts": [
+        {
+          "k": "Access",
+          "v": "Public — [UCI 305](https://archive.ics.uci.edu/dataset/305/realdisp+activity+recognition+dataset)"
+        },
+        {
+          "k": "Subjects",
+          "v": "17 · 33 activities"
+        },
+        {
+          "k": "Sensors",
+          "v": "9 sites × 13 channels (acc, gyro, mag, quaternion)"
+        },
+        {
+          "k": "Scenarios",
+          "v": "**ideal / self / mutual** placement (the displacement axis)"
+        },
+        {
+          "k": "Native rate",
+          "v": "50 Hz (already canonical)"
+        },
+        {
+          "k": "Native format",
+          "v": "tab `.log`: `ts_s, ts_us, [9×13 sensors], label`"
+        }
+      ],
+      "caveats": "Magnetometer not unit-harmonized across datasets (kept nullable). Mutual displacement is adversarial\nby design (sensors placed by a second person).",
+      "evalAxis": "Subject-disjoint per dataset.",
+      "verified": true
+    },
+    {
+      "id": "ui_prmd",
+      "name": "UI-PRMD",
+      "role": "physical-rehab movements with correct/incorrect executions",
+      "task": "movement quality",
+      "modality": "pose (skeleton)",
+      "facts": [
+        {
+          "k": "Access",
+          "v": "Public — [UI-PRMD](https://webpages.uidaho.edu/ui-prmd/)"
+        },
+        {
+          "k": "Movements",
+          "v": "10 rehabilitation movements"
+        },
+        {
+          "k": "Skeleton",
+          "v": "22 joints (Vicon/Kinect), positions (+ angles)"
+        },
+        {
+          "k": "Native rate",
+          "v": "~30 Hz"
+        },
+        {
+          "k": "Native format",
+          "v": "`*_positions.txt` (frame × 22·3) under `Correct/` and `Incorrect/`"
+        }
+      ],
+      "caveats": "Scripted correct/incorrect executions (not free-living); small subject count → LOSO.",
+      "evalAxis": "Subject-disjoint + **LOSO** (`splits/loso/ui_prmd.json`).",
+      "verified": false
+    }
+  ]
+}

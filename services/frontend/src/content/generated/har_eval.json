@@ -1,0 +1,71 @@
+{
+  "task": "human_activity_recognition",
+  "warm_start": "ssl",
+  "n_classes": 37,
+  "n_train_windows": 260823,
+  "n_test_windows": 15621,
+  "macro_f1_overall": 0.40540067388850193,
+  "target_in_distribution": 0.9,
+  "by_dataset": {
+    "hhar": {
+      "n": 8268,
+      "macro_f1": 0.45255566349453114
+    },
+    "realdisp": {
+      "n": 7353,
+      "macro_f1": 0.3349655545592331
+    }
+  },
+  "by_placement": {
+    "back": {
+      "n": 817,
+      "macro_f1": 0.19091032961999096
+    },
+    "l_calf": {
+      "n": 817,
+      "macro_f1": 0.248501094600856
+    },
+    "l_forearm": {
+      "n": 817,
+      "macro_f1": 0.4451255162668078
+    },
+    "l_thigh": {
+      "n": 817,
+      "macro_f1": 0.2101087760302192
+    },
+    "l_upper_arm": {
+      "n": 817,
+      "macro_f1": 0.3373574289784457
+    },
+    "r_calf": {
+      "n": 817,
+      "macro_f1": 0.17910394863316104
+    },
+    "r_forearm": {
+      "n": 817,
+      "macro_f1": 0.4450945055186347
+    },
+    "r_thigh": {
+      "n": 817,
+      "macro_f1": 0.30845198567907167
+    },
+    "r_upper_arm": {
+      "n": 817,
+      "macro_f1": 0.4008480363061612
+    },
+    "waist": {
+      "n": 6130,
+      "macro_f1": 0.5304736186418265
+    },
+    "wrist": {
+      "n": 2138,
+      "macro_f1": 0.3612868674326925
+    }
+  },
+  "generalization": {
+    "placement_macro_f1_min": 0.17910394863316104,
+    "placement_macro_f1_max": 0.5304736186418265,
+    "placement_drop_max_minus_min": 0.3513696700086655,
+    "note": "subjects disjoint; placements/devices seen in training. Leave-placement-out / leave-device-out is future work."
+  }
+}

@@ -1,10 +1,10 @@
-import { FOOTER, NAV_LINKS } from "@/lib/site-data";
+import { EVIDENCE_NAV, FOOTER, NAV_LINKS } from "@/lib/site-data";
 
 export default function Footer() {
   return (
     <footer className="bg-night text-white">
       <div className="mx-auto max-w-shell px-5 py-16 sm:px-8 sm:py-20">
-        <div className="grid gap-12 lg:grid-cols-[1.4fr_1fr_1fr_1fr]">
+        <div className="grid gap-12 lg:grid-cols-[1.4fr_1fr_1fr_1fr_1fr]">
           <div>
             <img
               src="/logo-mova.png"
@@ -19,6 +19,20 @@ export default function Footer() {
           </div>
 
           <FooterCol title="Discover" items={FOOTER.discover} />
+
+          <div>
+            <ColTitle>Evidence</ColTitle>
+            <ul className="mt-5 space-y-3 text-sm text-white/60">
+              {EVIDENCE_NAV.map((e) => (
+                <li key={e.href}>
+                  <a href={e.href} className="hover:text-white">
+                    {e.label}
+                  </a>
+                </li>
+              ))}
+            </ul>
+          </div>
+
           <FooterCol title="Legals" items={FOOTER.legals} />
 
           <div>

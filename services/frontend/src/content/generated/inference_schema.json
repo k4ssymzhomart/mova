@@ -1,0 +1,320 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://mova.health/contracts/inference/v1/inference.schema.json",
+  "title": "MOVA Inference Contract v1",
+  "description": "Typed request/response between the Supabase app backend and the Python ML inference service. PRIVACY: carries derived IMU windows + pose keypoints + metrics only — never raw video.",
+  "$defs": {
+    "uuid": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "task": {
+      "type": "string",
+      "enum": [
+        "fog",
+        "har",
+        "movement_quality",
+        "joint_angle",
+        "pose"
+      ]
+    },
+    "bodySite": {
+      "type": "string",
+      "enum": [
+        "pelvis",
+        "lower_back",
+        "sternum",
+        "head",
+        "l_upperarm",
+        "r_upperarm",
+        "l_wrist",
+        "r_wrist",
+        "l_thigh",
+        "r_thigh",
+        "l_shank",
+        "r_shank",
+        "l_foot",
+        "r_foot",
+        "unspecified"
+      ]
+    },
+    "imuWindow": {
+      "type": "object",
+      "description": "A single IMU window: samples is [T, 6] = acc(xyz) + gyro(xyz).",
+      "properties": {
+        "start_ts": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "samples": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "array",
+            "minItems": 6,
+            "maxItems": 6,
+            "items": {
+              "type": "number"
+            }
+          }
+        }
+      },
+      "required": [
+        "samples"
+      ],
+      "additionalProperties": false
+    },
+    "fogPrediction": {
+      "type": "object",
+      "description": "Backward-compatible with services/api FogPrediction.",
+      "properties": {
+        "is_fog": {
+          "type": "boolean"
+        },
+        "confidence": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "timestamp": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "freeze_index": {
+          "type": [
+            "number",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "is_fog",
+        "confidence",
+        "timestamp"
+      ],
+      "additionalProperties": false
+    },
+    "harPrediction": {
+      "type": "object",
+      "properties": {
+        "label": {
+          "type": "string"
+        },
+        "confidence": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "probabilities": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "number"
+          }
+        }
+      },
+      "required": [
+        "label",
+        "confidence"
+      ],
+      "additionalProperties": false
+    },
+    "qualityPrediction": {
+      "type": "object",
+      "properties": {
+        "quality_score": {
+          "type": "number"
+        },
+        "smoothness": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "symmetry": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "compensation_flags": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "boolean"
+          }
+        }
+      },
+      "required": [
+        "quality_score"
+      ],
+      "additionalProperties": false
+    },
+    "jointAnglePrediction": {
+      "type": "object",
+      "properties": {
+        "angles": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "number"
+          }
+        },
+        "mpjae_deg": {
+          "type": [
+            "number",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "angles"
+      ],
+      "additionalProperties": false
+    },
+    "prediction": {
+      "type": "object",
+      "description": "One prediction aligned to one input window. Exactly one of the *_prediction members is set, matching the request task.",
+      "properties": {
+        "window_index": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "fog": {
+          "$ref": "#/$defs/fogPrediction"
+        },
+        "har": {
+          "$ref": "#/$defs/harPrediction"
+        },
+        "movement_quality": {
+          "$ref": "#/$defs/qualityPrediction"
+        },
+        "joint_angle": {
+          "$ref": "#/$defs/jointAnglePrediction"
+        }
+      },
+      "required": [
+        "window_index"
+      ],
+      "additionalProperties": false
+    },
+    "InferenceRequest": {
+      "type": "object",
+      "properties": {
+        "contract_version": {
+          "const": "1.0"
+        },
+        "task": {
+          "$ref": "#/$defs/task"
+        },
+        "patient_id": {
+          "$ref": "#/$defs/uuid"
+        },
+        "clinic_id": {
+          "$ref": "#/$defs/uuid"
+        },
+        "session_id": {
+          "$ref": "#/$defs/uuid"
+        },
+        "sampling_rate_hz": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "default": 50
+        },
+        "placement": {
+          "$ref": "#/$defs/bodySite",
+          "default": "unspecified"
+        },
+        "windows": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/imuWindow"
+          }
+        },
+        "model_version": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "idempotency_key": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "contract_version",
+        "task",
+        "patient_id",
+        "clinic_id",
+        "windows"
+      ],
+      "additionalProperties": false
+    },
+    "InferenceResponse": {
+      "type": "object",
+      "properties": {
+        "contract_version": {
+          "const": "1.0"
+        },
+        "task": {
+          "$ref": "#/$defs/task"
+        },
+        "model": {
+          "type": "object",
+          "properties": {
+            "name": {
+              "type": "string"
+            },
+            "version": {
+              "type": "string"
+            },
+            "source": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "name",
+            "version",
+            "source"
+          ],
+          "additionalProperties": false
+        },
+        "predictions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/prediction"
+          }
+        },
+        "summary": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "latency_ms": {
+          "type": "number",
+          "minimum": 0
+        },
+        "generated_at": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "contract_version",
+        "task",
+        "model",
+        "predictions",
+        "generated_at"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "oneOf": [
+    {
+      "$ref": "#/$defs/InferenceRequest"
+    },
+    {
+      "$ref": "#/$defs/InferenceResponse"
+    }
+  ]
+}

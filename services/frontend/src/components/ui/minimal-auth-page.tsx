@@ -1,10 +1,68 @@
-import React from "react";
-import { Button } from "@/components/ui/button";
+"use client";
 
-import { ChevronLeftIcon } from "lucide-react";
+import React from "react";
+import { ChevronLeftIcon, Loader2 } from "lucide-react";
+
+import { Button } from "@/components/ui/button";
 import { Particles } from "@/components/ui/particles";
+import { createClient } from "@/lib/supabase/client";
+
+type Provider = "google" | "github";
 
 export function MinimalAuthPage() {
+  const [supabase] = React.useState(() => createClient());
+  const [email, setEmail] = React.useState("");
+  const [busy, setBusy] = React.useState<string | null>(null);
+  const [msg, setMsg] = React.useState<
+    { kind: "error" | "info"; text: string } | null
+  >(null);
+
+  React.useEffect(() => {
+    const p = new URLSearchParams(window.location.search);
+    if (p.get("error")) {
+      setMsg({ kind: "error", text: "Sign-in failed — please try again." });
+    }
+  }, []);
+
+  const nextParam = () =>
+    new URLSearchParams(window.location.search).get("next") ?? "/app";
+
+  const callbackUrl = () =>
+    `${window.location.origin}/auth/callback?next=${encodeURIComponent(
+      nextParam(),
+    )}`;
+
+  async function signInWithProvider(provider: Provider) {
+    setBusy(provider);
+    setMsg(null);
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider,
+      options: { redirectTo: callbackUrl() },
+    });
+    if (error) {
+      setBusy(null);
+      setMsg({ kind: "error", text: error.message });
+    }
+    // On success the browser navigates to the provider's consent screen.
+  }
+
+  async function signInWithEmail(e: React.FormEvent) {
+    e.preventDefault();
+    if (!email) return;
+    setBusy("email");
+    setMsg(null);
+    const { error } = await supabase.auth.signInWithOtp({
+      email,
+      options: { emailRedirectTo: callbackUrl() },
+    });
+    setBusy(null);
+    setMsg(
+      error
+        ? { kind: "error", text: error.message }
+        : { kind: "info", text: `Magic link sent to ${email}. Check your inbox.` },
+    );
+  }
+
   return (
     <div className="relative w-full md:h-screen md:overflow-hidden">
       <Particles
@@ -14,7 +72,6 @@ export function MinimalAuthPage() {
         className="absolute inset-0"
       />
 
-      {/* soft brand-neutral light wash behind the card */}
       <div aria-hidden className="pointer-events-none absolute inset-0 -z-10">
         <div
           className="absolute left-1/2 top-0 h-[60rem] w-[60rem] -translate-x-1/2 -translate-y-1/3 rounded-full blur-3xl"
@@ -43,13 +100,36 @@ export function MinimalAuthPage() {
               Sign in or create your account
             </h1>
             <p className="text-muted-foreground text-base">
-              Log in or create your Mova account to access the platform.
+              Log in or create your Mova account to start training.
             </p>
           </div>
 
+          {msg && (
+            <div
+              role={msg.kind === "error" ? "alert" : "status"}
+              className={`rounded-md border px-3 py-2.5 text-sm ${
+                msg.kind === "error"
+                  ? "border-destructive/30 bg-destructive/5 text-destructive"
+                  : "border-signal/30 bg-signal/5 text-signal-deep"
+              }`}
+            >
+              {msg.text}
+            </div>
+          )}
+
           <div className="space-y-2.5">
-            <Button type="button" size="lg" className="w-full">
-              <GoogleIcon className="me-2 size-4" />
+            <Button
+              type="button"
+              size="lg"
+              className="w-full"
+              disabled={busy !== null}
+              onClick={() => signInWithProvider("google")}
+            >
+              {busy === "google" ? (
+                <Loader2 className="me-2 size-4 animate-spin" />
+              ) : (
+                <GoogleIcon className="me-2 size-4" />
+              )}
               Continue with Google
             </Button>
             <Button
@@ -57,8 +137,14 @@ export function MinimalAuthPage() {
               size="lg"
               variant="outline"
               className="w-full"
+              disabled={busy !== null}
+              onClick={() => signInWithProvider("github")}
             >
-              <GithubIcon className="me-2 size-4" />
+              {busy === "github" ? (
+                <Loader2 className="me-2 size-4 animate-spin" />
+              ) : (
+                <GithubIcon className="me-2 size-4" />
+              )}
               Continue with GitHub
             </Button>
           </div>
@@ -71,14 +157,26 @@ export function MinimalAuthPage() {
             <span className="h-px flex-1 bg-border" />
           </div>
 
-          <form className="space-y-2.5">
+          <form className="space-y-2.5" onSubmit={signInWithEmail}>
             <input
               type="email"
               required
-              placeholder="you@clinic.org"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="you@email.com"
+              autoComplete="email"
               className="bg-background focus-visible:ring-ring h-11 w-full rounded-md border border-input px-3 text-sm outline-none transition focus-visible:ring-2"
             />
-            <Button type="submit" variant="secondary" size="lg" className="w-full">
+            <Button
+              type="submit"
+              variant="secondary"
+              size="lg"
+              className="w-full"
+              disabled={busy !== null}
+            >
+              {busy === "email" ? (
+                <Loader2 className="me-2 size-4 animate-spin" />
+              ) : null}
               Continue with email
             </Button>
           </form>

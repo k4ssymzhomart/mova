@@ -1,0 +1,32 @@
+{
+  "_source": "references.bib",
+  "note": "Citations are rendered with title + authors/venue/year + an outbound link. PDFs are never hosted (operating rule).",
+  "citations": [
+    {
+      "key": "AMASS_HDM05",
+      "type": "techreport",
+      "title": "Documentation Mocap Database HDM05",
+      "authors": "M. Muller and T. Roder and M. Clausen and B. Eberhardt and B. Kruger and A. Weber",
+      "year": "2007",
+      "venue": "Universitat Bonn",
+      "number": "CG-2007-2",
+      "url": "https://resources.mpi-inf.mpg.de/HDM05/",
+      "linkLabel": "HDM05 database",
+      "doi": "",
+      "arxiv": ""
+    },
+    {
+      "key": "DIP:SIGGRAPHAsia:2018",
+      "type": "article",
+      "title": "Deep Inertial Poser: Learning to Reconstruct Human Pose from Sparse Inertial Measurements in Real Time",
+      "authors": "Huang, Yinghao and Kaufmann, Manuel and Aksan, Emre and Black, Michael J. and Hilliges, Otmar and Pons-Moll, Gerard",
+      "year": "2018",
+      "venue": "ACM Transactions on Graphics, (Proc. SIGGRAPH Asia)",
+      "number": "6",
+      "url": "https://dip.is.tue.mpg.de/",
+      "linkLabel": "Project page",
+      "doi": "10.1145/3272127.3275108",
+      "arxiv": "1810.04703"
+    }
+  ]
+}
