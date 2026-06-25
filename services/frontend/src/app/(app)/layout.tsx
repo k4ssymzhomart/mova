@@ -24,7 +24,7 @@ export default async function PatientAppLayout({ children }: { children: React.R
     profile?.display_name || profile?.full_name || user.email?.split("@")[0] || "Patient";
 
   return (
-    <AppShell name={name} email={user.email ?? ""}>
+    <AppShell name={name} email={user.email ?? ""} userId={user.id}>
       {children}
     </AppShell>
   );

@@ -1,23 +1,19 @@
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
-import { Inter, Instrument_Serif } from "next/font/google";
+import { Electrolize } from "next/font/google";
 
 import { AuthProvider } from "@/lib/auth/AuthProvider";
 
 import "./globals.css";
 
-const inter = Inter({
-  subsets: ["latin"],
-  display: "swap",
-  variable: "--font-inter",
-});
-
-const serif = Instrument_Serif({
+// Electrolize — the single typeface across the whole product (display, body, mono). Self-hosted via
+// next/font so there's no layout shift and no external <link>. It ships one weight (400); we disable
+// font-synthesis in globals so faux bold/italic never render.
+const electrolize = Electrolize({
   subsets: ["latin"],
   weight: "400",
-  style: ["normal", "italic"],
   display: "swap",
-  variable: "--font-serif",
+  variable: "--font-electrolize",
 });
 
 export const metadata: Metadata = {
@@ -28,7 +24,7 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
-    <html lang="en" className={`${inter.variable} ${serif.variable}`}>
+    <html lang="en" className={electrolize.variable}>
       <body>
         <AuthProvider>{children}</AuthProvider>
       </body>

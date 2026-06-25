@@ -7,7 +7,7 @@
 // and awards XP/streak/badges (award_session_rewards). Keyed to the session id created upstream
 // (/app/session/new). Replaces the old standalone /session + the capture-only LiveCapturePanel.
 
-import { CloudOff } from "lucide-react";
+import { CloudOff, Loader2, Play, Square } from "lucide-react";
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 
@@ -56,7 +56,7 @@ function downsample(values: number[], n: number): number[] {
   return out;
 }
 
-export default function SessionStudio({ sessionId }: { sessionId: string }) {
+export default function SessionStudio({ sessionId, userId }: { sessionId: string; userId: string }) {
   const pipeline = useRef(new VirtualImuPipeline());
   const sideRef = useRef<Side>("right");
   const modeRef = useRef<SessionMode>("reach");
@@ -99,13 +99,13 @@ export default function SessionStudio({ sessionId }: { sessionId: string }) {
   const modelsOffline = live.status === "unavailable" || live.status === "error";
 
   useEffect(() => {
-    const p = loadProfile();
+    const p = loadProfile(userId);
     if (!p) return;
     setProfile(p);
     setMode(p.recommendedPack === "gait" ? "gait" : "reach");
     setTempoSpm(startingCadence(p));
     if (p.affectedSide !== "bilateral") setSide(p.affectedSide);
-  }, []);
+  }, [userId]);
   useEffect(() => { sideRef.current = side; pipeline.current.side = side; }, [side]);
   useEffect(() => { modeRef.current = mode; pipeline.current.segment = mode === "gait" ? "shank" : "forearm"; }, [mode]);
 
@@ -218,8 +218,8 @@ export default function SessionStudio({ sessionId }: { sessionId: string }) {
       harTop,
       inferenceCount: inferences,
     };
-    saveSession(record);
-    setSummary({ record, history: loadSessions() });
+    saveSession(record, userId);
+    setSummary({ record, history: loadSessions(userId) });
 
     // Close any open FoG episode, flush the frame buffer, then score + award on the backend.
     const ep = detector.current?.finalize(now);
@@ -261,10 +261,18 @@ export default function SessionStudio({ sessionId }: { sessionId: string }) {
     <div>
       <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
         <div>
-          <div className="text-[11px] font-medium uppercase tracking-[0.22em] text-ink-faint">{meta.eyebrow}</div>
-          <h1 className="mt-2 font-serif text-4xl italic leading-none text-ink">{meta.title}</h1>
+          <div className="font-mono text-[11px] uppercase tracking-[0.22em] text-signal">{meta.eyebrow}</div>
+          <h1 className="mt-2 font-serif text-4xl leading-none text-ink sm:text-5xl">{meta.title}</h1>
         </div>
-        <div className="font-mono text-xs uppercase tracking-[0.14em] text-ink-faint">{pose.fps} fps · {pose.status}</div>
+        <div className="flex items-center gap-3">
+          {running && (
+            <span className="inline-flex items-center gap-2 rounded-pill bg-signal/10 px-3 py-1.5 font-mono text-[11px] uppercase tracking-[0.14em] text-signal-deep">
+              <span className="live-dot size-2 rounded-full bg-signal" />
+              Recording
+            </span>
+          )}
+          <span className="tnum font-mono text-xs uppercase tracking-[0.14em] text-ink-faint">{pose.fps} fps</span>
+        </div>
       </div>
 
       {profile && (
@@ -315,37 +323,85 @@ export default function SessionStudio({ sessionId }: { sessionId: string }) {
         <aside className="space-y-5">
           <Panel label="Session control">
             <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-2">
-                <PillButton active={mode === "reach"} onClick={() => setMode("reach")} disabled={running}>Upper-limb reach</PillButton>
-                <PillButton active={mode === "gait"} onClick={() => setMode("gait")} disabled={running}>Gait &amp; balance</PillButton>
-              </div>
-              <div className="flex gap-2">
-                <PillButton active={running} onClick={start} disabled={running || pose.status === "loading"}>
-                  {pose.status === "loading" ? "Starting…" : "Start session"}
-                </PillButton>
+              {/* primary action — flips between Start and Finish so there's always one obvious next step */}
+              {!running ? (
+                <button
+                  type="button"
+                  onClick={start}
+                  disabled={pose.status === "loading"}
+                  className="flex w-full items-center justify-center gap-2 rounded-pill bg-signal px-5 py-3 text-sm font-medium text-white transition-colors hover:bg-signal-bright disabled:opacity-60"
+                >
+                  {pose.status === "loading" ? (
+                    <Loader2 className="size-4 animate-spin" strokeWidth={1.8} />
+                  ) : (
+                    <Play className="size-4" strokeWidth={2} />
+                  )}
+                  {pose.status === "loading" ? "Starting camera…" : "Start session"}
+                </button>
+              ) : (
                 <button
                   type="button"
                   onClick={finish}
-                  disabled={!running || finishing}
-                  className="rounded-pill bg-night px-4 py-2 text-sm font-medium text-paper-soft transition-colors hover:bg-ink disabled:opacity-40"
+                  disabled={finishing}
+                  className="flex w-full items-center justify-center gap-2 rounded-pill bg-night px-5 py-3 text-sm font-medium text-paper-soft transition-colors hover:bg-ink disabled:opacity-60"
                 >
+                  {finishing ? (
+                    <Loader2 className="size-4 animate-spin" strokeWidth={1.8} />
+                  ) : (
+                    <Square className="size-4" strokeWidth={2} />
+                  )}
                   {finishing ? "Saving…" : "Finish & save"}
                 </button>
+              )}
+
+              {/* exercise */}
+              <div>
+                <div className="mb-1.5 font-mono text-[10px] uppercase tracking-[0.16em] text-ink-faint">Exercise</div>
+                <div className="grid grid-cols-2 gap-2">
+                  <PillButton active={mode === "reach"} onClick={() => setMode("reach")} disabled={running}>
+                    Upper-limb
+                  </PillButton>
+                  <PillButton active={mode === "gait"} onClick={() => setMode("gait")} disabled={running}>
+                    Gait &amp; balance
+                  </PillButton>
+                </div>
               </div>
-              <Toggle label="Show camera (off by default)" on={showVideo} onClick={() => setShowVideo((v) => !v)} />
-              <div className="flex gap-2">
-                <PillButton active={side === "left"} onClick={() => setSide("left")}>{mode === "gait" ? "Lead left" : "Left hand"}</PillButton>
-                <PillButton active={side === "right"} onClick={() => setSide("right")}>{mode === "gait" ? "Lead right" : "Right hand"}</PillButton>
+
+              {/* side */}
+              <div>
+                <div className="mb-1.5 font-mono text-[10px] uppercase tracking-[0.16em] text-ink-faint">
+                  {mode === "gait" ? "Lead leg" : "Active hand"}
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <PillButton active={side === "left"} onClick={() => setSide("left")}>
+                    Left
+                  </PillButton>
+                  <PillButton active={side === "right"} onClick={() => setSide("right")}>
+                    Right
+                  </PillButton>
+                </div>
               </div>
+
               {mode === "gait" && (
                 <div>
                   <div className="mb-1.5 flex items-baseline justify-between">
-                    <span className="text-[11px] font-medium uppercase tracking-[0.18em] text-ink-faint">Cadence target</span>
-                    <span className="font-mono text-sm tabular-nums text-ink">{tempoSpm} spm</span>
+                    <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-ink-faint">Cadence target</span>
+                    <span className="tnum font-mono text-sm text-ink">{tempoSpm} spm</span>
                   </div>
-                  <input type="range" min={40} max={110} step={1} value={tempoSpm} onChange={(e) => setTempoSpm(Number(e.target.value))} aria-label="Cadence target" className="w-full accent-signal" />
+                  <input
+                    type="range"
+                    min={40}
+                    max={110}
+                    step={1}
+                    value={tempoSpm}
+                    onChange={(e) => setTempoSpm(Number(e.target.value))}
+                    aria-label="Cadence target"
+                    className="w-full accent-signal"
+                  />
                 </div>
               )}
+
+              <Toggle label="Show camera (off by default)" on={showVideo} onClick={() => setShowVideo((v) => !v)} />
             </div>
           </Panel>
 

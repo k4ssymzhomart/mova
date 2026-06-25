@@ -94,7 +94,7 @@ export default function SidebarNav({
             type="button"
             onClick={onToggleCollapse}
             aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-            className="grid size-8 place-items-center rounded-lg text-ink-faint transition-colors hover:bg-card hover:text-ink"
+            className="grid size-8 place-items-center rounded-lg text-ink-faint transition-colors hover:bg-paper-soft hover:text-ink"
           >
             {collapsed ? (
               <PanelLeft className="size-[18px]" strokeWidth={1.7} />
@@ -135,8 +135,8 @@ export default function SidebarNav({
                 "group relative flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm transition-all duration-200 ease-editorial",
                 collapsed && "justify-center px-0",
                 active
-                  ? "bg-card font-medium text-ink shadow-soft"
-                  : "text-ink-soft hover:bg-card/70 hover:text-ink",
+                  ? "bg-signal/10 font-medium text-signal-deep"
+                  : "text-ink-soft hover:bg-paper-soft hover:text-ink",
               )}
             >
               <Icon className="size-[18px] shrink-0" strokeWidth={active ? 2 : 1.7} />
@@ -161,7 +161,7 @@ export default function SidebarNav({
           onClick={onNavigate}
           title={collapsed ? "Help & support" : undefined}
           className={cn(
-            "flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-ink-soft transition-colors hover:bg-card/70 hover:text-ink",
+            "flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-ink-soft transition-colors hover:bg-paper-soft hover:text-ink",
             collapsed && "justify-center px-0",
           )}
         >

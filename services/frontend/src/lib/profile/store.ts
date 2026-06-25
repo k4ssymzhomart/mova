@@ -7,26 +7,31 @@
 
 import type { AffectedSide, Condition, Pack, PatientProfile, RomBaseline, SidePair } from "./types";
 
-const KEY = "mova.profile.v1";
+const BASE = "mova.profile.v1";
 
-export function loadProfile(): PatientProfile | null {
+/** Per-user storage key; falls back to a shared guest bucket when there is no signed-in user. */
+function keyFor(userId?: string | null): string {
+  return userId ? `${BASE}::${userId}` : `${BASE}::guest`;
+}
+
+export function loadProfile(userId?: string | null): PatientProfile | null {
   if (typeof window === "undefined") return null;
   try {
-    const raw = window.localStorage.getItem(KEY);
+    const raw = window.localStorage.getItem(keyFor(userId));
     return raw ? (JSON.parse(raw) as PatientProfile) : null;
   } catch {
     return null;
   }
 }
 
-export function saveProfile(p: PatientProfile): void {
+export function saveProfile(p: PatientProfile, userId?: string | null): void {
   if (typeof window === "undefined") return;
-  window.localStorage.setItem(KEY, JSON.stringify({ ...p, updatedAt: Date.now() }));
+  window.localStorage.setItem(keyFor(userId), JSON.stringify({ ...p, updatedAt: Date.now() }));
 }
 
-export function clearProfile(): void {
+export function clearProfile(userId?: string | null): void {
   if (typeof window === "undefined") return;
-  window.localStorage.removeItem(KEY);
+  window.localStorage.removeItem(keyFor(userId));
 }
 
 export function makeProfileId(): string {

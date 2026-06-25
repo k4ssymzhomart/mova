@@ -18,17 +18,21 @@ type Metrics = {
 
 export default async function SessionDetail({ params }: { params: { id: string } }) {
   const supabase = createClient();
-  const { data: session } = await supabase
-    .from("sessions")
-    .select("id, status, started_at, ended_at, session_metrics(*)")
-    .eq("id", params.id)
-    .maybeSingle();
+  const [{ data: session }, { data: auth }] = await Promise.all([
+    supabase
+      .from("sessions")
+      .select("id, status, started_at, ended_at, session_metrics(*)")
+      .eq("id", params.id)
+      .maybeSingle(),
+    supabase.auth.getUser(),
+  ]);
 
   if (!session) notFound();
 
   // In-progress sessions get the full training studio (camera + ONNX + telemetry + rewards).
+  // The user id scopes the on-device profile + history stores so accounts never cross-contaminate.
   if (session.status !== "completed") {
-    return <SessionStudio sessionId={session.id} />;
+    return <SessionStudio sessionId={session.id} userId={auth.user?.id ?? ""} />;
   }
 
   // PostgREST may return a to-one embed as an object or a single-element array.

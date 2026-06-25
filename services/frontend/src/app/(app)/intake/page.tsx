@@ -12,6 +12,7 @@ import BaselineCapture from "@/components/intake/BaselineCapture";
 import { toFhirBundle } from "@/lib/fhir";
 import { buildProfile, packForCondition, saveProfile } from "@/lib/profile/store";
 import type { AffectedSide, Condition, RomBaseline } from "@/lib/profile/types";
+import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
 
 const CONDITIONS: { id: Condition; title: string; desc: string }[] = [
@@ -31,6 +32,7 @@ const STEPS = ["Condition", "Affected side", "Baseline", "Review"];
 
 export default function IntakePage() {
   const router = useRouter();
+  const [supabase] = useState(() => createClient());
   const [step, setStep] = useState(0);
   const [condition, setCondition] = useState<Condition | null>(null);
   const [side, setSide] = useState<AffectedSide | null>(null);
@@ -42,10 +44,13 @@ export default function IntakePage() {
     [condition, side, baseline],
   );
 
-  const finish = () => {
+  const finish = async () => {
     if (!provisional) return;
-    saveProfile(provisional);
-    router.push("/session");
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    saveProfile(provisional, user?.id);
+    router.push("/app/session/new");
   };
 
   return (
