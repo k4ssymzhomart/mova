@@ -43,6 +43,7 @@ models where raw video should never leave the client.
 - [Core Features](#core-features)
 - [System Architecture](#system-architecture)
 - [Getting Started](#getting-started)
+- [Environment Setup & Deployment](#environment-setup--deployment)
 - [Gamification Ecosystem](#gamification-ecosystem)
 - [Contributing](#contributing)
 - [License](#license)
@@ -127,23 +128,9 @@ npm run models:sync
 
 ### Environment Variables
 
-Create a local env file for the web app at `services/frontend/.env.local`.
-
-<details>
-<summary>Environment variables</summary>
-
-Copy the relevant values from your Supabase project settings:
-
-```bash
-NEXT_PUBLIC_SUPABASE_URL=https://<project-ref>.supabase.co
-NEXT_PUBLIC_SUPABASE_ANON_KEY=<anon-public-key>
-SUPABASE_SERVICE_ROLE_KEY=<server-only-service-role-key>
-```
-
-If you are wiring the full stack locally, the root `.env` also documents optional backend and deployment
-variables in [.env.example](.env.example).
-
-</details>
+The web app reads its configuration from `services/frontend/.env.local`. See
+[Environment Setup & Deployment](#environment-setup--deployment) for the full template and the list of
+required keys. The root [.env.example](.env.example) documents optional backend and deployment variables.
 
 ### Run the App
 
@@ -160,6 +147,57 @@ If you want the database and auth layer running locally as well, use the Supabas
 ```bash
 supabase start
 ```
+
+## Environment Setup & Deployment
+
+### `.env.local` template
+
+The web app reads its runtime configuration from `services/frontend/.env.local`. Create the file and
+populate it with the values from **your own** Supabase project (Project Settings → API). Never commit
+real keys — `.env.local` is git-ignored, and only placeholders belong in this document.
+
+```bash
+# services/frontend/.env.local
+
+# Public — safe to expose to the browser
+NEXT_PUBLIC_SUPABASE_URL=<YOUR_SUPABASE_URL>
+NEXT_PUBLIC_SUPABASE_ANON_KEY=<YOUR_SUPABASE_ANON_KEY>
+
+# Server-only — bypasses Row-Level Security, must never reach the client
+SUPABASE_SERVICE_ROLE_KEY=<YOUR_SUPABASE_SERVICE_ROLE_KEY>
+```
+
+| Variable | Scope | Where to find it |
+|---|---|---|
+| `NEXT_PUBLIC_SUPABASE_URL` | Public | Supabase → Project Settings → API → Project URL |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Public | Supabase → Project Settings → API → `anon` public key |
+| `SUPABASE_SERVICE_ROLE_KEY` | Server only | Supabase → Project Settings → API → `service_role` key |
+
+> ⚠️ The `service_role` key has full database privileges and bypasses RLS. Keep it server-side only and
+> never expose it through a `NEXT_PUBLIC_*` variable.
+
+### Database migrations (Supabase CLI)
+
+To run database migrations locally, install the [Supabase CLI](https://supabase.com/docs/guides/cli),
+authenticate, and link this project:
+
+```bash
+supabase login
+supabase link --project-ref sbdtujkpklqyevaoxfph
+supabase db push   # apply the local migrations to the linked project
+```
+
+### Deployment (Render)
+
+The repository ships a [`render.yaml`](render.yaml) Blueprint at the root that provisions both services
+as a microarchitecture:
+
+- **`mova-api`** — the Python inference backend (`services/api`), built from its Dockerfile.
+- **`mova-frontend`** — the Next.js web app (`services/frontend`), `npm ci && npm run build` → `npm start`.
+
+Create a new **Blueprint** in the Render dashboard pointed at this repo, then set the three Supabase
+variables above on the `mova-frontend` service (they are declared with `sync: false`, so Render prompts
+for them and they stay out of version control).
 
 ## Gamification Ecosystem
 

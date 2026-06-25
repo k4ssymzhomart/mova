@@ -1,0 +1,38 @@
+# Render Blueprint — Infrastructure as Code for MOVA.
+# Provisions the two-service microarchitecture: the Python inference API (Docker) and the Next.js
+# web app (Node). Create a new Blueprint in the Render dashboard pointed at this repository. Secrets
+# marked `sync: false` are entered once in the dashboard and are never committed here.
+services:
+  # ── Python inference backend ────────────────────────────────────────────────
+  - type: web
+    name: mova-api
+    runtime: docker
+    plan: free
+    region: oregon
+    dockerfilePath: ./services/api/Dockerfile
+    dockerContext: ./services/api
+    # Bind to the port Render injects rather than the Dockerfile's fixed 8000.
+    dockerCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    autoDeploy: false
+
+  # ── Next.js web app ─────────────────────────────────────────────────────────
+  - type: web
+    name: mova-frontend
+    runtime: node
+    plan: free
+    region: oregon
+    rootDir: services/frontend
+    buildCommand: npm ci && npm run build
+    startCommand: npm start
+    autoDeploy: false
+    envVars:
+      - key: NODE_VERSION
+        value: "20"
+      # Supabase — set these in the Render dashboard; never commit real values.
+      - key: NEXT_PUBLIC_SUPABASE_URL
+        sync: false
+      - key: NEXT_PUBLIC_SUPABASE_ANON_KEY
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
