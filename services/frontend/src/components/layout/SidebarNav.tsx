@@ -40,7 +40,7 @@ const NAV: NavItem[] = [
   { href: "/session", label: "Train", icon: Activity, ready: true },
   { href: "/exercises", label: "Exercises", icon: Dumbbell, ready: false },
   { href: "/progress", label: "Progress", icon: TrendingUp, ready: true },
-  { href: "/achievements", label: "Achievements", icon: Trophy, ready: false },
+  { href: "/achievements", label: "Achievements", icon: Trophy, ready: true },
   { href: "/devices", label: "Devices", icon: Bluetooth, ready: false },
   { href: "/care-team", label: "Care Team", icon: Users, ready: false },
   { href: "/learn", label: "Learn", icon: BookOpen, ready: false },
