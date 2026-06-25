@@ -60,7 +60,7 @@ export default function CareMessenger({ clinicianName, userId }: { clinicianName
   }
 
   return (
-    <div className="flex h-full flex-col rounded-3xl border border-line bg-card">
+    <div className="flex h-full flex-col rounded-xl border border-line bg-card">
       <div className="border-b border-line px-6 py-4">
         <h2 className="font-serif text-xl text-ink">Message your therapist</h2>
         <p className="text-[13px] text-ink-soft">Non-urgent questions about your program. Replies within 1–2 days.</p>
@@ -71,7 +71,7 @@ export default function CareMessenger({ clinicianName, userId }: { clinicianName
           <div key={m.id} className={cn("flex", m.from === "you" ? "justify-end" : "justify-start")}>
             <div
               className={cn(
-                "max-w-[80%] rounded-2xl px-4 py-2.5 text-[14px] leading-relaxed",
+                "max-w-[80%] rounded-lg px-4 py-2.5 text-[14px] leading-relaxed",
                 m.from === "you" ? "bg-night text-paper-soft" : "border border-line bg-paper-soft text-ink",
               )}
             >

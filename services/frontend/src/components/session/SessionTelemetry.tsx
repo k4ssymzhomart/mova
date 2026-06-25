@@ -6,6 +6,7 @@ import { Bar, LivePill, Panel } from "./ui";
 
 interface Props {
   status: "idle" | "loading" | "ready" | "unavailable" | "error";
+  simulated?: boolean;
   prediction: LivePrediction | null;
   mode: "reach" | "gait";
   fill: number; // buffer 0..1
@@ -14,13 +15,25 @@ interface Props {
 
 const HAR_PRETTY = (s: string) => s.replace(/_/g, " ");
 
-/** Live engineering telemetry — real on-device ONNX output over the pose-derived virtual IMU. */
-export default function SessionTelemetry({ status, prediction, mode, fill, inferences }: Props) {
+/** Live engineering telemetry — on-device ONNX output (or a clearly-flagged simulation) over the
+ *  pose-derived virtual IMU. */
+export default function SessionTelemetry({ status, simulated, prediction, mode, fill, inferences }: Props) {
   const live = status === "ready" && inferences > 0;
   const fogValid = prediction?.fog?.valid ?? mode === "gait";
   const region = mode === "gait" ? "lower-limb · ankle" : "upper-limb · forearm";
   return (
-    <Panel label="Edge inference · onnxruntime-web" right={<LivePill live={live} />}>
+    <Panel
+      label="Edge inference · onnxruntime-web"
+      right={
+        simulated ? (
+          <span className="rounded-pill border border-line bg-paper-soft px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.14em] text-ink-faint">
+            simulated
+          </span>
+        ) : (
+          <LivePill live={live} />
+        )
+      }
+    >
       <div className="space-y-5">
         {/* sensor region — which virtual IMU is feeding the graphs */}
         <div className="flex items-center justify-between font-mono text-[10px] uppercase tracking-[0.14em] text-ink-faint">
@@ -101,9 +114,11 @@ export default function SessionTelemetry({ status, prediction, mode, fill, infer
           <Stat k="latency" v={prediction ? `${prediction.latencyMs.toFixed(0)}ms` : "—"} />
           <Stat k="runs" v={String(inferences)} />
         </dl>
-        {status === "unavailable" && (
-          <p className="text-[11px] text-ink-faint">
-            Models not found in /public/models — run <code>npm run models:sync</code>.
+        {simulated && (
+          <p className="text-[11px] leading-relaxed text-ink-faint">
+            ONNX models aren&apos;t deployed on this environment — showing a simulated readout so the
+            session stays interactive. Deploy <code>fog.onnx</code> / <code>har.onnx</code> (set{" "}
+            <code>MOVA_MODELS_BASE_URL</code>) for live on-device scoring.
           </p>
         )}
       </div>

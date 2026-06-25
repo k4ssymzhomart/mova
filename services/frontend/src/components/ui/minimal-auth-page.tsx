@@ -4,7 +4,6 @@ import React from "react";
 import { ChevronLeftIcon, Loader2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import { Particles } from "@/components/ui/particles";
 import { createClient } from "@/lib/supabase/client";
 
 type Provider = "google" | "github";
@@ -81,24 +80,7 @@ export function MinimalAuthPage() {
   }
 
   return (
-    <div className="relative w-full md:h-screen md:overflow-hidden">
-      <Particles
-        color="#16A35B"
-        quantity={120}
-        ease={20}
-        className="absolute inset-0"
-      />
-
-      <div aria-hidden className="pointer-events-none absolute inset-0 -z-10">
-        <div
-          className="absolute left-1/2 top-0 h-[60rem] w-[60rem] -translate-x-1/2 -translate-y-1/3 rounded-full blur-3xl"
-          style={{
-            background:
-              "radial-gradient(closest-side, rgba(22,163,91,0.10), rgba(22,163,91,0) 70%)",
-          }}
-        />
-      </div>
-
+    <div className="relative w-full bg-paper md:h-screen md:overflow-hidden">
       <div className="relative mx-auto flex min-h-screen max-w-6xl flex-col justify-center px-4">
         <Button variant="ghost" className="absolute left-4 top-4" asChild>
           <a href="/">

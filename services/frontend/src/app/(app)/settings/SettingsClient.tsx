@@ -224,7 +224,7 @@ export default function SettingsClient({
       {/* COMPLIANCE */}
       <Section icon={ShieldCheck} title="Data & privacy" desc="Your GDPR / HIPAA controls.">
         <div className="grid gap-3 sm:grid-cols-2">
-          <div className="rounded-2xl border border-line p-5">
+          <div className="rounded-lg border border-line p-5">
             <div className="text-sm font-medium text-ink">Export my data</div>
             <p className="mt-1 text-[13px] leading-relaxed text-ink-soft">
               Download everything we hold about you — profile and every session — as a portable JSON file.
@@ -239,7 +239,7 @@ export default function SettingsClient({
               {exporting ? "Preparing…" : "Export"}
             </button>
           </div>
-          <div className="rounded-2xl border border-line p-5">
+          <div className="rounded-lg border border-line p-5">
             <div className="text-sm font-medium text-ink">Revoke clinical access</div>
             <p className="mt-1 text-[13px] leading-relaxed text-ink-soft">
               {activeCareLinks > 0
@@ -278,7 +278,7 @@ function Section({
   children: React.ReactNode;
 }) {
   return (
-    <section className="rounded-3xl border border-line bg-card p-6 sm:p-8">
+    <section className="rounded-xl border border-line bg-card p-6 sm:p-8">
       <div className="flex items-start gap-3">
         <span className="mt-0.5 grid size-9 shrink-0 place-items-center rounded-xl bg-paper-soft text-ink-soft ring-1 ring-line">
           <Icon className="size-[18px]" strokeWidth={1.7} />

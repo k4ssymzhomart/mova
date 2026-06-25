@@ -38,16 +38,15 @@ export default function ArticlePage({ params }: { params: { slug: string } }) {
       </header>
 
       {article.hasVideo && (
-        <div className="relative mt-8 grid aspect-video place-items-center overflow-hidden rounded-2xl bg-night">
-          <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(120%_120%_at_80%_-10%,rgba(22,163,91,0.25),transparent_60%)]" />
+        <div className="relative mt-8 grid aspect-video place-items-center overflow-hidden rounded-lg border border-line bg-paper-soft">
           <button
             type="button"
-            className="relative z-10 grid size-16 place-items-center rounded-full bg-paper/10 ring-1 ring-paper/20 transition-colors hover:bg-signal"
+            className="group relative z-10 grid size-16 place-items-center rounded-full border border-line bg-card transition-colors hover:bg-signal"
             aria-label="Play explainer (placeholder)"
           >
-            <Play className="size-6 text-paper" strokeWidth={1.6} />
+            <Play className="size-6 text-signal transition-colors group-hover:text-white" strokeWidth={1.6} />
           </button>
-          <span className="absolute bottom-4 left-5 z-10 font-mono text-[10px] uppercase tracking-[0.14em] text-paper/50">
+          <span className="absolute bottom-4 left-5 z-10 font-mono text-[10px] uppercase tracking-[0.14em] text-ink-faint">
             Explainer · {article.readMinutes} min
           </span>
         </div>

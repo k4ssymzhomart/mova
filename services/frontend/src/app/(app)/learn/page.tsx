@@ -26,7 +26,7 @@ export default function LearnPage() {
       {/* featured */}
       <Link
         href={`/learn/${featured.slug}`}
-        className="group block overflow-hidden rounded-3xl border border-line bg-card transition-colors hover:border-ink/20"
+        className="group block overflow-hidden rounded-xl border border-line bg-card transition-colors hover:border-ink/20"
       >
         <div className="grid lg:grid-cols-[1.1fr_1fr]">
           <div className="flex flex-col justify-center p-7 sm:p-10">
@@ -45,10 +45,9 @@ export default function LearnPage() {
             </div>
           </div>
           {/* editorial placeholder panel (no imagery dependency) */}
-          <div className="relative hidden min-h-[15rem] bg-night lg:block">
-            <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(110%_110%_at_80%_-10%,rgba(22,163,91,0.30),transparent_60%)]" />
+          <div className="relative hidden min-h-[15rem] border-l border-line bg-paper-soft lg:block">
             <div className="absolute inset-0 grid place-items-center">
-              <BookOpen className="size-12 text-signal-bright/80" strokeWidth={1.2} />
+              <BookOpen className="size-12 text-signal/70" strokeWidth={1.2} />
             </div>
           </div>
         </div>
@@ -62,7 +61,7 @@ export default function LearnPage() {
             <Link
               key={a.slug}
               href={`/learn/${a.slug}`}
-              className="group flex flex-col rounded-2xl border border-line bg-card p-5 transition-all hover:-translate-y-0.5 hover:shadow-card"
+              className="group flex flex-col rounded-lg border border-line bg-card p-5 transition-all hover:-translate-y-0.5 hover:shadow-card"
             >
               <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-signal-deep">{a.category}</span>
               <h4 className="mt-2 font-serif text-xl leading-snug text-ink">{a.title}</h4>
@@ -87,17 +86,16 @@ export default function LearnPage() {
               <Link
                 key={a.slug}
                 href={`/learn/${a.slug}`}
-                className="group relative flex items-end overflow-hidden rounded-2xl border border-line bg-night p-6 transition-colors hover:border-signal/40"
+                className="group relative flex items-end overflow-hidden rounded-lg border border-line bg-card p-6 transition-colors hover:border-signal/40"
               >
-                <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(120%_120%_at_15%_-20%,rgba(22,163,91,0.22),transparent_55%)]" />
-                <span className="relative z-10 grid size-12 shrink-0 place-items-center rounded-full bg-paper/10 ring-1 ring-paper/20 transition-colors group-hover:bg-signal">
-                  <Play className="size-5 text-paper" strokeWidth={1.8} />
+                <span className="relative z-10 grid size-12 shrink-0 place-items-center rounded-full border border-line bg-paper-soft transition-colors group-hover:bg-signal">
+                  <Play className="size-5 text-signal transition-colors group-hover:text-white" strokeWidth={1.8} />
                 </span>
                 <div className="relative z-10 ml-4">
-                  <div className="font-mono text-[10px] uppercase tracking-[0.14em] text-signal-bright">
+                  <div className="font-mono text-[10px] uppercase tracking-[0.14em] text-signal-deep">
                     {a.readMinutes}-min explainer
                   </div>
-                  <div className="mt-1 font-serif text-xl text-paper">{a.title}</div>
+                  <div className="mt-1 font-serif text-xl text-ink">{a.title}</div>
                 </div>
               </Link>
             ))}

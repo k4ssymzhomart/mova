@@ -130,25 +130,24 @@ export default async function ProgramPage() {
         </p>
       </header>
 
-      {/* Active module — dark emerald immersive hero with the day's CTA */}
-      <section className="relative overflow-hidden rounded-3xl bg-night px-7 py-7 shadow-sm sm:px-9 sm:py-9">
-        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(120%_120%_at_85%_-25%,rgba(22,163,91,0.30),transparent_60%)]" />
+      {/* Active module — the day's focus + CTA */}
+      <section className="relative overflow-hidden rounded-xl border border-line bg-card px-7 py-7 sm:px-9 sm:py-9">
         <div className="relative flex flex-wrap items-end justify-between gap-6">
           <div className="min-w-0">
-            <div className="font-mono text-[11px] uppercase tracking-[0.22em] text-signal-bright">
+            <div className="font-mono text-[11px] uppercase tracking-[0.22em] text-signal">
               {program ? "Today's focus" : "Today"}
             </div>
-            <h2 className="mt-2 font-serif text-4xl italic leading-tight text-paper sm:text-5xl">
+            <h2 className="mt-2 font-serif text-4xl italic leading-tight text-ink sm:text-5xl">
               {moduleTitle}
             </h2>
             {primaryEx?.description && (
-              <p className="mt-3 max-w-md text-sm leading-relaxed text-paper/60">
+              <p className="mt-3 max-w-md text-sm leading-relaxed text-ink-soft">
                 {primaryEx.description}
               </p>
             )}
             {primary?.frequency_per_week != null && (
-              <div className="mt-4 inline-flex items-center gap-2 rounded-pill bg-paper/[0.08] px-3 py-1 font-mono text-[11px] uppercase tracking-[0.14em] text-paper/70">
-                <CalendarCheck className="size-3.5 text-signal-bright" strokeWidth={2} />
+              <div className="mt-4 inline-flex items-center gap-2 rounded-pill border border-line bg-paper-soft px-3 py-1 font-mono text-[11px] uppercase tracking-[0.14em] text-ink-soft">
+                <CalendarCheck className="size-3.5 text-signal" strokeWidth={2} />
                 {primary.frequency_per_week}× per week
               </div>
             )}
@@ -156,7 +155,7 @@ export default async function ProgramPage() {
           <Link
             href="/app/session/new"
             prefetch={false}
-            className="inline-flex shrink-0 items-center gap-2 rounded-pill bg-signal px-6 py-3 text-sm font-medium text-white shadow-sm transition-colors hover:bg-signal-bright"
+            className="inline-flex shrink-0 items-center gap-2 rounded-pill bg-signal px-6 py-3 text-sm font-medium text-white transition-colors hover:bg-signal-bright"
           >
             Start today&apos;s session
             <ArrowRight className="size-4" strokeWidth={2} />
@@ -195,7 +194,7 @@ export default async function ProgramPage() {
         </div>
 
         {prescriptions.length === 0 ? (
-          <div className="rounded-2xl border border-dashed border-line bg-paper-soft/50 px-6 py-10 text-center">
+          <div className="rounded-lg border border-dashed border-line bg-paper-soft/50 px-6 py-10 text-center">
             <Dumbbell className="mx-auto size-6 text-ink-faint" strokeWidth={1.6} />
             <p className="mt-3 text-sm text-ink-soft">
               No exercises prescribed yet. Browse the{" "}
@@ -211,7 +210,7 @@ export default async function ProgramPage() {
               const ex = one(p.exercise);
               if (!ex) return null;
               return (
-                <article key={p.id} className="rounded-2xl border border-line bg-card p-5">
+                <article key={p.id} className="rounded-lg border border-line bg-card p-5">
                   <div className="flex items-center gap-2">
                     <span className="rounded-pill bg-signal/10 px-2.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.1em] text-signal-deep">
                       {MODALITY_LABEL[ex.modality] ?? ex.modality}
@@ -246,7 +245,7 @@ export default async function ProgramPage() {
       </section>
 
       {program?.notes && (
-        <section className="rounded-2xl border border-line bg-paper-soft/50 p-5">
+        <section className="rounded-lg border border-line bg-paper-soft/50 p-5">
           <div className="flex items-center gap-2 font-mono text-[11px] uppercase tracking-[0.16em] text-ink-faint">
             <NotebookPen className="size-3.5" strokeWidth={1.8} />
             Care-team note
@@ -268,7 +267,7 @@ function Metric({
   value: string;
 }) {
   return (
-    <div className="rounded-2xl border border-line bg-card p-5">
+    <div className="rounded-lg border border-line bg-card p-5">
       <div className="flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.14em] text-ink-faint">
         <Icon className="size-3.5" strokeWidth={1.8} />
         {label}

@@ -106,11 +106,11 @@ function CameraPanel() {
   const Ico = state === "granted" ? Camera : CameraOff;
 
   return (
-    <section className="rounded-3xl border border-line bg-card p-7">
+    <section className="rounded-xl border border-line bg-card p-7">
       <div className="flex flex-wrap items-center gap-4">
         <span
           className={cn(
-            "grid size-14 shrink-0 place-items-center rounded-2xl ring-1",
+            "grid size-14 shrink-0 place-items-center rounded-lg ring-1",
             state === "granted" ? "bg-signal/10 text-signal-deep ring-signal/25" : "bg-paper-soft text-ink-soft ring-line",
           )}
         >
@@ -177,7 +177,7 @@ function WearablesPanel() {
   const connectedCount = sensors.filter((s) => s.connected).length;
 
   return (
-    <section className="rounded-3xl border border-line bg-card p-7">
+    <section className="rounded-xl border border-line bg-card p-7">
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div className="flex items-center gap-3">
           <span className="grid size-10 place-items-center rounded-xl bg-paper-soft text-ink-soft ring-1 ring-line">
@@ -207,7 +207,7 @@ function WearablesPanel() {
 
       <div className="mt-6">
         {phase === "idle" && (
-          <div className="rounded-2xl border border-dashed border-line bg-paper-soft/40 px-6 py-12 text-center">
+          <div className="rounded-lg border border-dashed border-line bg-paper-soft/40 px-6 py-12 text-center">
             <Cpu className="mx-auto size-7 text-ink-faint" strokeWidth={1.5} />
             <p className="mx-auto mt-3 max-w-sm text-sm text-ink-soft">
               No sensors paired yet. Put your Mova IMUs in pairing mode and scan to connect.
@@ -216,7 +216,7 @@ function WearablesPanel() {
         )}
 
         {phase === "scanning" && (
-          <div className="grid place-items-center rounded-2xl border border-line bg-paper-soft/40 px-6 py-12">
+          <div className="grid place-items-center rounded-lg border border-line bg-paper-soft/40 px-6 py-12">
             <span className="relative grid size-16 place-items-center">
               <span className="absolute inset-0 animate-ping rounded-full bg-signal/20" />
               <span className="grid size-12 place-items-center rounded-full bg-card ring-1 ring-signal/30">
@@ -245,7 +245,7 @@ function SensorRow({ sensor, onToggle }: { sensor: Sensor; onToggle: () => void 
   return (
     <div
       className={cn(
-        "flex items-center gap-4 rounded-2xl border p-4 transition-colors",
+        "flex items-center gap-4 rounded-lg border p-4 transition-colors",
         sensor.connected ? "border-signal/30 bg-signal/[0.04]" : "border-line bg-card",
       )}
     >

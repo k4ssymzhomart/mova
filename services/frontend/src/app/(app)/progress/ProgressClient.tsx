@@ -53,7 +53,7 @@ export default function ProgressClient({ userId }: { userId: string }) {
 
 function Empty() {
   return (
-    <div className="rounded-2xl border border-line bg-card p-10 text-center">
+    <div className="rounded-lg border border-line bg-card p-10 text-center">
       <Activity className="mx-auto size-7 text-ink-faint" strokeWidth={1.5} />
       <p className="mx-auto mt-4 max-w-md text-ink-soft">
         No sessions yet. Complete a reaching or gait bout and Mova starts charting your range, speed,
@@ -133,7 +133,7 @@ function Body({ sessions }: { sessions: SessionRecord[] }) {
       {/* history */}
       <section>
         <h2 className="mb-4 font-serif text-2xl text-ink">Session history</h2>
-        <div className="overflow-hidden rounded-2xl border border-line bg-card">
+        <div className="overflow-hidden rounded-lg border border-line bg-card">
           {[...sessions].reverse().map((x, i) => (
             <div
               key={x.id}
@@ -179,7 +179,7 @@ function Stat({
   suffix?: string;
 }) {
   return (
-    <div className="rounded-2xl border border-line bg-card p-5">
+    <div className="rounded-lg border border-line bg-card p-5">
       <div className="flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.16em] text-ink-faint">
         <Icon className="size-3.5" strokeWidth={1.8} />
         {label}
@@ -218,7 +218,7 @@ function TrendTile({
   const direction = invert ? lowerNote : higherNote;
 
   return (
-    <div className="rounded-2xl border border-line bg-card p-5">
+    <div className="rounded-lg border border-line bg-card p-5">
       <div className="flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.16em] text-ink-faint">
         <Icon className="size-3.5" strokeWidth={1.8} />
         {label}
@@ -244,7 +244,7 @@ function InsightCard({ ins }: { ins: Insight }) {
   const ring =
     ins.tone === "positive" ? "border-signal/40" : ins.tone === "watch" ? "border-amber-400/50" : "border-line";
   return (
-    <div className={cn("rounded-2xl border bg-card p-5", ring)}>
+    <div className={cn("rounded-lg border bg-card p-5", ring)}>
       <div className="flex items-baseline justify-between gap-3">
         <h3 className="font-serif text-lg text-ink">{ins.title}</h3>
         {ins.metric && <span className="tnum font-mono text-sm text-signal-deep">{ins.metric}</span>}
@@ -262,12 +262,12 @@ function LoadingSkeleton() {
     <div className="space-y-10">
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         {Array.from({ length: 4 }).map((_, i) => (
-          <div key={i} className="h-[104px] animate-pulse rounded-2xl border border-line bg-paper-soft/60" />
+          <div key={i} className="h-[104px] animate-pulse rounded-lg border border-line bg-paper-soft/60" />
         ))}
       </div>
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {Array.from({ length: 3 }).map((_, i) => (
-          <div key={i} className="h-[132px] animate-pulse rounded-2xl border border-line bg-paper-soft/60" />
+          <div key={i} className="h-[132px] animate-pulse rounded-lg border border-line bg-paper-soft/60" />
         ))}
       </div>
     </div>

@@ -13,7 +13,7 @@ export default function ComingSoon({
 }) {
   return (
     <div className="mx-auto flex min-h-[60vh] max-w-md flex-col items-center justify-center text-center">
-      <div className="grid size-14 place-items-center rounded-2xl bg-paper-soft text-ink-soft ring-1 ring-line">
+      <div className="grid size-14 place-items-center rounded-lg bg-paper-soft text-ink-soft ring-1 ring-line">
         <Icon className="size-6" strokeWidth={1.6} />
       </div>
       <div className="mt-5 font-mono text-[11px] uppercase tracking-[0.22em] text-signal">Coming soon</div>

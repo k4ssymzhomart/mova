@@ -67,7 +67,7 @@ export default function IntakePage() {
             ))}
           </div>
 
-          <section className="rounded-[1.75rem] border border-line bg-card/80 p-6 shadow-card backdrop-blur-md sm:p-10">
+          <section className="rounded-xl border border-line bg-card/80 p-6 shadow-card backdrop-blur-md sm:p-10">
             {step === 0 && (
               <Step
                 eyebrow="Welcome to Mova"
@@ -241,7 +241,7 @@ function OptionCard({
     <button
       onClick={onClick}
       className={cn(
-        "group flex h-full flex-col rounded-[1.25rem] border bg-card p-5 text-left shadow-soft transition-all duration-300 ease-editorial hover:-translate-y-1 hover:shadow-card",
+        "group flex h-full flex-col rounded-lg border bg-card p-5 text-left shadow-soft transition-all duration-300 ease-editorial hover:-translate-y-1 hover:shadow-card",
         selected ? "border-signal ring-2 ring-signal/30" : "border-line hover:border-ink/20",
       )}
     >

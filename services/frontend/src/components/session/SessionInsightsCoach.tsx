@@ -23,7 +23,7 @@ export default function SessionInsightsCoach({
   const series = isGait ? gaitSeries(history) : reachSeries(history);
 
   return (
-    <section className="mt-6 rounded-3xl border border-line bg-card p-6 shadow-sm sm:p-8">
+    <section className="mt-6 rounded-xl border border-line bg-card p-6 shadow-sm sm:p-8">
       <div className="font-mono text-[11px] uppercase tracking-[0.22em] text-signal">Session analysis</div>
       <h2 className="mt-2 font-serif text-2xl italic text-ink">Here's what your movement is telling us.</h2>
 
@@ -44,7 +44,7 @@ export default function SessionInsightsCoach({
       {series.length > 0 && (
         <div className="mt-6 grid gap-3 sm:grid-cols-3">
           {series.map((s) => (
-            <div key={s.label} className="rounded-2xl border border-line bg-paper-soft/40 p-4">
+            <div key={s.label} className="rounded-lg border border-line bg-paper-soft/40 p-4">
               <div className="flex items-baseline justify-between">
                 <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-ink-faint">{s.label}</span>
                 <span className="font-mono text-sm tabular-nums text-ink">{s.current}</span>

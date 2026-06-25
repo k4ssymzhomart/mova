@@ -46,33 +46,32 @@ export default async function AchievementsPage() {
         </h1>
       </div>
 
-      {/* Level / XP banner — dark emerald immersive */}
-      <section className="relative overflow-hidden rounded-3xl bg-night px-7 py-7 shadow-sm sm:px-9 sm:py-9">
-        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(120%_120%_at_85%_-25%,rgba(22,163,91,0.30),transparent_60%)]" />
+      {/* Level / XP banner */}
+      <section className="relative overflow-hidden rounded-xl border border-line bg-card px-7 py-7 sm:px-9 sm:py-9">
         <div className="relative">
           <div className="flex flex-wrap items-end justify-between gap-6">
             <div>
-              <div className="font-mono text-[11px] uppercase tracking-[0.22em] text-signal-bright">Level</div>
+              <div className="font-mono text-[11px] uppercase tracking-[0.22em] text-signal">Level</div>
               <div className="mt-1.5 flex items-baseline gap-3">
-                <span className="font-serif text-6xl italic leading-none text-paper">{lp.level}</span>
-                <span className="font-mono text-sm text-paper/55">{lp.totalXp.toLocaleString()} XP</span>
+                <span className="font-serif text-6xl italic leading-none text-ink">{lp.level}</span>
+                <span className="font-mono text-sm text-ink-faint">{lp.totalXp.toLocaleString()} XP</span>
               </div>
             </div>
             <div className="text-right">
-              <div className="font-mono text-[11px] uppercase tracking-[0.18em] text-paper/45">
+              <div className="font-mono text-[11px] uppercase tracking-[0.18em] text-ink-faint">
                 To level {lp.level + 1}
               </div>
-              <div className="mt-1 font-serif text-2xl text-paper">{lp.toNext.toLocaleString()} XP</div>
+              <div className="mt-1 font-serif text-2xl text-ink">{lp.toNext.toLocaleString()} XP</div>
             </div>
           </div>
           <div className="mt-6">
-            <div className="h-2 w-full overflow-hidden rounded-pill bg-paper/[0.14]">
+            <div className="h-2 w-full overflow-hidden rounded-pill bg-paper-soft">
               <div
                 className="h-full rounded-pill bg-signal transition-[width] duration-700 ease-editorial"
                 style={{ width: `${Math.round(lp.fraction * 100)}%` }}
               />
             </div>
-            <div className="mt-2 flex justify-between font-mono text-[11px] text-paper/45">
+            <div className="mt-2 flex justify-between font-mono text-[11px] text-ink-faint">
               <span>
                 {lp.intoLevel.toLocaleString()} / {lp.span.toLocaleString()} XP this level
               </span>
@@ -110,13 +109,13 @@ export default async function AchievementsPage() {
               <div
                 key={d.code}
                 className={cn(
-                  "flex items-start gap-4 rounded-2xl border p-5",
+                  "flex items-start gap-4 rounded-lg border p-5",
                   isEarned ? "border-signal/30 bg-signal/[0.04]" : "border-line bg-card",
                 )}
               >
                 <div
                   className={cn(
-                    "grid size-14 shrink-0 place-items-center rounded-2xl",
+                    "grid size-14 shrink-0 place-items-center rounded-lg",
                     isEarned ? "bg-card ring-1 ring-signal/25" : "bg-paper-soft ring-1 ring-line",
                   )}
                 >
@@ -157,7 +156,7 @@ function StreakCard({
   return (
     <div
       className={cn(
-        "rounded-2xl border p-5",
+        "rounded-lg border p-5",
         active ? "border-signal/30 bg-signal/[0.05]" : "border-line bg-card",
       )}
     >
