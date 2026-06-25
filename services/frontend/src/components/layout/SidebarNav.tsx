@@ -32,13 +32,15 @@ interface NavItem {
   label: string;
   icon: LucideIcon;
   ready: boolean;
+  match?: string; // active-state prefix (defaults to href); longest match wins
+  prefetch?: boolean;
 }
 
 const NAV: NavItem[] = [
-  { href: "/app", label: "Today", icon: Home, ready: true },
-  { href: "/program", label: "My Program", icon: ClipboardList, ready: false },
-  { href: "/session", label: "Train", icon: Activity, ready: true },
-  { href: "/exercises", label: "Exercises", icon: Dumbbell, ready: false },
+  { href: "/app", label: "Today", icon: Home, ready: true, match: "/app" },
+  { href: "/program", label: "My Program", icon: ClipboardList, ready: true },
+  { href: "/app/session/new", label: "Train", icon: Activity, ready: true, match: "/app/session", prefetch: false },
+  { href: "/exercises", label: "Exercises", icon: Dumbbell, ready: true },
   { href: "/progress", label: "Progress", icon: TrendingUp, ready: true },
   { href: "/achievements", label: "Achievements", icon: Trophy, ready: true },
   { href: "/devices", label: "Devices", icon: Bluetooth, ready: false },
@@ -47,8 +49,18 @@ const NAV: NavItem[] = [
   { href: "/settings", label: "Settings", icon: Settings, ready: false },
 ];
 
-function isActive(pathname: string, href: string): boolean {
-  return pathname === href || pathname.startsWith(`${href}/`);
+/** Longest matching nav prefix wins, so /app/session/[id] highlights Train, not Today. */
+function activeHref(pathname: string): string | null {
+  let best: string | null = null;
+  let bestLen = -1;
+  for (const it of NAV) {
+    const m = it.match ?? it.href;
+    if ((pathname === m || pathname.startsWith(`${m}/`)) && m.length > bestLen) {
+      best = it.href;
+      bestLen = m.length;
+    }
+  }
+  return best;
 }
 
 export default function SidebarNav({
@@ -65,6 +77,7 @@ export default function SidebarNav({
   onNavigate?: () => void;
 }) {
   const pathname = usePathname() ?? "/app";
+  const current = activeHref(pathname);
 
   return (
     <div className="flex h-full flex-col">
@@ -108,12 +121,13 @@ export default function SidebarNav({
       {/* nav */}
       <nav className="flex-1 space-y-0.5 overflow-y-auto px-2 py-1">
         {NAV.map((item) => {
-          const active = isActive(pathname, item.href);
+          const active = current === item.href;
           const Icon = item.icon;
           return (
             <Link
               key={item.href}
               href={item.href}
+              prefetch={item.prefetch}
               onClick={onNavigate}
               title={collapsed ? item.label : undefined}
               aria-current={active ? "page" : undefined}

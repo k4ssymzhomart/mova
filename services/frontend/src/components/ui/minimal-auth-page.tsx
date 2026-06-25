@@ -63,6 +63,23 @@ export function MinimalAuthPage() {
     );
   }
 
+  // Dev-only: sign in as the seeded test user so authenticated/SSR pages can be verified without
+  // clicking through OAuth. The whole block is tree-shaken out of production builds.
+  async function devLogin() {
+    setBusy("dev");
+    setMsg(null);
+    const { error } = await supabase.auth.signInWithPassword({
+      email: "dev@mova.local",
+      password: "password123",
+    });
+    if (error) {
+      setBusy(null);
+      setMsg({ kind: "error", text: `Dev login failed: ${error.message}` });
+      return;
+    }
+    window.location.assign(nextParam());
+  }
+
   return (
     <div className="relative w-full md:h-screen md:overflow-hidden">
       <Particles
@@ -180,6 +197,17 @@ export function MinimalAuthPage() {
               Continue with email
             </Button>
           </form>
+
+          {process.env.NODE_ENV === "development" && (
+            <button
+              type="button"
+              onClick={devLogin}
+              disabled={busy !== null}
+              className="w-full rounded-md border border-dashed border-signal/40 bg-signal/5 px-3 py-2.5 text-sm font-medium text-signal-deep transition-colors hover:bg-signal/10 disabled:opacity-60"
+            >
+              {busy === "dev" ? "Signing in…" : "Dev auto-login · dev@mova.local"}
+            </button>
+          )}
 
           <p className="text-muted-foreground mt-8 text-sm">
             By continuing, you agree to our{" "}
