@@ -1,10 +1,11 @@
 "use client";
 
-// AppShell — the persistent layout for the authenticated patient app (Part 2.B of the master doc).
-// A collapsible left sidebar on a soft gray canvas, with the page content floating inside a large white
-// rounded-3xl card so the canvas peeks through the gaps (the "spatial" feel). On small screens the
-// sidebar becomes a hamburger drawer. Collapse state persists across sessions; the streak ring is
-// derived from the local session history.
+// AppShell — the persistent layout for the authenticated patient app.
+// A FIXED, solid, un-rounded sidebar rail on the left (its own panel, flush to the viewport edge), with
+// the page content flowing on an open canvas to the right — no single rounded container wrapping the
+// whole page, so nothing feels "boxed in". Individual cards inside each page provide the spatial depth.
+// On small screens the rail becomes a hamburger drawer. Collapse state persists; the streak is derived
+// from the signed-in user's own on-device history (scoped by user id).
 
 import { Menu, X } from "lucide-react";
 import Link from "next/link";
@@ -22,10 +23,12 @@ const COLLAPSE_KEY = "mova.sidebar.collapsed";
 export default function AppShell({
   name,
   email: _email,
+  userId,
   children,
 }: {
   name: string;
   email: string;
+  userId: string;
   children: ReactNode;
 }) {
   const [collapsed, setCollapsed] = useState(false);
@@ -33,11 +36,11 @@ export default function AppShell({
   const [streak, setStreak] = useState(0);
   const pathname = usePathname();
 
-  // Hydrate persisted UI state + derive the streak from local history (client-only).
+  // Hydrate persisted UI state + derive the streak from this user's own local history.
   useEffect(() => {
     setCollapsed(window.localStorage.getItem(COLLAPSE_KEY) === "1");
-    setStreak(computeStreak(loadSessions()));
-  }, []);
+    setStreak(computeStreak(loadSessions(userId)));
+  }, [userId]);
 
   // Close the mobile drawer whenever the route changes.
   useEffect(() => {
@@ -60,10 +63,13 @@ export default function AppShell({
     });
   }
 
+  const railW = collapsed ? "lg:w-[74px]" : "lg:w-[260px]";
+  const contentPad = collapsed ? "lg:pl-[74px]" : "lg:pl-[260px]";
+
   return (
     <div className="min-h-[100dvh] bg-paper-soft text-ink">
       {/* mobile top bar */}
-      <div className="sticky top-0 z-30 flex items-center justify-between border-b border-line bg-paper-soft/90 px-4 py-3 backdrop-blur-md lg:hidden">
+      <div className="sticky top-0 z-30 flex items-center justify-between border-b border-line bg-card/90 px-4 py-3 backdrop-blur-md lg:hidden">
         <Link href="/app" className="flex items-center">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src="/logo-mova.png" alt="Mova" className="h-7 w-auto" />
@@ -72,29 +78,27 @@ export default function AppShell({
           type="button"
           onClick={() => setMobileOpen(true)}
           aria-label="Open menu"
-          className="grid size-9 place-items-center rounded-xl text-ink-soft transition-colors hover:bg-card hover:text-ink"
+          className="grid size-9 place-items-center rounded-lg text-ink-soft transition-colors hover:bg-paper-soft hover:text-ink"
         >
           <Menu className="size-5" strokeWidth={1.8} />
         </button>
       </div>
 
-      <div className="flex">
-        {/* desktop sidebar */}
-        <aside
-          className={cn(
-            "sticky top-0 hidden h-[100dvh] shrink-0 transition-[width] duration-300 ease-editorial lg:block",
-            collapsed ? "w-[76px]" : "w-64",
-          )}
-        >
-          <SidebarNav collapsed={collapsed} name={name} streak={streak} onToggleCollapse={toggleCollapse} />
-        </aside>
+      {/* desktop fixed rail — solid, square, flush to the edge */}
+      <aside
+        className={cn(
+          "fixed inset-y-0 left-0 z-30 hidden border-r border-line bg-card transition-[width] duration-300 ease-editorial lg:block",
+          railW,
+        )}
+      >
+        <SidebarNav collapsed={collapsed} name={name} streak={streak} onToggleCollapse={toggleCollapse} />
+      </aside>
 
-        {/* main content — a floating white card on the gray canvas */}
-        <div className="min-w-0 flex-1 p-3 sm:p-4 lg:py-4 lg:pl-1 lg:pr-4">
-          <main className="min-h-[calc(100dvh-1.5rem)] rounded-3xl bg-card p-5 shadow-sm ring-1 ring-line/60 sm:p-7 lg:min-h-[calc(100dvh-2rem)] lg:p-10">
-            {children}
-          </main>
-        </div>
+      {/* content — open canvas, generous gutters, no wrapping card */}
+      <div className={cn("transition-[padding] duration-300 ease-editorial", contentPad)}>
+        <main className="mx-auto w-full max-w-[1180px] px-5 py-8 sm:px-8 lg:px-12 lg:py-12">
+          {children}
+        </main>
       </div>
 
       {/* mobile drawer */}
@@ -110,7 +114,7 @@ export default function AppShell({
         />
         <div
           className={cn(
-            "absolute inset-y-0 left-0 flex w-72 max-w-[82%] flex-col bg-paper-soft shadow-2xl transition-transform duration-300 ease-editorial",
+            "absolute inset-y-0 left-0 flex w-72 max-w-[82%] flex-col border-r border-line bg-card shadow-2xl transition-transform duration-300 ease-editorial",
             mobileOpen ? "translate-x-0" : "-translate-x-full",
           )}
         >
@@ -123,7 +127,7 @@ export default function AppShell({
               type="button"
               onClick={() => setMobileOpen(false)}
               aria-label="Close menu"
-              className="grid size-9 place-items-center rounded-xl text-ink-soft transition-colors hover:bg-card hover:text-ink"
+              className="grid size-9 place-items-center rounded-lg text-ink-soft transition-colors hover:bg-paper-soft hover:text-ink"
             >
               <X className="size-5" strokeWidth={1.8} />
             </button>

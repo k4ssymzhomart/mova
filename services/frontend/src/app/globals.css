@@ -3,9 +3,12 @@
 @tailwind utilities;
 
 :root {
-  --font-inter: "Inter", system-ui, sans-serif;
-  --font-serif: "Instrument Serif", Georgia, serif;
-  --font-mono: "SF Mono", ui-monospace, "JetBrains Mono", Menlo, monospace;
+  /* One typeface everywhere — Electrolize (loaded by next/font as --font-electrolize). Every legacy
+     token now resolves to it, so `font-sans`, `font-serif` and `font-mono` all render Electrolize. */
+  --font-electrolize: "Electrolize", system-ui, sans-serif;
+  --font-inter: var(--font-electrolize);
+  --font-serif: var(--font-electrolize);
+  --font-mono: var(--font-electrolize), ui-monospace, monospace;
 
   --paper: #ffffff;
   --paper-soft: #f3f4f1;
@@ -45,7 +48,9 @@ body {
   margin: 0;
   background-color: var(--paper);
   color: var(--ink);
-  font-family: var(--font-inter);
+  font-family: var(--font-electrolize);
+  /* Electrolize ships a single 400 weight — never let the browser fake bold or italic. */
+  font-synthesis: none;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
