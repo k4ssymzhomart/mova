@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import SessionReward, { type SessionRewardData } from "@/components/gamification/SessionReward";
 import PoseStage, { type SessionMode, type StageStats } from "@/components/session/PoseStage";
 import SessionTelemetry from "@/components/session/SessionTelemetry";
 import { Metric, Panel, PillButton, Toggle } from "@/components/session/ui";
@@ -16,6 +17,7 @@ import type { Insight, SessionRecord, Side } from "@/lib/insights/types";
 import { type LivePrediction, useLiveInference } from "@/lib/onnx/useLiveInference";
 import { abilityFor, loadProfile, startingCadence } from "@/lib/profile/store";
 import type { PatientProfile } from "@/lib/profile/types";
+import { createClient } from "@/lib/supabase/client";
 
 const INFER_MS = 600;
 const ZERO_REACH: ReachingStats = { score: 0, attempts: 0, lastReachMs: null };
@@ -72,8 +74,11 @@ export default function SessionPage() {
   const [fill, setFill] = useState(0);
   const [inferences, setInferences] = useState(0);
   const [summary, setSummary] = useState<{ record: SessionRecord; insights: Insight[] } | null>(null);
+  const [reward, setReward] = useState<SessionRewardData | null>(null);
 
   // session accumulators
+  const [supabase] = useState(() => createClient());
+  const sessionIdRef = useRef<string | null>(null);
   const startedAt = useRef(0);
   const prevScore = useRef(0);
   const reachTimes = useRef<number[]>([]);
@@ -120,6 +125,7 @@ export default function SessionPage() {
 
   const start = useCallback(async () => {
     setSummary(null);
+    setReward(null);
     prevScore.current = 0;
     reachTimes.current = [];
     gaitRef.current = ZERO_GAIT;
@@ -132,9 +138,23 @@ export default function SessionPage() {
     setPrediction(null);
     pipeline.current.reset();
     startedAt.current = Date.now();
+    // Open a backing Supabase training session so this workout can be scored + rewarded (best-effort).
+    sessionIdRef.current = null;
+    void (async () => {
+      try {
+        const { data } = await supabase.rpc("start_training_session", {
+          p_exercise_slug: null,
+          p_device_info: { client: "web", via: "session-game", mode: modeRef.current },
+        });
+        const s = Array.isArray(data) ? data[0] : data;
+        sessionIdRef.current = s?.id ?? null;
+      } catch {
+        /* offline / unauthenticated — the game still works locally */
+      }
+    })();
     void liveRef.current.loadAll();
     await pose.start();
-  }, [pose]);
+  }, [pose, supabase]);
 
   const stop = useCallback(() => {
     pose.stop();
@@ -180,8 +200,40 @@ export default function SessionPage() {
     if (did) {
       saveSession(record);
       setSummary({ record, insights: computeInsights(loadSessions()) });
+
+      // Score the session on the backend, then award XP / streak / badges (best-effort).
+      const sid = sessionIdRef.current;
+      if (sid) {
+        const quality =
+          m === "gait"
+            ? record.gait
+              ? record.gait.rhythmPct
+              : null
+            : record.attempts > 0
+              ? record.reaches / record.attempts
+              : null;
+        const metrics = {
+          reps: m === "gait" ? (record.gait?.steps ?? 0) : record.reaches,
+          quality_score: quality,
+          fog_risk: record.fogRiskMean,
+          adherence: 1,
+        };
+        void (async () => {
+          try {
+            await supabase.rpc("finish_training_session", {
+              p_session: sid,
+              p_summary: { source: "session-game", mode: m, side: sideRef.current, duration_s: record.durationSec },
+              p_metrics: metrics,
+            });
+            const { data } = await supabase.rpc("award_session_rewards", { p_session: sid });
+            if (data) setReward(data as SessionRewardData);
+          } catch {
+            /* best-effort rewards */
+          }
+        })();
+      }
     }
-  }, [pose, reach.score, reach.attempts, inferences]);
+  }, [pose, reach.score, reach.attempts, inferences, supabase]);
 
   // Inference loop — decoupled from the render loop, off-main-thread (ort proxy), so the camera stays smooth.
   useEffect(() => {
@@ -361,8 +413,46 @@ export default function SessionPage() {
           </aside>
         </div>
 
-        {summary && <PostSession summary={summary} onRestart={start} />}
+        {reward ? (
+          <>
+            <SessionReward reward={reward} onRestart={start} />
+            {summary && <InsightCards insights={summary.insights} />}
+          </>
+        ) : (
+          summary && <PostSession summary={summary} onRestart={start} />
+        )}
     </>
+  );
+}
+
+function InsightCards({ insights }: { insights: Insight[] }) {
+  const toneRing: Record<string, string> = {
+    positive: "border-signal/40",
+    watch: "border-ink/30",
+    neutral: "border-line",
+  };
+  return (
+    <section className="mt-6">
+      <div className="mb-3 font-mono text-[11px] uppercase tracking-[0.18em] text-ink-faint">
+        What changed
+      </div>
+      <div className="grid gap-3 md:grid-cols-2">
+        {insights.map((ins) => (
+          <div key={ins.id} className={`rounded-card border bg-card p-5 ${toneRing[ins.tone] ?? "border-line"}`}>
+            <div className="flex items-baseline justify-between gap-3">
+              <h3 className="font-serif text-xl italic text-ink">{ins.title}</h3>
+              {ins.metric && <span className="font-mono text-sm tabular-nums text-signal-deep">{ins.metric}</span>}
+            </div>
+            <p className="mt-2 text-[13px] leading-relaxed text-ink-soft">{ins.body}</p>
+            {ins.clinical && (
+              <p className="mt-3 border-t border-line pt-3 text-[11px] leading-relaxed text-ink-faint">
+                {ins.clinical}
+              </p>
+            )}
+          </div>
+        ))}
+      </div>
+    </section>
   );
 }
 
