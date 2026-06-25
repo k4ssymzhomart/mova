@@ -1,69 +1,80 @@
 "use client";
 
-// useLiveInference — the end-to-end edge bridge.
+// useLiveInference — the live inference bridge to the MOVA Python API backend.
 //
-// Takes a raw [200,6] virtual-IMU window (g, rad/s) from the pose pipeline, train-normalizes it with
-// the same per-channel stats the Python dataloader used, and runs BOTH exported graphs off the main
-// thread: HAR (wrist placement / HHAR conditioning) and FoG (ankle placement / Daphnet conditioning).
-// Returns labelled, softmaxed predictions for the live telemetry. Models + metadata are fetched from
-// /public/models; if either is missing the hook stays "unavailable" and the CV loop is unaffected.
+// Streams pose-derived virtual-IMU windows ([200,6] = acc xyz + gyro xyz) to the backend's
+// freezing-of-gait socket and maps each `FogPrediction` reply onto the live telemetry the session UI
+// consumes. The socket origin is read STRICTLY from `NEXT_PUBLIC_BACKEND_WS_URL` (nothing hardcoded);
+// the connection self-heals with exponential backoff. If the backend is unreachable — or the env var
+// is unset, e.g. in local dev — the hook degrades to a clearly-flagged simulated readout so a training
+// session never bricks.
+//
+// Backend contract (services/api/app/routers/predict.py + schemas.py):
+//   • WS   `${NEXT_PUBLIC_BACKEND_WS_URL}/api/v1/predict/fog/stream`
+//   • send `{ "window": number[][] /* [T,6] */, "sampling_rate": number }`
+//   • recv `{ is_fog, confidence, timestamp, freeze_index, source }`  (or `{ error }`)
+// `confidence` is the freeze probability (sigmoid around the Bachlin freeze-index threshold), which we
+// surface directly as the 0..1 `risk`.
 
-import { useCallback, useRef, useState } from "react";
-
-import { type OnnxStatus, useOnnxModel } from "./useOnnxModel";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 const CH = 6;
+const STREAM_PATH = "/api/v1/predict/fog/stream";
+const SAMPLING_RATE = 50;
+const REPLY_TIMEOUT_MS = 1500; // drop a window if the backend doesn't answer in time
+const CONNECT_TIMEOUT_MS = 3000; // run simulated meanwhile if the socket is slow to open
+const BACKOFF_MIN_MS = 500;
+const BACKOFF_MAX_MS = 10_000;
 
-// Which body region the live virtual-IMU window came from. "gait" carries a lower-leg (shank/ankle)
-// signal, which is in-distribution for the Daphnet-trained FoG model; "reach" carries a forearm signal
-// and the FoG readout is only a pipeline preview.
 export type InferMode = "reach" | "gait";
 export type Side = "left" | "right";
+export type LiveStatus = "idle" | "loading" | "ready" | "unavailable" | "error";
 
-export interface ModelMeta {
-  har_labels: string[];
-  fog_labels: string[];
-  placement_vocab: Record<string, number>;
-  dataset_vocab: Record<string, number>;
-  norm_stats: { mean: number[]; std: number[] };
+// The backend prediction payload (app/schemas.py::FogPrediction).
+interface FogPrediction {
+  is_fog: boolean;
+  confidence: number;
+  timestamp: string;
+  freeze_index: number | null;
+  source: string;
 }
 
 export interface LivePrediction {
   har: { label: string; prob: number; top: { label: string; p: number }[] } | null;
-  fog: { risk: number; valid: boolean } | null; // valid = window is lower-limb (in-distribution)
+  fog: { risk: number; valid: boolean } | null; // valid = lower-limb window (in-distribution for FoG)
   mode: InferMode;
   latencyMs: number;
   at: number;
-  simulated?: boolean; // true when produced by the offline fallback, not the real ONNX graph
+  simulated?: boolean; // true when produced by the offline fallback, not the backend model
 }
 
-/**
- * Map a capture mode + tracked side onto the encoder's placement/dataset conditioning ids.
- * - gait: FoG ← ankle / Daphnet (the worn-sensor placement it was trained on), HAR ← that leg's calf /
- *   REALDISP (whose labels — walking, stairs, knee-bends — are lower-limb).
- * - reach: unchanged from the original forearm pipeline (HAR ← wrist / HHAR; FoG ← ankle preview).
- */
-function routeIds(meta: ModelMeta, mode: InferMode, side: Side) {
-  const pv = meta.placement_vocab;
-  const dv = meta.dataset_vocab;
-  if (mode === "gait") {
-    const calf = side === "left" ? pv.l_calf : pv.r_calf;
-    return {
-      harPl: calf ?? pv.ankle ?? 0,
-      harDs: dv.realdisp ?? 2,
-      fogPl: pv.ankle ?? 0,
-      fogDs: dv.daphnet_fog ?? 0,
-      fogValid: true,
-    };
-  }
-  return {
-    harPl: pv.wrist ?? 0,
-    harDs: dv.hhar ?? 1,
-    fogPl: pv.ankle ?? 0,
-    fogDs: dv.daphnet_fog ?? 0,
-    fogValid: false,
-  };
+/** Backend socket URL from the public env var, or null when unconfigured. Trailing slashes trimmed so
+ *  both `wss://host` and `wss://host/` resolve to the same endpoint. NEXT_PUBLIC_* is inlined at build. */
+function streamUrl(): string | null {
+  const base = process.env.NEXT_PUBLIC_BACKEND_WS_URL;
+  if (!base) return null;
+  return `${base.replace(/\/+$/, "")}${STREAM_PATH}`;
 }
+
+/** Flat [T*6] virtual-IMU buffer → [T,6] rows, the shape the backend's FogWindow validator expects. */
+function reshape(raw: Float32Array): number[][] {
+  const rows: number[][] = [];
+  for (let i = 0; i + CH <= raw.length; i += CH) {
+    rows.push([raw[i], raw[i + 1], raw[i + 2], raw[i + 3], raw[i + 4], raw[i + 5]]);
+  }
+  return rows;
+}
+
+const clamp01 = (v: number) => Math.min(1, Math.max(0, v));
+
+// — Simulated fallback ————————————————————————————————————————————————————————
+// When the backend can't be reached we still produce a live, plausible, clearly-labelled readout so the
+// session stays interactive. FoG risk drifts on a slow sine; HAR is drawn from a mode-appropriate label
+// pool. Everything is flagged `simulated: true`.
+const MOCK_HAR: Record<InferMode, string[]> = {
+  gait: ["walking", "stairs_up", "stairs_down", "standing", "knees_bending_crouching"],
+  reach: ["frontal_elevation_arms", "lateral_elevation_arms", "arms_inner_rotation", "shoulders_high_rotation", "frontal_crossing_arms"],
+};
 
 function softmax(logits: number[]): number[] {
   const m = Math.max(...logits);
@@ -72,25 +83,15 @@ function softmax(logits: number[]): number[] {
   return ex.map((v) => v / s);
 }
 
-// — Simulated fallback ————————————————————————————————————————————————————————
-// When the .onnx binaries aren't deployed, we still want a live, plausible, clearly-labelled readout
-// so the session never bricks. This produces a smoothly-drifting FoG risk + a mode-appropriate HAR
-// distribution from the (git-tracked) label vocab. It is explicitly flagged `simulated: true`.
-const MOCK_HAR: Record<InferMode, string[]> = {
-  gait: ["walking", "stairs_up", "stairs_down", "standing", "knees_bending_crouching"],
-  reach: ["frontal_elevation_arms", "lateral_elevation_arms", "arms_inner_rotation", "shoulders_high_rotation", "frontal_crossing_arms"],
-};
-
-function mockPredict(meta: ModelMeta, mode: InferMode, side: Side, tick: number): LivePrediction {
-  // FoG risk: slow sine drift + light jitter; gait sits in a higher, in-distribution band.
+function mockPredict(mode: InferMode, side: Side, tick: number): LivePrediction {
   const base = mode === "gait" ? 0.32 : 0.16;
-  const wave = (Math.sin(tick / 9) + 1) / 2; // 0..1, ~slow
+  const phase = side === "left" ? 0 : Math.PI / 3; // small deterministic offset per side
+  const wave = (Math.sin(tick / 9 + phase) + 1) / 2;
   const jitter = (Math.random() - 0.5) * 0.07;
-  const risk = Math.min(0.96, Math.max(0.02, base + wave * 0.4 + jitter));
+  const risk = clamp01(base + wave * 0.4 + jitter);
 
-  const pool = MOCK_HAR[mode].filter((l) => meta.har_labels.includes(l));
-  const labels = pool.length ? pool : meta.har_labels.slice(0, 5);
-  const lead = Math.floor(((Math.sin(tick / 17) + 1) / 2) * labels.length) % labels.length;
+  const labels = MOCK_HAR[mode];
+  const lead = Math.floor(((Math.sin(tick / 17 + phase) + 1) / 2) * labels.length) % labels.length;
   const ranked = labels
     .map((label, i) => ({ label, p: i === lead ? 1.6 : Math.random() * 0.5 }))
     .sort((a, b) => b.p - a.p);
@@ -107,88 +108,192 @@ function mockPredict(meta: ModelMeta, mode: InferMode, side: Side, tick: number)
   };
 }
 
-export function useLiveInference() {
-  const fog = useOnnxModel("/models/fog.onnx");
-  const har = useOnnxModel("/models/har.onnx");
-  const metaRef = useRef<ModelMeta | null>(null);
-  const [ready, setReady] = useState(false);
-  const [simulated, setSimulated] = useState(false);
-  const simulatedRef = useRef(false);
-  const tickRef = useRef(0);
-  const busyRef = useRef(false);
+type StateChange = { status: LiveStatus; simulated: boolean };
 
-  const loadAll = useCallback(async () => {
-    if (!metaRef.current) {
-      const res = await fetch("/models/model_meta.json").catch(() => null);
-      if (res?.ok) metaRef.current = (await res.json()) as ModelMeta;
+// Imperative WebSocket controller. Kept off the React render path (lives in a ref) so reconnects and
+// in-flight bookkeeping don't churn component state; it pushes status/simulated changes back via a
+// callback. One window is in flight at a time, so replies (which the backend emits in receive order)
+// correlate to sends without needing a correlation id the payload doesn't carry.
+class LiveSocket {
+  private ws: WebSocket | null = null;
+  private pending: { resolve: (p: FogPrediction | null) => void; timer: number } | null = null;
+  private backoff = BACKOFF_MIN_MS;
+  private reconnectTimer: number | null = null;
+  private closed = false;
+  private readonly url: string | null;
+  private readonly onState: (s: StateChange) => void;
+
+  constructor(onState: (s: StateChange) => void) {
+    this.url = streamUrl();
+    this.onState = onState;
+  }
+
+  /** Begin the connection lifecycle, or go straight to simulated when no backend is configured. */
+  start(): void {
+    this.closed = false;
+    if (!this.url) {
+      this.onState({ status: "ready", simulated: true });
+      return;
     }
-    const [fogStatus, harStatus] = await Promise.all([fog.load(), har.load()]);
-    // If either real graph is missing/broken, fall back to simulated scoring (labels come from the
-    // git-tracked model_meta.json, so this works even with zero .onnx binaries on the server).
-    const realReady = fogStatus === "ready" && harStatus === "ready";
-    const sim = !realReady && !!metaRef.current;
-    simulatedRef.current = sim;
-    setSimulated(sim);
-    setReady(true);
-  }, [fog, har]);
+    this.onState({ status: "loading", simulated: false });
+    this.connect();
+  }
 
-  /** Normalize a raw [200,6] window in place-ish and run both models. Skips if a run is in flight. */
+  private connect(): void {
+    if (this.closed || !this.url) return;
+    let ws: WebSocket;
+    try {
+      ws = new WebSocket(this.url);
+    } catch {
+      this.scheduleReconnect();
+      return;
+    }
+    this.ws = ws;
+    // If the socket is slow to open, run simulated in the meantime; this same socket may still open.
+    const connectTimer = window.setTimeout(() => this.onState({ status: "ready", simulated: true }), CONNECT_TIMEOUT_MS);
+    ws.onopen = () => {
+      window.clearTimeout(connectTimer);
+      this.backoff = BACKOFF_MIN_MS;
+      this.onState({ status: "ready", simulated: false });
+    };
+    ws.onmessage = (ev) => this.handleMessage(ev);
+    ws.onerror = () => {
+      try {
+        ws.close();
+      } catch {
+        /* close() can throw if already closing */
+      }
+    };
+    ws.onclose = () => {
+      window.clearTimeout(connectTimer);
+      if (this.ws === ws) this.ws = null;
+      this.settlePending(null);
+      this.scheduleReconnect();
+    };
+  }
+
+  private handleMessage(ev: MessageEvent): void {
+    let data: unknown;
+    try {
+      data = JSON.parse(typeof ev.data === "string" ? ev.data : "");
+    } catch {
+      return;
+    }
+    // Backend emits either a FogPrediction or `{ error }`; only the former carries `confidence`.
+    const ok = !!data && typeof data === "object" && typeof (data as { confidence?: unknown }).confidence === "number";
+    this.settlePending(ok ? (data as FogPrediction) : null);
+  }
+
+  private settlePending(value: FogPrediction | null): void {
+    const p = this.pending;
+    if (!p) return;
+    this.pending = null;
+    window.clearTimeout(p.timer);
+    p.resolve(value);
+  }
+
+  private scheduleReconnect(): void {
+    if (this.closed) return;
+    // Backend unreachable → degrade to simulated and keep retrying with growing backoff.
+    this.onState({ status: "ready", simulated: true });
+    const delay = this.backoff;
+    this.backoff = Math.min(BACKOFF_MAX_MS, this.backoff * 2);
+    this.reconnectTimer = window.setTimeout(() => this.connect(), delay);
+  }
+
+  isLive(): boolean {
+    return !!this.ws && this.ws.readyState === WebSocket.OPEN;
+  }
+
+  /** Send one window; resolves with the backend prediction, or null if not connected / busy / timed out. */
+  send(frame: number[][]): Promise<FogPrediction | null> {
+    const ws = this.ws;
+    if (!ws || ws.readyState !== WebSocket.OPEN || this.pending) return Promise.resolve(null);
+    return new Promise((resolve) => {
+      const timer = window.setTimeout(() => {
+        if (this.pending?.timer === timer) {
+          this.pending = null;
+          resolve(null);
+        }
+      }, REPLY_TIMEOUT_MS);
+      this.pending = { resolve, timer };
+      try {
+        ws.send(JSON.stringify({ window: frame, sampling_rate: SAMPLING_RATE }));
+      } catch {
+        this.settlePending(null);
+      }
+    });
+  }
+
+  close(): void {
+    this.closed = true;
+    if (this.reconnectTimer != null) window.clearTimeout(this.reconnectTimer);
+    this.reconnectTimer = null;
+    this.settlePending(null);
+    try {
+      this.ws?.close();
+    } catch {
+      /* already closing */
+    }
+    this.ws = null;
+  }
+}
+
+export function useLiveInference() {
+  const [status, setStatus] = useState<LiveStatus>("idle");
+  const [simulated, setSimulated] = useState(false);
+  const [ready, setReady] = useState(false);
+  const socketRef = useRef<LiveSocket | null>(null);
+  const tickRef = useRef(0);
+
+  const ensure = useCallback((): LiveSocket => {
+    if (!socketRef.current) {
+      socketRef.current = new LiveSocket(({ status: s, simulated: sim }) => {
+        setStatus(s);
+        setSimulated(sim);
+        setReady(true);
+      });
+    }
+    return socketRef.current;
+  }, []);
+
+  // Open (or reopen) the backend socket for this session. Safe to call repeatedly.
+  const loadAll = useCallback(async () => {
+    ensure().start();
+  }, [ensure]);
+
+  // Score one virtual-IMU window. Tries the backend socket; on any miss (no backend, not yet connected,
+  // busy, or a timed-out reply) falls back to a clearly-flagged simulated readout so the loop never stalls.
   const infer = useCallback(
     async (raw: Float32Array, mode: InferMode = "reach", side: Side = "right"): Promise<LivePrediction | null> => {
-      const meta = metaRef.current;
-      if (!meta) return null;
-      // Offline fallback: synthesize a plausible, clearly-flagged readout (no real graph available).
-      if (simulatedRef.current) return mockPredict(meta, mode, side, ++tickRef.current);
-      if (busyRef.current) return null;
-      busyRef.current = true;
-      try {
-        const { mean, std } = meta.norm_stats;
-        const x = new Float32Array(raw.length);
-        for (let k = 0; k < raw.length; k += 1) {
-          const c = k % CH;
-          const sd = std[c] < 1e-6 ? 1 : std[c];
-          x[k] = (raw[k] - mean[c]) / sd;
+      const sock = ensure();
+      if (sock.isLive()) {
+        const t0 = performance.now();
+        const pred = await sock.send(reshape(raw));
+        if (pred) {
+          return {
+            har: null, // the backend stream is FoG-only; HAR is not part of this contract
+            fog: { risk: clamp01(pred.confidence), valid: mode === "gait" },
+            mode,
+            latencyMs: performance.now() - t0,
+            at: performance.now(),
+            simulated: false,
+          };
         }
-        const r = routeIds(meta, mode, side);
-
-        const [harOut, fogOut] = await Promise.all([
-          har.run(x, r.harPl, r.harDs),
-          fog.run(x, r.fogPl, r.fogDs),
-        ]);
-
-        let harPred: LivePrediction["har"] = null;
-        if (harOut) {
-          const probs = softmax(harOut.logits);
-          const ranked = probs
-            .map((p, i) => ({ label: meta.har_labels[i] ?? `class_${i}`, p }))
-            .sort((a, b) => b.p - a.p);
-          harPred = { label: ranked[0].label, prob: ranked[0].p, top: ranked.slice(0, 3) };
-        }
-        let fogPred: LivePrediction["fog"] = null;
-        if (fogOut) {
-          const probs = softmax(fogOut.logits);
-          fogPred = { risk: probs[1] ?? 0, valid: r.fogValid };
-        }
-        const latencyMs = Math.max(harOut?.latencyMs ?? 0, fogOut?.latencyMs ?? 0);
-        return { har: harPred, fog: fogPred, mode, latencyMs, at: performance.now() };
-      } finally {
-        busyRef.current = false;
       }
+      return mockPredict(mode, side, ++tickRef.current);
     },
-    [fog, har],
+    [ensure],
   );
 
-  const realReady = fog.status === "ready" && har.status === "ready";
-  const status: OnnxStatus =
-    realReady || simulated
-      ? "ready" // simulated mode is "ready" too — the live loop runs and produces flagged readouts
-      : fog.status === "loading" || har.status === "loading"
-        ? "loading"
-        : fog.status === "unavailable" || har.status === "unavailable"
-          ? "unavailable"
-          : fog.status === "error" || har.status === "error"
-            ? "error"
-            : "idle";
+  // Tear the socket down on unmount so we don't leak a reconnect loop across route changes.
+  useEffect(
+    () => () => {
+      socketRef.current?.close();
+      socketRef.current = null;
+    },
+    [],
+  );
 
-  return { status, ready, simulated, loadAll, infer, meta: metaRef };
+  return { status, ready, simulated, loadAll, infer };
 }

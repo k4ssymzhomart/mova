@@ -165,6 +165,9 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=<YOUR_SUPABASE_ANON_KEY>
 
 # Server-only — bypasses Row-Level Security, must never reach the client
 SUPABASE_SERVICE_ROLE_KEY=<YOUR_SUPABASE_SERVICE_ROLE_KEY>
+
+# Live inference backend (services/api). Optional — unset falls back to a simulated readout.
+NEXT_PUBLIC_BACKEND_WS_URL=<YOUR_BACKEND_WS_URL>   # e.g. wss://mova-api.onrender.com
 ```
 
 | Variable | Scope | Where to find it |
@@ -172,6 +175,7 @@ SUPABASE_SERVICE_ROLE_KEY=<YOUR_SUPABASE_SERVICE_ROLE_KEY>
 | `NEXT_PUBLIC_SUPABASE_URL` | Public | Supabase → Project Settings → API → Project URL |
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Public | Supabase → Project Settings → API → `anon` public key |
 | `SUPABASE_SERVICE_ROLE_KEY` | Server only | Supabase → Project Settings → API → `service_role` key |
+| `NEXT_PUBLIC_BACKEND_WS_URL` | Public | Origin of the deployed `services/api` (the live session connects to `…/api/v1/predict/fog/stream`) |
 
 > ⚠️ The `service_role` key has full database privileges and bypasses RLS. Keep it server-side only and
 > never expose it through a `NEXT_PUBLIC_*` variable.

@@ -29,6 +29,10 @@ services:
     envVars:
       - key: NODE_VERSION
         value: "20"
+      # Backend inference socket the live session connects to, e.g. wss://mova-api.onrender.com
+      # (the mova-api service above). Set in the dashboard; the frontend reads it at build time.
+      - key: NEXT_PUBLIC_BACKEND_WS_URL
+        sync: false
       # Supabase — set these in the Render dashboard; never commit real values.
       - key: NEXT_PUBLIC_SUPABASE_URL
         sync: false
