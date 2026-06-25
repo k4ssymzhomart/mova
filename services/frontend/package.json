@@ -7,7 +7,7 @@
     "sync:content": "node scripts/sync-content.mjs",
     "predev": "node scripts/sync-content.mjs && node scripts/fetch-models.mjs",
     "prebuild": "node scripts/sync-content.mjs && node scripts/fetch-models.mjs",
-    "dev": "next dev -p 3000",
+    "dev": "next start",
     "build": "next build",
     "start": "next start -p 3000",
     "lint": "next lint",
