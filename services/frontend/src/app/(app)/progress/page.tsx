@@ -3,8 +3,6 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 
-import AppHeader from "@/components/app/AppHeader";
-import RequireAuth from "@/components/auth/RequireAuth";
 import { CountUp } from "@/components/site/primitives";
 import { computeInsights, summarize } from "@/lib/insights/engine";
 import { loadSessions } from "@/lib/insights/store";
@@ -15,10 +13,7 @@ export default function ProgressPage() {
   useEffect(() => setSessions(loadSessions()), []);
 
   return (
-    <RequireAuth>
-    <div className="min-h-screen bg-paper text-ink">
-      <AppHeader active="/progress" />
-      <main className="mx-auto max-w-shell px-5 py-10 sm:px-8">
+    <>
         <div className="text-[11px] font-medium uppercase tracking-[0.22em] text-ink-faint">
           Your rehabilitation · personalised
         </div>
@@ -33,9 +28,7 @@ export default function ProgressPage() {
         ) : (
           <Body sessions={sessions} />
         )}
-      </main>
-    </div>
-    </RequireAuth>
+    </>
   );
 }
 

@@ -3,8 +3,6 @@
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import AppHeader from "@/components/app/AppHeader";
-import RequireAuth from "@/components/auth/RequireAuth";
 import PoseStage, { type SessionMode, type StageStats } from "@/components/session/PoseStage";
 import SessionTelemetry from "@/components/session/SessionTelemetry";
 import { Metric, Panel, PillButton, Toggle } from "@/components/session/ui";
@@ -214,11 +212,7 @@ export default function SessionPage() {
   }, [running]);
 
   return (
-    <RequireAuth>
-    <div className="min-h-screen bg-paper text-ink">
-      <AppHeader active="/session" />
-
-      <main className="mx-auto max-w-shell px-5 py-8 sm:px-8">
+    <>
         <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
           <div>
             <div className="text-[11px] font-medium uppercase tracking-[0.22em] text-ink-faint">
@@ -368,9 +362,7 @@ export default function SessionPage() {
         </div>
 
         {summary && <PostSession summary={summary} onRestart={start} />}
-      </main>
-    </div>
-    </RequireAuth>
+    </>
   );
 }
 
