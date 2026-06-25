@@ -4,7 +4,9 @@ import { useMotionValueEvent, useScroll } from "framer-motion";
 import { ArrowUpRight, ChevronDown, Menu, X } from "lucide-react";
 import { useEffect, useState } from "react";
 
+import LanguageToggle from "@/components/LanguageToggle";
 import { EVIDENCE_NAV, NAV_LINKS, NAV_SECONDARY } from "@/lib/site-data";
+import { useTranslation } from "@/locales/client";
 
 function computeDark() {
   if (typeof document === "undefined") return true;
@@ -18,6 +20,7 @@ function computeDark() {
 }
 
 export default function Nav() {
+  const { t } = useTranslation();
   const { scrollY } = useScroll();
   const [scrolled, setScrolled] = useState(false);
   const [dark, setDark] = useState(true);
@@ -126,12 +129,13 @@ export default function Nav() {
                 {l.label}
               </a>
             ))}
+            <LanguageToggle variant={dark ? "landing" : "app"} />
             <a
               href="/signin"
               className="inline-flex items-center gap-2 rounded-pill bg-signal px-4 py-2.5 text-sm font-medium text-white transition-colors duration-300 hover:bg-signal-bright"
             >
               <ArrowUpRight className="h-4 w-4" strokeWidth={1.6} />
-              Request Access
+              {t("landing.nav.getStarted")}
             </a>
           </div>
 
@@ -184,12 +188,15 @@ export default function Nav() {
               </a>
             ))}
 
+            <div className="mt-6 flex justify-center">
+              <LanguageToggle variant="landing" />
+            </div>
             <a
               href="/signin"
               onClick={() => setOpen(false)}
-              className="mt-6 inline-flex items-center justify-center gap-2 rounded-pill bg-signal px-4 py-4 text-white"
+              className="mt-4 inline-flex items-center justify-center gap-2 rounded-pill bg-signal px-4 py-4 text-white"
             >
-              Request Access
+              {t("landing.nav.getStarted")}
             </a>
           </nav>
         </div>

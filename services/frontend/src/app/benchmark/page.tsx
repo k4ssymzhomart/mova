@@ -129,7 +129,7 @@ export default function BenchmarkPage() {
               className="grid gap-2 rounded-card border border-line bg-card p-4 sm:grid-cols-[10rem_1fr] sm:gap-5"
             >
               <div>
-                <div className="font-serif text-[1.15rem] text-ink">{a.axis}</div>
+                <div className="text-[1.15rem] text-ink">{a.axis}</div>
                 <div className="mt-0.5 font-mono text-[11px] uppercase tracking-[0.08em] text-signal">
                   {a.dataset}
                 </div>

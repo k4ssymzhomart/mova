@@ -3,6 +3,8 @@ import type { ReactNode } from "react";
 import { Electrolize } from "next/font/google";
 
 import { AuthProvider } from "@/lib/auth/AuthProvider";
+import { LocaleProvider } from "@/locales/client";
+import { getLocale } from "@/locales/server";
 
 import "./globals.css";
 
@@ -30,10 +32,13 @@ export const metadata: Metadata = {
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {
+  const locale = getLocale();
   return (
-    <html lang="en" className={electrolize.variable}>
+    <html lang={locale} className={electrolize.variable}>
       <body>
-        <AuthProvider>{children}</AuthProvider>
+        <LocaleProvider initialLocale={locale}>
+          <AuthProvider>{children}</AuthProvider>
+        </LocaleProvider>
       </body>
     </html>
   );

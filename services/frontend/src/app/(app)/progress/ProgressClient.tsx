@@ -23,21 +23,19 @@ import { CountUp } from "@/components/site/primitives";
 import { computeInsights, summarize } from "@/lib/insights/engine";
 import { loadSessions } from "@/lib/insights/store";
 import type { Insight, SessionRecord } from "@/lib/insights/types";
+import { useTranslation } from "@/locales/client";
 import { cn } from "@/lib/utils";
 
 export default function ProgressClient({ userId }: { userId: string }) {
+  const { t } = useTranslation();
   const [sessions, setSessions] = useState<SessionRecord[] | null>(null);
   useEffect(() => setSessions(loadSessions(userId)), [userId]);
 
   return (
     <div className="space-y-8">
       <header>
-        <div className="font-mono text-[11px] uppercase tracking-[0.22em] text-signal">
-          Your rehabilitation · personalised
-        </div>
-        <h1 className="mt-2 max-w-2xl font-serif text-4xl leading-[1.05] text-ink sm:text-5xl">
-          Every session, charted into progress.
-        </h1>
+        <div className="font-mono text-[11px] uppercase tracking-[0.22em] text-signal">{t("progress.eyebrow")}</div>
+        <h1 className="mt-2 max-w-2xl text-4xl leading-[1.05] text-ink sm:text-5xl">{t("progress.title")}</h1>
       </header>
 
       {sessions === null ? (
@@ -52,19 +50,17 @@ export default function ProgressClient({ userId }: { userId: string }) {
 }
 
 function Empty() {
+  const { t } = useTranslation();
   return (
     <div className="rounded-lg border border-line bg-card p-10 text-center">
       <Activity className="mx-auto size-7 text-ink-faint" strokeWidth={1.5} />
-      <p className="mx-auto mt-4 max-w-md text-ink-soft">
-        No sessions yet. Complete a reaching or gait bout and Mova starts charting your range, speed,
-        cadence, and consistency — and surfaces personalised insights here.
-      </p>
+      <p className="mx-auto mt-4 max-w-md text-ink-soft">{t("progress.emptyBody")}</p>
       <Link
         href="/app/session/new"
         prefetch={false}
         className="mt-6 inline-flex items-center gap-2 rounded-pill bg-night px-6 py-3 text-sm text-paper-soft transition-colors hover:bg-ink"
       >
-        Start your first session
+        {t("progress.startFirst")}
         <ArrowRight className="size-4" strokeWidth={1.8} />
       </Link>
     </div>
@@ -72,6 +68,7 @@ function Empty() {
 }
 
 function Body({ sessions }: { sessions: SessionRecord[] }) {
+  const { t } = useTranslation();
   const s = summarize(sessions);
   const insights = computeInsights(sessions);
 
@@ -84,35 +81,35 @@ function Body({ sessions }: { sessions: SessionRecord[] }) {
     .map((x) => Math.round((x.fogRiskMean ?? 0) * 100));
 
   const stats: { icon: typeof Activity; label: string; value: number; suffix?: string }[] = [
-    { icon: Activity, label: "Sessions", value: s.totalSessions },
-    { icon: Flame, label: "Day streak", value: s.streakDays },
+    { icon: Activity, label: t("progress.sessionsStat"), value: s.totalSessions },
+    { icon: Flame, label: t("progress.dayStreak"), value: s.streakDays },
   ];
-  if (s.totalReaches > 0) stats.push({ icon: Target, label: "Targets reached", value: s.totalReaches });
-  if (s.totalSteps > 0) stats.push({ icon: Footprints, label: "Cued steps", value: s.totalSteps });
-  if (stats.length < 4 && s.bestCadenceSpm) stats.push({ icon: Gauge, label: "Best cadence", value: s.bestCadenceSpm, suffix: " spm" });
+  if (s.totalReaches > 0) stats.push({ icon: Target, label: t("progress.targetsReached"), value: s.totalReaches });
+  if (s.totalSteps > 0) stats.push({ icon: Footprints, label: t("progress.cuedSteps"), value: s.totalSteps });
+  if (stats.length < 4 && s.bestCadenceSpm) stats.push({ icon: Gauge, label: t("progress.bestCadence"), value: s.bestCadenceSpm, suffix: " spm" });
 
   return (
     <div className="space-y-10">
       {/* headline numerals */}
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        {stats.slice(0, 4).map((t) => (
-          <Stat key={t.label} icon={t.icon} label={t.label} value={t.value} suffix={t.suffix} />
+        {stats.slice(0, 4).map((st) => (
+          <Stat key={st.label} icon={st.icon} label={st.label} value={st.value} suffix={st.suffix} />
         ))}
       </div>
 
       {/* trends — numbers + deltas, no graphs */}
       {(reachTrend.length >= 2 || gaitTrend.length >= 2 || fogTrend.length >= 2) && (
         <section>
-          <h2 className="mb-4 font-serif text-2xl text-ink">Trends</h2>
+          <h2 className="mb-4 text-2xl text-ink">{t("progress.trends")}</h2>
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {reachTrend.length >= 2 && (
-              <TrendTile label="Reach time" unit="ms" data={reachTrend} invert lowerNote="faster" />
+              <TrendTile label={t("progress.reachTime")} unit="ms" data={reachTrend} invert lowerNote={t("progress.faster")} />
             )}
             {gaitTrend.length >= 2 && (
-              <TrendTile label="On-beat accuracy" unit="%" data={gaitTrend} higherNote="steadier" />
+              <TrendTile label={t("progress.onBeatAccuracy")} unit="%" data={gaitTrend} higherNote={t("progress.steadier")} />
             )}
             {fogTrend.length >= 2 && (
-              <TrendTile label="Freeze-risk" unit="%" data={fogTrend} invert lowerNote="calmer" icon={Waves} />
+              <TrendTile label={t("progress.freezeRisk")} unit="%" data={fogTrend} invert lowerNote={t("progress.calmer")} icon={Waves} />
             )}
           </div>
         </section>
@@ -121,7 +118,7 @@ function Body({ sessions }: { sessions: SessionRecord[] }) {
       {/* insights */}
       {insights.length > 0 && (
         <section>
-          <h2 className="mb-4 font-serif text-2xl text-ink">Insights for you</h2>
+          <h2 className="mb-4 text-2xl text-ink">{t("progress.insights")}</h2>
           <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
             {insights.map((ins) => (
               <InsightCard key={ins.id} ins={ins} />
@@ -132,7 +129,7 @@ function Body({ sessions }: { sessions: SessionRecord[] }) {
 
       {/* history */}
       <section>
-        <h2 className="mb-4 font-serif text-2xl text-ink">Session history</h2>
+        <h2 className="mb-4 text-2xl text-ink">{t("progress.history")}</h2>
         <div className="overflow-hidden rounded-lg border border-line bg-card">
           {[...sessions].reverse().map((x, i) => (
             <div
@@ -184,7 +181,7 @@ function Stat({
         <Icon className="size-3.5" strokeWidth={1.8} />
         {label}
       </div>
-      <div className="tnum mt-2 font-serif text-4xl text-ink">
+      <div className="tnum mt-2 text-4xl text-ink">
         <CountUp value={value} suffix={suffix} />
       </div>
     </div>
@@ -223,7 +220,7 @@ function TrendTile({
         <Icon className="size-3.5" strokeWidth={1.8} />
         {label}
       </div>
-      <div className="tnum mt-2 flex items-baseline gap-1 font-serif text-4xl text-ink">
+      <div className="tnum mt-2 flex items-baseline gap-1 text-4xl text-ink">
         {last}
         <span className="font-mono text-sm text-ink-faint">{unit}</span>
       </div>
@@ -246,7 +243,7 @@ function InsightCard({ ins }: { ins: Insight }) {
   return (
     <div className={cn("rounded-lg border bg-card p-5", ring)}>
       <div className="flex items-baseline justify-between gap-3">
-        <h3 className="font-serif text-lg text-ink">{ins.title}</h3>
+        <h3 className="text-lg text-ink">{ins.title}</h3>
         {ins.metric && <span className="tnum font-mono text-sm text-signal-deep">{ins.metric}</span>}
       </div>
       <p className="mt-2 text-[13px] leading-relaxed text-ink-soft">{ins.body}</p>

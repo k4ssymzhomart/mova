@@ -58,7 +58,7 @@ export default async function CareTeamPage() {
     <div className="space-y-8">
       <header>
         <div className="font-mono text-[11px] uppercase tracking-[0.22em] text-signal">Care team</div>
-        <h1 className="mt-2 font-serif text-4xl leading-none text-ink sm:text-5xl">The people in your corner.</h1>
+        <h1 className="mt-2 text-4xl leading-none text-ink sm:text-5xl">The people in your corner.</h1>
       </header>
 
       <div className="grid gap-5 lg:grid-cols-[1fr_1.1fr] lg:items-start">
@@ -66,12 +66,12 @@ export default async function CareTeamPage() {
         <div className="space-y-5">
           <section className="rounded-xl border border-line bg-card p-7">
             <div className="flex items-center gap-4">
-              <span className="grid size-16 shrink-0 place-items-center rounded-lg bg-night font-serif text-2xl text-paper">
+              <span className="grid size-16 shrink-0 place-items-center rounded-lg bg-night text-2xl text-paper">
                 {initials}
               </span>
               <div className="min-w-0">
                 <div className="font-mono text-[10px] uppercase tracking-[0.16em] text-signal-deep">{relationship}</div>
-                <h2 className="mt-1 font-serif text-2xl text-ink">{name}</h2>
+                <h2 className="mt-1 text-2xl text-ink">{name}</h2>
                 <div className="flex items-center gap-1.5 text-[13px] text-ink-soft">
                   <Stethoscope className="size-3.5" strokeWidth={1.7} />
                   {title}
@@ -112,7 +112,7 @@ export default async function CareTeamPage() {
               <CalendarClock className="size-4 text-signal" strokeWidth={1.8} />
               Next scheduled review
             </div>
-            <div className="mt-3 font-serif text-3xl text-ink">
+            <div className="mt-3 text-3xl text-ink">
               {review.toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" })}
             </div>
             <div className="mt-1 text-sm text-ink-soft">

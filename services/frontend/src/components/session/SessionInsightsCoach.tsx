@@ -25,7 +25,7 @@ export default function SessionInsightsCoach({
   return (
     <section className="mt-6 rounded-xl border border-line bg-card p-6 shadow-sm sm:p-8">
       <div className="font-mono text-[11px] uppercase tracking-[0.22em] text-signal">Session analysis</div>
-      <h2 className="mt-2 font-serif text-2xl italic text-ink">Here's what your movement is telling us.</h2>
+      <h2 className="mt-2 text-2xl text-ink">Here's what your movement is telling us.</h2>
 
       <div className="mt-5 space-y-2.5">
         {lines.map((l, i) => (

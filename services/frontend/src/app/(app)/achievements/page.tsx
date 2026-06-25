@@ -4,6 +4,7 @@ import { Flame, Lock } from "lucide-react";
 import BadgeMark from "@/components/gamification/BadgeMark";
 import { levelProgress } from "@/lib/gamification/levels";
 import { createClient } from "@/lib/supabase/server";
+import { getTranslation } from "@/locales/server";
 import { cn } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Achievements · Mova" };
@@ -16,6 +17,7 @@ interface Def {
 }
 
 export default async function AchievementsPage() {
+  const { t } = getTranslation();
   const supabase = createClient();
   const [{ data: xpRows }, { data: streak }, { data: earnedRows }, { data: defs }] = await Promise.all([
     supabase.from("xp_ledger").select("delta"),
@@ -40,10 +42,8 @@ export default async function AchievementsPage() {
   return (
     <div className="space-y-8">
       <div>
-        <div className="font-mono text-[11px] uppercase tracking-[0.22em] text-signal">Achievements</div>
-        <h1 className="mt-2 text-4xl leading-none text-ink">
-          Your rehabilitation, rewarded.
-        </h1>
+        <div className="font-mono text-[11px] uppercase tracking-[0.22em] text-signal">{t("achievements.eyebrow")}</div>
+        <h1 className="mt-2 text-4xl leading-none text-ink">{t("achievements.title")}</h1>
       </div>
 
       {/* Level / XP banner */}
@@ -51,7 +51,7 @@ export default async function AchievementsPage() {
         <div className="relative">
           <div className="flex flex-wrap items-end justify-between gap-6">
             <div>
-              <div className="font-mono text-[11px] uppercase tracking-[0.22em] text-signal">Level</div>
+              <div className="font-mono text-[11px] uppercase tracking-[0.22em] text-signal">{t("achievements.levelLabel")}</div>
               <div className="mt-1.5 flex items-baseline gap-3">
                 <span className="text-6xl leading-none text-ink">{lp.level}</span>
                 <span className="font-mono text-sm text-ink-faint">{lp.totalXp.toLocaleString()} XP</span>
@@ -59,7 +59,7 @@ export default async function AchievementsPage() {
             </div>
             <div className="text-right">
               <div className="font-mono text-[11px] uppercase tracking-[0.18em] text-ink-faint">
-                To level {lp.level + 1}
+                {t("achievements.toLevelN", { n: lp.level + 1 })}
               </div>
               <div className="mt-1 text-2xl text-ink">{lp.toNext.toLocaleString()} XP</div>
             </div>
@@ -72,12 +72,8 @@ export default async function AchievementsPage() {
               />
             </div>
             <div className="mt-2 flex justify-between font-mono text-[11px] text-ink-faint">
-              <span>
-                {lp.intoLevel.toLocaleString()} / {lp.span.toLocaleString()} XP this level
-              </span>
-              <span>
-                {earnedCount}/{catalog.length} badges
-              </span>
+              <span>{t("achievements.thisLevel", { into: lp.intoLevel.toLocaleString(), span: lp.span.toLocaleString() })}</span>
+              <span>{t("achievements.badgesCount", { n: earnedCount, total: catalog.length })}</span>
             </div>
           </div>
         </div>
@@ -86,20 +82,21 @@ export default async function AchievementsPage() {
       {/* Streaks */}
       <section className="grid gap-4 sm:grid-cols-2">
         <StreakCard
-          label="Current streak"
+          label={t("achievements.currentStreak")}
           value={current}
           active={current > 0}
-          sub={current > 0 ? "Keep it alive — train again today." : "Train today to start a streak."}
+          sub={current > 0 ? t("achievements.keepAlive") : t("achievements.startToday")}
+          dayLabel={current === 1 ? t("achievements.day") : t("achievements.days")}
         />
-        <StreakCard label="Longest streak" value={longest} active={false} sub="Your personal best." />
+        <StreakCard label={t("achievements.longestStreak")} value={longest} active={false} sub={t("achievements.personalBest")} dayLabel={longest === 1 ? t("achievements.day") : t("achievements.days")} />
       </section>
 
       {/* Badges */}
       <section>
         <div className="mb-4 flex items-baseline justify-between">
-          <h2 className="text-2xl text-ink">Badges</h2>
+          <h2 className="text-2xl text-ink">{t("achievements.badges")}</h2>
           <span className="font-mono text-[11px] uppercase tracking-[0.14em] text-ink-faint">
-            {earnedCount} earned
+            {t("achievements.earnedCount", { n: earnedCount })}
           </span>
         </div>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -130,7 +127,7 @@ export default async function AchievementsPage() {
                   </div>
                   <p className="mt-1 text-[13px] leading-snug text-ink-soft">{d.description}</p>
                   <div className="mt-2 font-mono text-[11px] uppercase tracking-[0.1em] text-ink-faint">
-                    {isEarned ? "Earned" : `${d.xp_reward} XP`}
+                    {isEarned ? t("achievements.earned") : `${d.xp_reward} XP`}
                   </div>
                 </div>
               </div>
@@ -147,11 +144,13 @@ function StreakCard({
   value,
   active,
   sub,
+  dayLabel,
 }: {
   label: string;
   value: number;
   active: boolean;
   sub: string;
+  dayLabel: string;
 }) {
   return (
     <div
@@ -166,7 +165,7 @@ function StreakCard({
       </div>
       <div className="mt-2 flex items-baseline gap-2">
         <span className="text-4xl text-ink">{value}</span>
-        <span className="text-sm text-ink-faint">{value === 1 ? "day" : "days"}</span>
+        <span className="text-sm text-ink-faint">{dayLabel}</span>
       </div>
       <p className="mt-1 text-[13px] text-ink-soft">{sub}</p>
     </div>

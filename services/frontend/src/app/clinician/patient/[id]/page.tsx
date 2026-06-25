@@ -1,11 +1,23 @@
+import Link from "next/link";
+
 import PatientDetail from "@/components/clinician/PatientDetail";
-import { patientIds } from "@/lib/clinic/mockData";
+import { fetchPatient } from "@/lib/clinic/realData";
+import { getTranslation } from "@/locales/server";
 
-// Prerender one static page per mock patient. When a real backend lands, this becomes a server fetch.
-export function generateStaticParams() {
-  return patientIds().map((id) => ({ id }));
-}
+export const dynamic = "force-dynamic";
 
-export default function PatientPage({ params }: { params: { id: string } }) {
-  return <PatientDetail id={params.id} />;
+export default async function PatientPage({ params }: { params: { id: string } }) {
+  const patient = await fetchPatient(params.id);
+  if (!patient) {
+    const { t } = getTranslation();
+    return (
+      <main className="mx-auto max-w-shell px-5 py-16 sm:px-8">
+        <p className="text-ink-soft">{t("clinician.detail.notFound")}</p>
+        <Link href="/clinician" className="mt-4 inline-block text-sm text-signal-deep hover:underline">
+          {t("common.backToCaseload")}
+        </Link>
+      </main>
+    );
+  }
+  return <PatientDetail patient={patient} />;
 }

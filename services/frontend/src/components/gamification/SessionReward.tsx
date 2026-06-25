@@ -60,7 +60,7 @@ export default function SessionReward({
           Session complete
         </div>
         <div className="mt-3 flex items-baseline gap-3">
-          <span className="font-serif text-5xl italic leading-none text-ink">
+          <span className="text-5xl leading-none text-ink">
             +{xp.toLocaleString()}
           </span>
           <span className="font-mono text-sm uppercase tracking-[0.18em] text-ink-faint">XP earned</span>

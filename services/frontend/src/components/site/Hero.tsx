@@ -3,10 +3,12 @@
 import { motion, useScroll, useTransform } from "framer-motion";
 import { useRef } from "react";
 
-import { HERO, HERO_STATS } from "@/lib/site-data";
+import { HERO_STATS } from "@/lib/site-data";
+import { useTranslation } from "@/locales/client";
 import { CountUp, EASE } from "./primitives";
 
 export default function Hero() {
+  const { t } = useTranslation();
   const ref = useRef<HTMLElement>(null);
   const { scrollYProgress } = useScroll({
     target: ref,
@@ -63,21 +65,21 @@ export default function Hero() {
         <div className="grid items-end gap-10 lg:grid-cols-[1.5fr_0.8fr]">
           {/* Headline */}
           <div className="max-w-2xl">
-            <h1 className="display text-[clamp(2.6rem,7vw,6rem)] text-white">
-              {HERO.heading.map((line, i) => (
-                <span key={i} className="block overflow-hidden">
-                  <motion.span
-                    className={`block ${
-                      i === HERO.heading.length - 1 ? "text-signal-bright" : ""
-                    }`}
-                    initial={{ y: "110%" }}
-                    animate={{ y: 0 }}
-                    transition={{ duration: 1, ease: EASE, delay: 0.3 + i * 0.12 }}
-                  >
-                    {line}
-                  </motion.span>
-                </span>
-              ))}
+            <h1 className="display text-[clamp(2.6rem,7vw,6rem)] leading-[1.02] text-white">
+              {t("landing.hero.title")
+                .split(" ")
+                .map((word, i, arr) => (
+                  <span key={i} className="inline-block overflow-hidden align-bottom">
+                    <motion.span
+                      className={`inline-block ${i === arr.length - 1 ? "text-signal-bright" : ""}`}
+                      initial={{ y: "110%" }}
+                      animate={{ y: 0 }}
+                      transition={{ duration: 0.9, ease: EASE, delay: 0.3 + i * 0.06 }}
+                    >
+                      {word}&nbsp;
+                    </motion.span>
+                  </span>
+                ))}
             </h1>
             <motion.p
               initial={{ opacity: 0, y: 16 }}
@@ -85,7 +87,7 @@ export default function Hero() {
               transition={{ duration: 0.9, ease: EASE, delay: 0.75 }}
               className="mt-6 max-w-md text-base leading-relaxed text-white/80 sm:text-lg"
             >
-              {HERO.sub}
+              {t("landing.hero.subtitle")}
             </motion.p>
           </div>
 

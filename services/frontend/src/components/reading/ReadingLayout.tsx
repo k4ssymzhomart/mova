@@ -49,7 +49,7 @@ export default function ReadingLayout({
               </>
             )}
           </div>
-          <h1 className="mt-5 max-w-4xl font-serif text-[clamp(2.4rem,6vw,4.4rem)] leading-[1.02] tracking-[-0.01em] text-ink">
+          <h1 className="mt-5 max-w-4xl text-[clamp(2.4rem,6vw,4.4rem)] leading-[1.02] tracking-[-0.01em] text-ink">
             {title}
           </h1>
           <p className="mt-6 max-w-2xl text-[1.15rem] leading-relaxed text-ink-soft">

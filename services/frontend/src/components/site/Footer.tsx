@@ -1,6 +1,8 @@
 import { EVIDENCE_NAV, FOOTER, NAV_LINKS } from "@/lib/site-data";
+import { getTranslation } from "@/locales/server";
 
 export default function Footer() {
+  const { t } = getTranslation();
   return (
     <footer className="bg-night text-white">
       <div className="mx-auto max-w-shell px-5 py-16 sm:px-8 sm:py-20">
@@ -12,9 +14,7 @@ export default function Footer() {
               className="h-9 w-auto [filter:brightness(0)_invert(1)]"
             />
             <p className="mt-5 max-w-xs text-sm leading-relaxed text-white/55">
-              Camera-free motion intelligence for movement rehabilitation —
-              clinical-grade gait, balance and freezing-of-gait insight from a
-              single wearable.
+              {t("landing.hero.subtitle")}
             </p>
           </div>
 
@@ -60,8 +60,8 @@ export default function Footer() {
         </div>
 
         <div className="mt-16 flex flex-col items-start justify-between gap-4 border-t border-white/10 pt-8 text-sm text-white/45 sm:flex-row sm:items-center">
-          <span>{FOOTER.copyright}</span>
-          <span>Motion intelligence for movement rehabilitation</span>
+          <span>{t("landing.footer.rights", { year: new Date().getFullYear() })}</span>
+          <span>{t("landing.footer.tagline")}</span>
         </div>
       </div>
     </footer>

@@ -94,9 +94,16 @@ export default function AppShell({
         <SidebarNav collapsed={collapsed} name={name} streak={streak} onToggleCollapse={toggleCollapse} />
       </aside>
 
-      {/* content — open canvas, generous gutters, no wrapping card */}
+      {/* content — open canvas, generous gutters, no wrapping card. The max-width tracks the rail state
+          so collapsing the sidebar genuinely reflows content into the reclaimed width instead of just
+          widening empty gutters (data grids fill out; prose stays readable under the cap). */}
       <div className={cn("transition-[padding] duration-300 ease-editorial", contentPad)}>
-        <main className="mx-auto w-full max-w-[1180px] px-5 py-8 sm:px-8 lg:px-12 lg:py-12">
+        <main
+          className={cn(
+            "mx-auto w-full px-5 py-8 transition-[max-width] duration-300 ease-editorial sm:px-8 lg:px-12 lg:py-12",
+            collapsed ? "max-w-[1180px] lg:max-w-[1560px]" : "max-w-[1180px]",
+          )}
+        >
           {children}
         </main>
       </div>

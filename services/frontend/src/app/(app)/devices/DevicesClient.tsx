@@ -45,7 +45,7 @@ export default function DevicesClient() {
     <div className="space-y-8">
       <header>
         <div className="font-mono text-[11px] uppercase tracking-[0.22em] text-signal">Devices</div>
-        <h1 className="mt-2 font-serif text-4xl leading-none text-ink sm:text-5xl">Your sensors.</h1>
+        <h1 className="mt-2 text-4xl leading-none text-ink sm:text-5xl">Your sensors.</h1>
         <p className="mt-3 max-w-xl text-sm leading-relaxed text-ink-soft">
           Mova works camera-only, and gets sharper when you pair wearable IMUs. Manage both here.
         </p>
@@ -118,7 +118,7 @@ function CameraPanel() {
         </span>
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
-            <h2 className="font-serif text-2xl text-ink">Web camera</h2>
+            <h2 className="text-2xl text-ink">Web camera</h2>
             <span className={cn("inline-flex items-center gap-1.5 font-mono text-[11px] uppercase tracking-[0.12em]", m.tone)}>
               <span className={cn("size-1.5 rounded-full", m.dot)} />
               {m.label}
@@ -184,7 +184,7 @@ function WearablesPanel() {
             <Bluetooth className="size-5" strokeWidth={1.7} />
           </span>
           <div>
-            <h2 className="font-serif text-2xl text-ink">Wearable IMUs</h2>
+            <h2 className="text-2xl text-ink">Wearable IMUs</h2>
             <p className="text-[13px] text-ink-soft">
               {connectedCount > 0 ? `${connectedCount} paired` : "Pair sensors over Bluetooth for richer motion capture."}
             </p>

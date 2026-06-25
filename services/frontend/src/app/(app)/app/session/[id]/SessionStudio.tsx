@@ -7,7 +7,7 @@
 // and awards XP/streak/badges (award_session_rewards). Keyed to the session id created upstream
 // (/app/session/new). Replaces the old standalone /session + the capture-only LiveCapturePanel.
 
-import { Loader2, Minimize2, Play, Square } from "lucide-react";
+import { Loader2, Maximize2, Minimize2, Play, Square } from "lucide-react";
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 
@@ -25,6 +25,7 @@ import { computeInsights } from "@/lib/insights/engine";
 import { loadSessions, makeId, saveSession } from "@/lib/insights/store";
 import type { SessionRecord, Side } from "@/lib/insights/types";
 import { type LivePrediction, useLiveInference } from "@/lib/onnx/useLiveInference";
+import { useTranslation } from "@/locales/client";
 import { abilityFor, loadProfile, startingCadence } from "@/lib/profile/store";
 import type { PatientProfile } from "@/lib/profile/types";
 import { createClient } from "@/lib/supabase/client";
@@ -38,10 +39,6 @@ const ZERO_REACH: ReachingStats = { score: 0, attempts: 0, lastReachMs: null };
 const ZERO_GAIT: GaitStats = {
   steps: 0, beats: 0, cadenceSpm: 0, rhythmPct: 0, currentStreak: 0, bestStreak: 0, lastErrMs: null,
 };
-const MODES: { id: SessionMode; eyebrow: string; title: string }[] = [
-  { id: "reach", eyebrow: "Training session · upper-limb reaching", title: "Move, and the model watches." },
-  { id: "gait", eyebrow: "Training session · gait & balance", title: "Step to the beat." },
-];
 
 function downsample(values: number[], n: number): number[] {
   if (values.length <= n) return values.map((v) => Math.round(v * 1000) / 1000);
@@ -58,6 +55,7 @@ function downsample(values: number[], n: number): number[] {
 }
 
 export default function SessionStudio({ sessionId, userId }: { sessionId: string; userId: string }) {
+  const { t } = useTranslation();
   const pipeline = useRef(new VirtualImuPipeline());
   const sideRef = useRef<Side>("right");
   const modeRef = useRef<SessionMode>("reach");
@@ -97,7 +95,6 @@ export default function SessionStudio({ sessionId, userId }: { sessionId: string
   const harCounts = useRef<Record<string, number>>({});
 
   const running = pose.status === "running";
-  const meta = MODES.find((m) => m.id === mode)!;
   const difficulty = abilityFor(profile, mode);
 
   useEffect(() => {
@@ -270,12 +267,12 @@ export default function SessionStudio({ sessionId, userId }: { sessionId: string
   if (summary) {
     return (
       <div className="space-y-2">
-        <Link href="/app" className="text-sm text-ink-soft transition-colors hover:text-ink">← All sessions</Link>
+        <Link href="/app" className="text-sm text-ink-soft transition-colors hover:text-ink">{t("session.allSessions")}</Link>
         {reward ? (
           <SessionReward reward={reward} onRestart={() => location.assign("/app/session/new")} />
         ) : (
           <div className="mt-8 rounded-xl border border-line bg-card p-6 text-sm text-ink-soft">
-            Session saved. {finishing ? "Scoring…" : "Rewards are offline — your metrics were still recorded."}
+            {t("session.sessionSaved")} {finishing ? t("session.scoring") : t("session.rewardsOffline")}
           </div>
         )}
         <SessionInsightsCoach record={summary.record} history={summary.history} />
@@ -287,14 +284,18 @@ export default function SessionStudio({ sessionId, userId }: { sessionId: string
     <div>
       <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
         <div>
-          <div className="font-mono text-[11px] uppercase tracking-[0.22em] text-signal">{meta.eyebrow}</div>
-          <h1 className="mt-2 font-serif text-4xl leading-none text-ink sm:text-5xl">{meta.title}</h1>
+          <div className="font-mono text-[11px] uppercase tracking-[0.22em] text-signal">
+            {mode === "gait" ? t("session.eyebrowGait") : t("session.eyebrowReach")}
+          </div>
+          <h1 className="mt-2 text-4xl leading-none text-ink sm:text-5xl">
+            {mode === "gait" ? t("session.titleGait") : t("session.titleReach")}
+          </h1>
         </div>
         <div className="flex items-center gap-3">
           {running && (
             <span className="inline-flex items-center gap-2 rounded-pill bg-signal/10 px-3 py-1.5 font-mono text-[11px] uppercase tracking-[0.14em] text-signal-deep">
               <span className="live-dot size-2 rounded-full bg-signal" />
-              Recording
+              {t("session.recording")}
             </span>
           )}
           <span className="tnum font-mono text-xs uppercase tracking-[0.14em] text-ink-faint">{pose.fps} fps</span>
@@ -303,11 +304,14 @@ export default function SessionStudio({ sessionId, userId }: { sessionId: string
 
       {profile && (
         <div className="mb-5 flex flex-wrap items-center gap-3 rounded-card border border-line bg-paper-soft px-4 py-3">
-          <span className="rounded-pill bg-signal/12 px-2.5 py-0.5 text-[11px] font-medium uppercase tracking-[0.14em] text-signal-deep">Personalised</span>
+          <span className="rounded-pill bg-signal/12 px-2.5 py-0.5 text-[11px] font-medium uppercase tracking-[0.14em] text-signal-deep">{t("session.personalised")}</span>
           <span className="text-[13px] text-ink-soft">
-            Tuned to your <span className="text-ink">{profile.condition === "parkinsons" ? "Parkinson's" : profile.condition}</span> program · affected side <span className="text-ink">{profile.affectedSide}</span>.
+            {t("session.tunedTo", {
+              condition: profile.condition === "parkinsons" ? t("clinician.condition.parkinsons") : t(`clinician.condition.${profile.condition}`),
+              side: profile.affectedSide,
+            })}
           </span>
-          <Link href="/intake" className="ml-auto text-[13px] text-ink-soft underline-offset-2 transition-colors hover:text-ink hover:underline">Recalibrate</Link>
+          <Link href="/intake" className="ml-auto text-[13px] text-ink-soft underline-offset-2 transition-colors hover:text-ink hover:underline">{t("session.recalibrate")}</Link>
         </div>
       )}
 
@@ -323,6 +327,18 @@ export default function SessionStudio({ sessionId, userId }: { sessionId: string
             <div className={cn(isFullscreen ? "w-full max-w-[min(92vw,117vh)]" : "w-full")}>
               <PoseStage videoRef={pose.videoRef} landmarks={pose.latest} running={running} showVideo={showVideo} mode={mode} side={side} tempoSpm={tempoSpm} difficulty={difficulty} onStats={onStats} />
             </div>
+            {/* On-stage focus affordance — re-enter distraction-free fullscreen at any point, not just on Start. */}
+            {!isFullscreen && (
+              <button
+                type="button"
+                onClick={enterFocus}
+                title={t("session.focusMode")}
+                className="absolute right-3 top-3 z-10 inline-flex items-center gap-1.5 rounded-pill bg-night/70 px-3 py-1.5 font-mono text-[11px] uppercase tracking-[0.14em] text-paper-soft backdrop-blur transition-colors hover:bg-night"
+              >
+                <Maximize2 className="size-3.5" strokeWidth={2} />
+                {t("session.focusMode")}
+              </button>
+            )}
             {isFullscreen && (
               <FocusOverlay
                 mode={mode}
@@ -337,15 +353,15 @@ export default function SessionStudio({ sessionId, userId }: { sessionId: string
           </div>
           {mode === "gait" ? (
             <div className="grid grid-cols-3 gap-4">
-              <Metric label="Steps" value={String(gait.steps)} />
-              <Metric label="Cadence" value={gait.cadenceSpm ? String(gait.cadenceSpm) : "—"} unit={gait.cadenceSpm ? "spm" : undefined} />
-              <Metric label="On-beat" value={`${Math.round(gait.rhythmPct * 100)}`} unit="%" />
+              <Metric label={t("session.steps")} value={String(gait.steps)} />
+              <Metric label={t("session.cadence")} value={gait.cadenceSpm ? String(gait.cadenceSpm) : "—"} unit={gait.cadenceSpm ? "spm" : undefined} />
+              <Metric label={t("session.onBeat")} value={`${Math.round(gait.rhythmPct * 100)}`} unit="%" />
             </div>
           ) : (
             <div className="grid grid-cols-3 gap-4">
-              <Metric label="Reaches" value={String(reach.score)} />
-              <Metric label="Attempts" value={String(reach.attempts)} />
-              <Metric label="Frames sent" value={String(counters.framesSent)} />
+              <Metric label={t("session.reaches")} value={String(reach.score)} />
+              <Metric label={t("session.attempts")} value={String(reach.attempts)} />
+              <Metric label={t("session.framesSent")} value={String(counters.framesSent)} />
             </div>
           )}
           {(pose.status === "denied" || pose.status === "error") && (
@@ -354,7 +370,7 @@ export default function SessionStudio({ sessionId, userId }: { sessionId: string
         </div>
 
         <aside className="space-y-5">
-          <Panel label="Session control">
+          <Panel label={t("session.control")}>
             <div className="space-y-4">
               {/* primary action — flips between Start and Finish so there's always one obvious next step */}
               {!running ? (
@@ -369,7 +385,7 @@ export default function SessionStudio({ sessionId, userId }: { sessionId: string
                   ) : (
                     <Play className="size-4" strokeWidth={2} />
                   )}
-                  {pose.status === "loading" ? "Starting camera…" : "Start session"}
+                  {pose.status === "loading" ? t("session.startingCamera") : t("session.startSession")}
                 </button>
               ) : (
                 <button
@@ -383,19 +399,31 @@ export default function SessionStudio({ sessionId, userId }: { sessionId: string
                   ) : (
                     <Square className="size-4" strokeWidth={2} />
                   )}
-                  {finishing ? "Saving…" : "Finish & save"}
+                  {finishing ? t("session.saving") : t("session.finishSave")}
+                </button>
+              )}
+
+              {/* focus toggle — explicit fullscreen control available throughout the session */}
+              {running && (
+                <button
+                  type="button"
+                  onClick={isFullscreen ? exitFocus : enterFocus}
+                  className="flex w-full items-center justify-center gap-2 rounded-pill border border-line bg-paper-soft px-5 py-2.5 text-sm font-medium text-ink transition-colors hover:bg-paper"
+                >
+                  {isFullscreen ? <Minimize2 className="size-4" strokeWidth={2} /> : <Maximize2 className="size-4" strokeWidth={2} />}
+                  {isFullscreen ? t("session.exitFocus") : t("session.focusMode")}
                 </button>
               )}
 
               {/* exercise */}
               <div>
-                <div className="mb-1.5 font-mono text-[10px] uppercase tracking-[0.16em] text-ink-faint">Exercise</div>
+                <div className="mb-1.5 font-mono text-[10px] uppercase tracking-[0.16em] text-ink-faint">{t("session.exercise")}</div>
                 <div className="grid grid-cols-2 gap-2">
                   <PillButton active={mode === "reach"} onClick={() => setMode("reach")} disabled={running}>
-                    Upper-limb
+                    {t("session.upperLimb")}
                   </PillButton>
                   <PillButton active={mode === "gait"} onClick={() => setMode("gait")} disabled={running}>
-                    Gait &amp; balance
+                    {t("session.gaitBalance")}
                   </PillButton>
                 </div>
               </div>
@@ -403,14 +431,14 @@ export default function SessionStudio({ sessionId, userId }: { sessionId: string
               {/* side */}
               <div>
                 <div className="mb-1.5 font-mono text-[10px] uppercase tracking-[0.16em] text-ink-faint">
-                  {mode === "gait" ? "Lead leg" : "Active hand"}
+                  {mode === "gait" ? t("session.leadLeg") : t("session.activeHand")}
                 </div>
                 <div className="grid grid-cols-2 gap-2">
                   <PillButton active={side === "left"} onClick={() => setSide("left")}>
-                    Left
+                    {t("session.left")}
                   </PillButton>
                   <PillButton active={side === "right"} onClick={() => setSide("right")}>
-                    Right
+                    {t("session.right")}
                   </PillButton>
                 </div>
               </div>
@@ -418,7 +446,7 @@ export default function SessionStudio({ sessionId, userId }: { sessionId: string
               {mode === "gait" && (
                 <div>
                   <div className="mb-1.5 flex items-baseline justify-between">
-                    <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-ink-faint">Cadence target</span>
+                    <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-ink-faint">{t("session.cadenceTarget")}</span>
                     <span className="tnum font-mono text-sm text-ink">{tempoSpm} spm</span>
                   </div>
                   <input
@@ -434,17 +462,17 @@ export default function SessionStudio({ sessionId, userId }: { sessionId: string
                 </div>
               )}
 
-              <Toggle label="Show camera (off by default)" on={showVideo} onClick={() => setShowVideo((v) => !v)} />
+              <Toggle label={t("session.showCamera")} on={showVideo} onClick={() => setShowVideo((v) => !v)} />
             </div>
           </Panel>
 
           <SessionTelemetry status={live.status} simulated={live.simulated} prediction={prediction} mode={mode} fill={fill} inferences={inferences} />
 
-          <Panel label="Recording">
+          <Panel label={t("session.recordingLabel")}>
             <p className="text-[13px] leading-relaxed text-ink-soft">
-              Derived keypoints + freeze-risk stream to this session in real time
-              {counters.framesSent > 0 ? ` · ${counters.framesSent} frames saved` : ""}. Raw video never
-              leaves your device.
+              {t("session.recordingNote", {
+                frames: counters.framesSent > 0 ? t("session.framesSaved", { n: counters.framesSent }) : "",
+              })}
             </p>
           </Panel>
         </aside>
@@ -472,18 +500,19 @@ function FocusOverlay({
   onFinish: () => void;
   onExit: () => void;
 }) {
+  const { t } = useTranslation();
   const primary = mode === "gait"
-    ? { label: "Steps", value: String(gait.steps) }
-    : { label: "Reaches", value: String(reach.score) };
+    ? { label: t("session.steps"), value: String(gait.steps) }
+    : { label: t("session.reaches"), value: String(reach.score) };
   const secondary = mode === "gait"
-    ? { label: "On-beat", value: `${Math.round(gait.rhythmPct * 100)}%` }
-    : { label: "Attempts", value: String(reach.attempts) };
+    ? { label: t("session.onBeat"), value: `${Math.round(gait.rhythmPct * 100)}%` }
+    : { label: t("session.attempts"), value: String(reach.attempts) };
   return (
     <div className="pointer-events-none absolute inset-0 z-10 flex flex-col justify-between p-4 sm:p-8">
       <div className="flex items-start justify-between">
         <span className="inline-flex items-center gap-2 rounded-pill bg-signal/15 px-3 py-1.5 font-mono text-[11px] uppercase tracking-[0.14em] text-signal-bright backdrop-blur">
           <span className="live-dot size-2 rounded-full bg-signal" />
-          Recording · focus mode
+          {t("session.recording")}
         </span>
         <button
           type="button"
@@ -491,7 +520,7 @@ function FocusOverlay({
           className="pointer-events-auto inline-flex items-center gap-2 rounded-pill bg-white/10 px-3 py-1.5 font-mono text-[11px] uppercase tracking-[0.14em] text-paper-soft backdrop-blur transition-colors hover:bg-white/20"
         >
           <Minimize2 className="size-3.5" strokeWidth={2} />
-          Exit focus
+          {t("session.exitFocus")}
         </button>
       </div>
       <div className="pointer-events-auto mx-auto flex w-full max-w-2xl flex-wrap items-center justify-between gap-4 rounded-xl bg-black/40 px-5 py-3.5 backdrop-blur">
@@ -507,7 +536,7 @@ function FocusOverlay({
           className="inline-flex items-center gap-2 rounded-pill bg-white px-5 py-2.5 text-sm font-medium text-night transition-colors hover:bg-paper-soft disabled:opacity-60"
         >
           {finishing ? <Loader2 className="size-4 animate-spin" strokeWidth={1.8} /> : <Square className="size-4" strokeWidth={2} />}
-          {finishing ? "Saving…" : "Finish & save"}
+          {finishing ? t("session.saving") : t("session.finishSave")}
         </button>
       </div>
     </div>

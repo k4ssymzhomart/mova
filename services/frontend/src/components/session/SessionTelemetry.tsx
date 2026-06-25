@@ -55,7 +55,7 @@ export default function SessionTelemetry({ status, simulated, prediction, mode, 
           </div>
           {prediction?.har ? (
             <>
-              <div className="font-serif text-2xl italic leading-none text-ink">
+              <div className="text-2xl leading-none text-ink">
                 {HAR_PRETTY(prediction.har.label)}
               </div>
               <div className="mt-3 space-y-2">

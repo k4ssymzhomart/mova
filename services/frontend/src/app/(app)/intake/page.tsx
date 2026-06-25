@@ -213,8 +213,8 @@ function Step({
   return (
     <div>
       <div className="text-[11px] font-medium uppercase tracking-[0.22em] text-ink-faint">{eyebrow}</div>
-      <h1 className="mt-3 font-serif text-4xl leading-[1.05] text-ink sm:text-5xl">
-        {title} <span className="italic text-signal-deep">{accent}</span>
+      <h1 className="mt-3 text-4xl leading-[1.05] text-ink sm:text-5xl">
+        {title} <span className="text-signal-deep">{accent}</span>
       </h1>
       <p className="mt-3 max-w-xl text-[14px] leading-relaxed text-ink-soft">{hint}</p>
       <div className="mt-8">{children}</div>
@@ -245,7 +245,7 @@ function OptionCard({
         selected ? "border-signal ring-2 ring-signal/30" : "border-line hover:border-ink/20",
       )}
     >
-      <span className="font-serif text-2xl italic text-ink">{title}</span>
+      <span className="text-2xl text-ink">{title}</span>
       <span className="mt-2 text-[13px] leading-relaxed text-ink-soft">{desc}</span>
       <span className="mt-4 inline-flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-[0.16em] text-ink-faint transition-colors group-hover:text-signal-deep">
         Select <span aria-hidden>→</span>
@@ -276,7 +276,7 @@ function Fact({ k, v, tile = false }: { k: string; v: string; tile?: boolean }) 
   return (
     <div className="bg-card p-5">
       <div className="text-[11px] font-medium uppercase tracking-[0.16em] text-ink-faint">{k}</div>
-      <div className="mt-1.5 font-serif text-xl italic text-ink">{v}</div>
+      <div className="mt-1.5 text-xl text-ink">{v}</div>
     </div>
   );
 }

@@ -13,6 +13,7 @@ import { useCallback, useEffect, useState } from "react";
 
 import { useAuth } from "@/lib/auth/AuthProvider";
 import { createClient } from "@/lib/supabase/client";
+import { useTranslation } from "@/locales/client";
 
 interface FogEventRow {
   id: string;
@@ -33,6 +34,7 @@ export default function FogEventsFeed({
   patientId?: string;
 }) {
   const { session, loading: authLoading, configured } = useAuth();
+  const { t } = useTranslation();
   const [rows, setRows] = useState<FogEventRow[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -73,7 +75,7 @@ export default function FogEventsFeed({
     <section className="overflow-hidden rounded-card border border-line bg-card shadow-soft">
       <header className="flex items-center justify-between border-b border-line px-5 py-3">
         <span className="text-[11px] font-medium uppercase tracking-[0.2em] text-ink-faint">
-          Live freezing-of-gait events · streamed
+          {t("clinician.fog.title")}
         </span>
         <button
           type="button"
@@ -82,29 +84,26 @@ export default function FogEventsFeed({
           className="inline-flex items-center gap-1.5 font-mono text-[11px] text-ink-faint transition-colors hover:text-ink disabled:opacity-40"
         >
           <RefreshCw className={`size-3 ${loading ? "animate-spin" : ""}`} strokeWidth={1.8} />
-          refresh
+          {t("clinician.fog.refresh")}
         </button>
       </header>
 
       {!configured || (!session && !authLoading) ? (
-        <Empty>Sign in to view live freezing-of-gait telemetry from streamed sessions.</Empty>
+        <Empty>{t("clinician.fog.signInToView")}</Empty>
       ) : error ? (
-        <div className="px-5 py-4 font-mono text-xs text-destructive">read error: {error}</div>
+        <div className="px-5 py-4 font-mono text-xs text-destructive">{error}</div>
       ) : rows === null || authLoading ? (
-        <Empty>Loading telemetry…</Empty>
+        <Empty>{t("clinician.fog.loading")}</Empty>
       ) : rows.length === 0 ? (
-        <Empty>
-          No freezing-of-gait episodes streamed yet. Run a session in the app and finish it to populate
-          this feed.
-        </Empty>
+        <Empty>{t("clinician.fog.empty")}</Empty>
       ) : (
         <div>
           <div className="hidden grid-cols-[1.4fr_0.8fr_0.8fr_0.8fr_1fr] gap-2 border-b border-line px-5 py-2 font-mono text-[10px] uppercase tracking-[0.14em] text-ink-faint sm:grid">
-            <span>Onset</span>
-            <span>Duration</span>
-            <span>Confidence</span>
-            <span>Freeze idx</span>
-            <span>Source</span>
+            <span>{t("clinician.fog.onset")}</span>
+            <span>{t("clinician.fog.duration")}</span>
+            <span>{t("clinician.fog.confidence")}</span>
+            <span>{t("clinician.fog.freezeIdx")}</span>
+            <span>{t("clinician.fog.source")}</span>
           </div>
           {rows.map((r, i) => (
             <div

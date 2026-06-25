@@ -48,7 +48,7 @@ export default async function SessionDetail({ params }: { params: { id: string }
 
       <div>
         <div className="font-mono text-[11px] uppercase tracking-[0.2em] text-signal">Completed session</div>
-        <h1 className="mt-2 font-serif text-3xl text-ink">
+        <h1 className="mt-2 text-3xl text-ink">
           <span className="font-mono text-2xl">{session.id.slice(0, 8)}</span>
         </h1>
         <dl className="mt-4 grid grid-cols-2 gap-x-6 gap-y-2 text-sm">
@@ -58,7 +58,7 @@ export default async function SessionDetail({ params }: { params: { id: string }
       </div>
 
       <div>
-        <h2 className="mb-3 font-serif text-xl text-ink">Session metrics</h2>
+        <h2 className="mb-3 text-xl text-ink">Session metrics</h2>
         {m ? (
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
             <Metric label="Quality" value={fmt(m.quality_score)} />
@@ -110,7 +110,7 @@ function Metric({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-card border border-line bg-card p-4">
       <div className="font-mono text-[10px] uppercase tracking-[0.14em] text-ink-faint">{label}</div>
-      <div className="tnum mt-1.5 font-serif text-2xl text-ink">{value}</div>
+      <div className="tnum mt-1.5 text-2xl text-ink">{value}</div>
     </div>
   );
 }

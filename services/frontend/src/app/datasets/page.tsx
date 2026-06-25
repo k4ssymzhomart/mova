@@ -165,7 +165,7 @@ export default function DatasetsPage() {
               >
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
-                    <h3 className="font-serif text-[1.4rem] leading-tight text-ink">
+                    <h3 className="text-[1.4rem] leading-tight text-ink">
                       {d.name}
                     </h3>
                     <p className="mt-1 text-[13.5px] text-ink-soft">{d.role}</p>

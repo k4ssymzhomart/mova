@@ -14,7 +14,7 @@ export default function LearnPage() {
     <div className="space-y-10">
       <header>
         <div className="font-mono text-[11px] uppercase tracking-[0.22em] text-signal">Learn</div>
-        <h1 className="mt-2 max-w-2xl font-serif text-4xl leading-[1.05] text-ink sm:text-5xl">
+        <h1 className="mt-2 max-w-2xl text-4xl leading-[1.05] text-ink sm:text-5xl">
           Understand your recovery.
         </h1>
         <p className="mt-3 max-w-xl text-sm leading-relaxed text-ink-soft">
@@ -33,7 +33,7 @@ export default function LearnPage() {
             <span className="font-mono text-[11px] uppercase tracking-[0.18em] text-signal-deep">
               {featured.category} · Featured
             </span>
-            <h2 className="mt-3 font-serif text-3xl leading-tight text-ink sm:text-4xl">{featured.title}</h2>
+            <h2 className="mt-3 text-3xl leading-tight text-ink sm:text-4xl">{featured.title}</h2>
             <p className="mt-3 max-w-md text-[15px] leading-relaxed text-ink-soft">{featured.dek}</p>
             <div className="mt-6 flex items-center gap-4 font-mono text-[11px] uppercase tracking-[0.12em] text-ink-faint">
               <span className="inline-flex items-center gap-1.5">
@@ -55,7 +55,7 @@ export default function LearnPage() {
 
       {/* library */}
       <section>
-        <h3 className="mb-4 font-serif text-2xl text-ink">Library</h3>
+        <h3 className="mb-4 text-2xl text-ink">Library</h3>
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {rest.map((a) => (
             <Link
@@ -64,7 +64,7 @@ export default function LearnPage() {
               className="group flex flex-col rounded-lg border border-line bg-card p-5 transition-all hover:-translate-y-0.5 hover:shadow-card"
             >
               <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-signal-deep">{a.category}</span>
-              <h4 className="mt-2 font-serif text-xl leading-snug text-ink">{a.title}</h4>
+              <h4 className="mt-2 text-xl leading-snug text-ink">{a.title}</h4>
               <p className="mt-2 flex-1 text-[13px] leading-relaxed text-ink-soft">{a.dek}</p>
               <div className="mt-4 flex items-center justify-between font-mono text-[11px] uppercase tracking-[0.12em] text-ink-faint">
                 <span className="inline-flex items-center gap-1.5">
@@ -80,7 +80,7 @@ export default function LearnPage() {
       {/* watch */}
       {videos.length > 0 && (
         <section>
-          <h3 className="mb-4 font-serif text-2xl text-ink">Watch</h3>
+          <h3 className="mb-4 text-2xl text-ink">Watch</h3>
           <div className="grid gap-3 sm:grid-cols-2">
             {videos.map((a) => (
               <Link
@@ -95,7 +95,7 @@ export default function LearnPage() {
                   <div className="font-mono text-[10px] uppercase tracking-[0.14em] text-signal-deep">
                     {a.readMinutes}-min explainer
                   </div>
-                  <div className="mt-1 font-serif text-xl text-ink">{a.title}</div>
+                  <div className="mt-1 text-xl text-ink">{a.title}</div>
                 </div>
               </Link>
             ))}

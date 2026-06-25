@@ -2,47 +2,33 @@
 
 // Outcome report — a print-friendly view summarising the FHIR CarePlan + adherence. "Generate PDF" is a
 // real browser print (Save as PDF) rather than a fake download: the action bar is print:hidden so only
-// the report sheet prints. When a server-side PDF service lands, this same layout becomes its template.
+// the report sheet prints. Reads real patient data passed from the server page.
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
 
 import { RiskChip } from "@/components/clinician/RiskChip";
 import { computeCaseMetrics } from "@/lib/clinic/metrics";
-import { getPatient } from "@/lib/clinic/mockData";
-import { loadPrescription } from "@/lib/clinic/store";
-import type { ClinicPatient, Prescription } from "@/lib/clinic/types";
+import type { ClinicPatient } from "@/lib/clinic/types";
 import { toFhirBundle } from "@/lib/fhir";
 import { summarize } from "@/lib/insights/engine";
 import type { Condition, PatientProfile } from "@/lib/profile/types";
+import { useTranslation } from "@/locales/client";
 
-const CONDITION_LABEL: Record<Condition, string> = {
-  stroke: "Stroke",
-  parkinsons: "Parkinson's disease",
-  ortho: "Orthopaedic recovery",
-};
-const PACK_LABEL = { reaching: "Upper-limb reaching", gait: "Gait & balance" } as const;
+export default function PatientReport({ patient }: { patient: ClinicPatient }) {
+  const { t } = useTranslation();
+  const rx = patient.prescription;
 
-export default function PatientReport({ id }: { id: string }) {
-  const patient = getPatient(id);
-  const [rx, setRx] = useState<Prescription | null>(patient ? patient.prescription : null);
-  useEffect(() => {
-    if (patient) setRx(loadPrescription(patient.profile.id) ?? patient.prescription);
-  }, [patient]);
+  const conditionLabel: Record<Condition, string> = {
+    stroke: t("clinician.condition.stroke"),
+    parkinsons: t("clinician.condition.parkinsons"),
+    ortho: t("clinician.condition.ortho"),
+  };
+  const packLabel: Record<"reaching" | "gait", string> = {
+    reaching: t("clinician.rx.reaching"),
+    gait: t("clinician.rx.gait"),
+  };
 
-  if (!patient || !rx) {
-    return (
-      <main className="mx-auto max-w-2xl px-5 py-16">
-        <p className="text-ink-soft">Patient not found.</p>
-        <Link href="/clinician" className="mt-4 inline-block text-sm text-signal-deep hover:underline">
-          ← Back to caseload
-        </Link>
-      </main>
-    );
-  }
-
-  const eff: ClinicPatient = { ...patient, prescription: rx };
-  const m = computeCaseMetrics(eff);
+  const m = computeCaseMetrics({ ...patient, prescription: rx });
   const s = summarize(patient.sessions);
   const fhirProfile: PatientProfile = { ...patient.profile, recommendedPack: rx.pack };
   const bundle = toFhirBundle(fhirProfile);
@@ -54,13 +40,13 @@ export default function PatientReport({ id }: { id: string }) {
       {/* action bar — never printed */}
       <div className="mb-6 flex items-center justify-between print:hidden">
         <Link href={`/clinician/patient/${patient.profile.id}`} className="text-sm text-ink-soft transition-colors hover:text-ink">
-          ← Back to patient
+          {t("clinician.report.backToPatient")}
         </Link>
         <button
           onClick={() => window.print()}
           className="rounded-pill bg-night px-5 py-2.5 text-sm font-medium text-paper-soft transition-colors hover:bg-ink"
         >
-          Print / Save as PDF
+          {t("clinician.report.print")}
         </button>
       </div>
 
@@ -70,9 +56,9 @@ export default function PatientReport({ id }: { id: string }) {
           <div>
             <div className="flex items-center gap-2">
               <span className="h-2.5 w-2.5 rounded-full bg-signal" />
-              <span className="font-serif text-2xl italic text-ink">Mova</span>
+              <span className="text-2xl text-ink">Mova</span>
             </div>
-            <h1 className="mt-2 font-serif text-3xl italic text-ink">Rehabilitation outcome report</h1>
+            <h1 className="mt-2 text-3xl text-ink">{t("clinician.report.title")}</h1>
           </div>
           <div className="text-right font-mono text-[11px] uppercase tracking-[0.14em] text-ink-faint">
             <div>{generated.toLocaleDateString()}</div>
@@ -80,44 +66,44 @@ export default function PatientReport({ id }: { id: string }) {
           </div>
         </header>
 
-        <Section title="Patient">
+        <Section title={t("clinician.report.patient")}>
           <Grid>
-            <Field k="Name" v={patient.demo.name} />
-            <Field k="Age" v={`${patient.demo.age}`} />
-            <Field k="Condition" v={CONDITION_LABEL[patient.profile.condition]} />
-            <Field k="Affected side" v={patient.profile.affectedSide} />
+            <Field k={t("clinician.report.name")} v={patient.demo.name} />
+            <Field k={t("clinician.report.age")} v={patient.demo.age > 0 ? `${patient.demo.age}` : "—"} />
+            <Field k={t("clinician.report.condition")} v={conditionLabel[patient.profile.condition]} />
+            <Field k={t("clinician.report.affectedSide")} v={patient.profile.affectedSide} />
           </Grid>
         </Section>
 
-        <Section title="Prescription (CarePlan)">
+        <Section title={t("clinician.report.prescription")}>
           <Grid>
-            <Field k="Exercise pack" v={PACK_LABEL[rx.pack]} />
-            <Field k="Weekly dose" v={`${rx.weeklyDoseSessions} sessions`} />
-            <Field k="Target cadence" v={rx.pack === "gait" ? `${rx.targetCadenceSpm} spm` : "n/a"} />
-            <Field k="Difficulty" v={`${Math.round(rx.difficulty * 100)}%`} />
+            <Field k={t("clinician.report.pack")} v={packLabel[rx.pack]} />
+            <Field k={t("clinician.report.weeklyDose")} v={t("clinician.report.sessionsUnit", { n: rx.weeklyDoseSessions })} />
+            <Field k={t("clinician.report.targetCadence")} v={rx.pack === "gait" ? t("clinician.rx.spm", { n: rx.targetCadenceSpm }) : t("clinician.report.na")} />
+            <Field k={t("clinician.report.difficulty")} v={`${Math.round(rx.difficulty * 100)}%`} />
           </Grid>
-          {rx.note && <p className="mt-3 text-[13px] leading-relaxed text-ink-soft">Note: {rx.note}</p>}
+          {rx.note && <p className="mt-3 text-[13px] leading-relaxed text-ink-soft">{t("clinician.report.note")}: {rx.note}</p>}
         </Section>
 
-        <Section title="Adherence & outcomes">
+        <Section title={t("clinician.report.adherenceOutcomes")}>
           <Grid>
-            <Field k="Adherence (this week)" v={`${m.adherencePct}% · ${m.weekSessions}/${rx.weeklyDoseSessions}`} />
-            <Field k="Total sessions" v={`${s.totalSessions}`} />
-            <Field k="Current streak" v={`${s.streakDays} days`} />
-            <Field k="Reach-time trend" v={s.reachTrendPct == null ? "—" : `${s.reachTrendPct > 0 ? "+" : ""}${s.reachTrendPct}%`} />
-            <Field k="On-beat trend" v={s.rhythmTrendPct == null ? "—" : `${s.rhythmTrendPct > 0 ? "+" : ""}${s.rhythmTrendPct}%`} />
-            <Field k="Best cadence" v={s.bestCadenceSpm ? `${s.bestCadenceSpm} spm` : "—"} />
+            <Field k={t("clinician.report.adherenceWeek")} v={`${m.adherencePct}% · ${m.weekSessions}/${rx.weeklyDoseSessions}`} />
+            <Field k={t("clinician.report.totalSessions")} v={`${s.totalSessions}`} />
+            <Field k={t("clinician.report.currentStreak")} v={t("clinician.report.days", { n: s.streakDays })} />
+            <Field k={t("clinician.report.reachTrend")} v={s.reachTrendPct == null ? "—" : `${s.reachTrendPct > 0 ? "+" : ""}${s.reachTrendPct}%`} />
+            <Field k={t("clinician.report.onBeatTrend")} v={s.rhythmTrendPct == null ? "—" : `${s.rhythmTrendPct > 0 ? "+" : ""}${s.rhythmTrendPct}%`} />
+            <Field k={t("clinician.report.bestCadence")} v={s.bestCadenceSpm ? t("clinician.rx.spm", { n: s.bestCadenceSpm }) : "—"} />
           </Grid>
         </Section>
 
-        <Section title="Baseline ROM (CV-guided)">
+        <Section title={t("clinician.report.baselineRom")}>
           {obs.length ? (
             <table className="w-full text-left text-[13px]">
               <thead>
                 <tr className="border-b border-line text-[11px] uppercase tracking-[0.12em] text-ink-faint">
-                  <th className="py-2 font-medium">Measure</th>
-                  <th className="py-2 font-medium">Side</th>
-                  <th className="py-2 font-medium">Value</th>
+                  <th className="py-2 font-medium">{t("clinician.report.measure")}</th>
+                  <th className="py-2 font-medium">{t("clinician.report.side")}</th>
+                  <th className="py-2 font-medium">{t("clinician.report.value")}</th>
                 </tr>
               </thead>
               <tbody>
@@ -134,21 +120,20 @@ export default function PatientReport({ id }: { id: string }) {
               </tbody>
             </table>
           ) : (
-            <p className="text-[13px] text-ink-soft">No baseline captured. Difficulty runs at a neutral default.</p>
+            <p className="text-[13px] text-ink-soft">{t("clinician.report.noBaseline")}</p>
           )}
         </Section>
 
-        <Section title="Clinical alerts">
+        <Section title={t("clinician.report.alerts")}>
           <div className="flex flex-wrap gap-2">
             {m.flags.map((f) => (
-              <RiskChip key={f.id} severity={f.severity} label={f.label} />
+              <RiskChip key={f.id} severity={f.severity} label={t(`clinician.flags.${f.id}`)} />
             ))}
           </div>
         </Section>
 
         <footer className="mt-8 border-t border-line pt-4 text-[11px] leading-relaxed text-ink-faint">
-          Decision support, not diagnosis. Freeze-risk figures derive from an on-device research model and are not a
-          clinical determination. Generated by Mova from mock / non-PHI demo data on {generated.toLocaleString()}.
+          {t("clinician.report.disclaimer", { date: generated.toLocaleString() })}
         </footer>
       </article>
     </div>
@@ -172,7 +157,7 @@ function Field({ k, v }: { k: string; v: string }) {
   return (
     <div>
       <dt className="text-[11px] uppercase tracking-[0.12em] text-ink-faint">{k}</dt>
-      <dd className="mt-1 font-serif text-lg italic text-ink">{v}</dd>
+      <dd className="mt-1 text-lg text-ink">{v}</dd>
     </div>
   );
 }

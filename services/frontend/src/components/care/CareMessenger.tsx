@@ -62,7 +62,7 @@ export default function CareMessenger({ clinicianName, userId }: { clinicianName
   return (
     <div className="flex h-full flex-col rounded-xl border border-line bg-card">
       <div className="border-b border-line px-6 py-4">
-        <h2 className="font-serif text-xl text-ink">Message your therapist</h2>
+        <h2 className="text-xl text-ink">Message your therapist</h2>
         <p className="text-[13px] text-ink-soft">Non-urgent questions about your program. Replies within 1–2 days.</p>
       </div>
 

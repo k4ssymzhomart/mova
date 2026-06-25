@@ -3,13 +3,16 @@
 import React from "react";
 import { ChevronLeftIcon, Loader2 } from "lucide-react";
 
+import LanguageToggle from "@/components/LanguageToggle";
 import { Button } from "@/components/ui/button";
 import { authCallbackUrl } from "@/lib/auth/urls";
 import { createClient } from "@/lib/supabase/client";
+import { useTranslation } from "@/locales/client";
 
 type Provider = "google";
 
 export function MinimalAuthPage() {
+  const { t } = useTranslation();
   const [supabase] = React.useState(() => createClient());
   const [email, setEmail] = React.useState("");
   const [busy, setBusy] = React.useState<string | null>(null);
@@ -56,7 +59,7 @@ export function MinimalAuthPage() {
     setMsg(
       error
         ? { kind: "error", text: error.message }
-        : { kind: "info", text: `Magic link sent to ${email}. Check your inbox.` },
+        : { kind: "info", text: t("auth.checkEmail") },
     );
   }
 
@@ -83,9 +86,12 @@ export function MinimalAuthPage() {
         <Button variant="ghost" className="absolute left-4 top-4" asChild>
           <a href="/">
             <ChevronLeftIcon className="me-1 size-4" />
-            Home
+            {t("common.back")}
           </a>
         </Button>
+        <div className="absolute right-4 top-4">
+          <LanguageToggle />
+        </div>
 
         <div className="mx-auto w-full space-y-5 sm:max-w-sm">
           <div className="flex items-center gap-2">
@@ -93,12 +99,8 @@ export function MinimalAuthPage() {
           </div>
 
           <div className="flex flex-col space-y-1">
-            <h1 className="font-serif text-3xl tracking-wide">
-              Sign in or create your account
-            </h1>
-            <p className="text-muted-foreground text-base">
-              Log in or create your Mova account to start training.
-            </p>
+            <h1 className="text-3xl tracking-wide">{t("auth.title")}</h1>
+            <p className="text-muted-foreground text-base">{t("auth.subtitle")}</p>
           </div>
 
           {msg && (
@@ -127,14 +129,14 @@ export function MinimalAuthPage() {
               ) : (
                 <GoogleIcon className="me-2 size-4" />
               )}
-              Continue with Google
+              {t("auth.google")}
             </Button>
           </div>
 
           <div className="flex items-center gap-3 py-1">
             <span className="h-px flex-1 bg-border" />
             <span className="text-muted-foreground text-xs uppercase tracking-[0.2em]">
-              or
+              {t("auth.or")}
             </span>
             <span className="h-px flex-1 bg-border" />
           </div>
@@ -145,7 +147,7 @@ export function MinimalAuthPage() {
               required
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              placeholder="you@email.com"
+              placeholder={t("auth.emailPlaceholder")}
               autoComplete="email"
               className="bg-background focus-visible:ring-ring h-11 w-full rounded-md border border-input px-3 text-sm outline-none transition focus-visible:ring-2"
             />
@@ -159,7 +161,7 @@ export function MinimalAuthPage() {
               {busy === "email" ? (
                 <Loader2 className="me-2 size-4 animate-spin" />
               ) : null}
-              Continue with email
+              {t("auth.continueEmail")}
             </Button>
           </form>
 
@@ -174,23 +176,7 @@ export function MinimalAuthPage() {
             </button>
           )}
 
-          <p className="text-muted-foreground mt-8 text-sm">
-            By continuing, you agree to our{" "}
-            <a
-              href="#"
-              className="hover:text-primary underline underline-offset-4"
-            >
-              Terms of Service
-            </a>{" "}
-            and{" "}
-            <a
-              href="#"
-              className="hover:text-primary underline underline-offset-4"
-            >
-              Privacy Policy
-            </a>
-            .
-          </p>
+          <p className="text-muted-foreground mt-8 text-sm">{t("auth.terms")}</p>
         </div>
       </div>
     </div>

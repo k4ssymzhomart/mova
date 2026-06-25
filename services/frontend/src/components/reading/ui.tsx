@@ -91,7 +91,7 @@ export function Section({
             {kicker}
           </div>
         )}
-        <h2 className="font-serif text-[clamp(1.7rem,3.4vw,2.4rem)] leading-tight tracking-tight text-ink">
+        <h2 className="text-[clamp(1.7rem,3.4vw,2.4rem)] leading-tight tracking-tight text-ink">
           {title}
         </h2>
       </div>
@@ -159,7 +159,7 @@ export function StatCard({
       <div className="font-mono text-[10px] uppercase tracking-[0.16em] text-ink-faint">
         {label}
       </div>
-      <div className="tnum mt-2 font-serif text-[2rem] leading-none text-ink">
+      <div className="tnum mt-2 text-[2rem] leading-none text-ink">
         {value}
       </div>
       {caption && (

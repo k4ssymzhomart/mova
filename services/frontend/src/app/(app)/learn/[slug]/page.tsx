@@ -30,7 +30,7 @@ export default function ArticlePage({ params }: { params: { slug: string } }) {
 
       <header className="mt-6 border-b border-line pb-8">
         <div className="font-mono text-[11px] uppercase tracking-[0.18em] text-signal-deep">{article.category}</div>
-        <h1 className="mt-3 font-serif text-4xl leading-[1.08] text-ink sm:text-5xl">{article.title}</h1>
+        <h1 className="mt-3 text-4xl leading-[1.08] text-ink sm:text-5xl">{article.title}</h1>
         <p className="mt-4 text-lg leading-relaxed text-ink-soft">{article.dek}</p>
         <div className="mt-5 flex items-center gap-2 font-mono text-[11px] uppercase tracking-[0.12em] text-ink-faint">
           <Clock className="size-3.5" strokeWidth={1.8} /> {article.readMinutes} min read
@@ -55,7 +55,7 @@ export default function ArticlePage({ params }: { params: { slug: string } }) {
       <div className="mt-8 space-y-8">
         {article.sections.map((s, i) => (
           <section key={i}>
-            {s.heading && <h2 className="mb-3 font-serif text-2xl text-ink">{s.heading}</h2>}
+            {s.heading && <h2 className="mb-3 text-2xl text-ink">{s.heading}</h2>}
             <div className="space-y-4">
               {s.paragraphs.map((p, j) => (
                 <p key={j} className="text-[15px] leading-[1.75] text-ink-soft">
@@ -66,7 +66,7 @@ export default function ArticlePage({ params }: { params: { slug: string } }) {
 
             {/* drop the pullquote in after the first section */}
             {i === 0 && article.pullquote && (
-              <blockquote className="mt-8 border-l-2 border-signal pl-5 font-serif text-2xl leading-snug text-ink">
+              <blockquote className="mt-8 border-l-2 border-signal pl-5 text-2xl leading-snug text-ink">
                 {article.pullquote}
               </blockquote>
             )}

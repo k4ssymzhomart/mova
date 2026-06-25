@@ -25,7 +25,8 @@ import {
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
-import { useTranslation } from "@/locales";
+import LanguageToggle from "@/components/LanguageToggle";
+import { useTranslation } from "@/locales/client";
 import { cn } from "@/lib/utils";
 
 interface NavItem {
@@ -159,6 +160,11 @@ export default function SidebarNav({
 
       {/* footer */}
       <div className="mt-2 space-y-0.5 border-t border-line px-2 py-3">
+        {!collapsed && (
+          <div className="mb-1 px-1">
+            <LanguageToggle className="w-full justify-center" />
+          </div>
+        )}
         <Link
           href="/learn"
           onClick={onNavigate}

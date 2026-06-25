@@ -128,7 +128,7 @@ export default function SettingsClient({
     <div className="space-y-8">
       <header>
         <div className="font-mono text-[11px] uppercase tracking-[0.22em] text-signal">Settings</div>
-        <h1 className="mt-2 font-serif text-4xl leading-none text-ink sm:text-5xl">Your account.</h1>
+        <h1 className="mt-2 text-4xl leading-none text-ink sm:text-5xl">Your account.</h1>
       </header>
 
       {/* PROFILE */}
@@ -284,7 +284,7 @@ function Section({
           <Icon className="size-[18px]" strokeWidth={1.7} />
         </span>
         <div>
-          <h2 className="font-serif text-2xl text-ink">{title}</h2>
+          <h2 className="text-2xl text-ink">{title}</h2>
           <p className="text-[13px] text-ink-soft">{desc}</p>
         </div>
       </div>

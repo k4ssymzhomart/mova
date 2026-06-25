@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { ShieldCheck, Target } from "lucide-react";
 
 import { createClient } from "@/lib/supabase/server";
+import { getTranslation } from "@/locales/server";
 
 export const metadata: Metadata = { title: "Exercises · Mova" };
 
@@ -16,14 +17,6 @@ interface ExerciseRow {
   instructions: string | null;
   safety_notes: string | null;
 }
-
-const MODALITY_LABEL: Record<string, string> = {
-  upper_limb_reaching: "Upper-limb reaching",
-  hand_grasp: "Hand & grasp",
-  head_neck: "Head & neck",
-  gait_balance: "Gait & balance",
-  sit_to_stand_lower_limb: "Sit-to-stand · lower limb",
-};
 
 const MODALITY_BLURB: Record<string, string> = {
   upper_limb_reaching: "Reach-to-target tasks — the richest computer-vision evidence base.",
@@ -41,6 +34,7 @@ function jointLabel(j: string): string {
 }
 
 export default async function ExercisesPage() {
+  const { t } = getTranslation();
   const supabase = createClient();
   const { data } = await supabase
     .from("exercises")
@@ -67,34 +61,27 @@ export default async function ExercisesPage() {
   return (
     <div className="space-y-8">
       <header>
-        <div className="font-mono text-[11px] uppercase tracking-[0.22em] text-signal">Library</div>
-        <h1 className="mt-2 text-4xl leading-none text-ink">
-          The movement catalog.
-        </h1>
-        <p className="mt-3 max-w-xl text-sm leading-relaxed text-ink-soft">
-          Every exercise maps to a validated clinical metric. Each card explains the movement, the
-          joints it targets, and what it&apos;s training for.
-        </p>
+        <div className="font-mono text-[11px] uppercase tracking-[0.22em] text-signal">{t("exercises.eyebrow")}</div>
+        <h1 className="mt-2 text-4xl leading-none text-ink">{t("exercises.title")}</h1>
+        <p className="mt-3 max-w-xl text-sm leading-relaxed text-ink-soft">{t("exercises.subtitle")}</p>
       </header>
 
       {exercises.length === 0 ? (
         <div className="rounded-lg border border-dashed border-line bg-paper-soft/50 px-6 py-12 text-center text-sm text-ink-soft">
-          The catalog is being prepared. Check back shortly.
+          {t("exercises.empty")}
         </div>
       ) : (
         groups.map((group) => (
           <section key={group.modality}>
             <div className="mb-4 flex items-baseline justify-between gap-4">
               <div>
-                <h2 className="text-2xl text-ink">
-                  {MODALITY_LABEL[group.modality] ?? group.modality}
-                </h2>
+                <h2 className="text-2xl text-ink">{t(`modality.${group.modality}`)}</h2>
                 {MODALITY_BLURB[group.modality] && (
                   <p className="mt-0.5 text-[13px] text-ink-soft">{MODALITY_BLURB[group.modality]}</p>
                 )}
               </div>
               <span className="shrink-0 font-mono text-[11px] uppercase tracking-[0.14em] text-ink-faint">
-                {group.items.length} {group.items.length === 1 ? "exercise" : "exercises"}
+                {group.items.length} {t("nav.exercises")}
               </span>
             </div>
 
