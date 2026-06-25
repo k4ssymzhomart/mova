@@ -41,7 +41,7 @@ export default async function AchievementsPage() {
     <div className="space-y-8">
       <div>
         <div className="font-mono text-[11px] uppercase tracking-[0.22em] text-signal">Achievements</div>
-        <h1 className="mt-2 font-serif text-4xl italic leading-none text-ink">
+        <h1 className="mt-2 text-4xl leading-none text-ink">
           Your rehabilitation, rewarded.
         </h1>
       </div>
@@ -53,7 +53,7 @@ export default async function AchievementsPage() {
             <div>
               <div className="font-mono text-[11px] uppercase tracking-[0.22em] text-signal">Level</div>
               <div className="mt-1.5 flex items-baseline gap-3">
-                <span className="font-serif text-6xl italic leading-none text-ink">{lp.level}</span>
+                <span className="text-6xl leading-none text-ink">{lp.level}</span>
                 <span className="font-mono text-sm text-ink-faint">{lp.totalXp.toLocaleString()} XP</span>
               </div>
             </div>
@@ -61,7 +61,7 @@ export default async function AchievementsPage() {
               <div className="font-mono text-[11px] uppercase tracking-[0.18em] text-ink-faint">
                 To level {lp.level + 1}
               </div>
-              <div className="mt-1 font-serif text-2xl text-ink">{lp.toNext.toLocaleString()} XP</div>
+              <div className="mt-1 text-2xl text-ink">{lp.toNext.toLocaleString()} XP</div>
             </div>
           </div>
           <div className="mt-6">
@@ -97,7 +97,7 @@ export default async function AchievementsPage() {
       {/* Badges */}
       <section>
         <div className="mb-4 flex items-baseline justify-between">
-          <h2 className="font-serif text-2xl italic text-ink">Badges</h2>
+          <h2 className="text-2xl text-ink">Badges</h2>
           <span className="font-mono text-[11px] uppercase tracking-[0.14em] text-ink-faint">
             {earnedCount} earned
           </span>
@@ -165,7 +165,7 @@ function StreakCard({
         <span className={active ? "text-signal-deep" : "text-ink-faint"}>{label}</span>
       </div>
       <div className="mt-2 flex items-baseline gap-2">
-        <span className="font-serif text-4xl italic text-ink">{value}</span>
+        <span className="text-4xl text-ink">{value}</span>
         <span className="text-sm text-ink-faint">{value === 1 ? "day" : "days"}</span>
       </div>
       <p className="mt-1 text-[13px] text-ink-soft">{sub}</p>

@@ -68,7 +68,7 @@ export default async function ExercisesPage() {
     <div className="space-y-8">
       <header>
         <div className="font-mono text-[11px] uppercase tracking-[0.22em] text-signal">Library</div>
-        <h1 className="mt-2 font-serif text-4xl italic leading-none text-ink">
+        <h1 className="mt-2 text-4xl leading-none text-ink">
           The movement catalog.
         </h1>
         <p className="mt-3 max-w-xl text-sm leading-relaxed text-ink-soft">
@@ -86,7 +86,7 @@ export default async function ExercisesPage() {
           <section key={group.modality}>
             <div className="mb-4 flex items-baseline justify-between gap-4">
               <div>
-                <h2 className="font-serif text-2xl italic text-ink">
+                <h2 className="text-2xl text-ink">
                   {MODALITY_LABEL[group.modality] ?? group.modality}
                 </h2>
                 {MODALITY_BLURB[group.modality] && (
@@ -105,7 +105,7 @@ export default async function ExercisesPage() {
                   className="flex flex-col rounded-lg border border-line bg-card p-5 transition-shadow hover:shadow-card"
                 >
                   <div className="flex items-start justify-between gap-3">
-                    <h3 className="font-serif text-xl leading-tight text-ink">{ex.name}</h3>
+                    <h3 className="text-xl leading-tight text-ink">{ex.name}</h3>
                     {ex.difficulty && (
                       <span className="shrink-0 rounded-pill bg-paper-soft px-2.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.1em] text-ink-faint ring-1 ring-line">
                         {ex.difficulty}

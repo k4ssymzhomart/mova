@@ -7,7 +7,7 @@
 // and awards XP/streak/badges (award_session_rewards). Keyed to the session id created upstream
 // (/app/session/new). Replaces the old standalone /session + the capture-only LiveCapturePanel.
 
-import { Loader2, Play, Square } from "lucide-react";
+import { Loader2, Minimize2, Play, Square } from "lucide-react";
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 
@@ -30,6 +30,7 @@ import type { PatientProfile } from "@/lib/profile/types";
 import { createClient } from "@/lib/supabase/client";
 import { FogEpisodeDetector } from "@/lib/telemetry/fogEpisodes";
 import { type BufferCounters, TelemetryBuffer } from "@/lib/telemetry/buffer";
+import { cn } from "@/lib/utils";
 
 const INFER_MS = 600;
 const CH = 6;
@@ -64,6 +65,8 @@ export default function SessionStudio({ sessionId, userId }: { sessionId: string
   const live = useLiveInference();
   const liveRef = useRef(live);
   liveRef.current = live;
+  const stageRef = useRef<HTMLDivElement>(null);
+  const [isFullscreen, setIsFullscreen] = useState(false);
 
   const [supabase] = useState(() => createClient());
   const [mode, setMode] = useState<SessionMode>("reach");
@@ -117,7 +120,29 @@ export default function SessionStudio({ sessionId, userId }: { sessionId: string
     }
   }, []);
 
+  // Focus mode — drive the native Fullscreen API off the camera stage so the rail + header chrome
+  // disappear entirely while recording. Esc or the overlay's "Exit focus" button drops focus mode
+  // without ending the session; Finish/Stop tears it down explicitly.
+  const enterFocus = useCallback(() => {
+    const el = stageRef.current;
+    if (!el || document.fullscreenElement) return;
+    // Fired from the Start click, so it's a valid user gesture. A blocked request is non-fatal —
+    // the session still runs windowed.
+    void el.requestFullscreen?.().catch(() => {});
+  }, []);
+  const exitFocus = useCallback(() => {
+    if (document.fullscreenElement) void document.exitFullscreen?.().catch(() => {});
+  }, []);
+  useEffect(() => {
+    const onChange = () => setIsFullscreen(Boolean(document.fullscreenElement));
+    document.addEventListener("fullscreenchange", onChange);
+    return () => document.removeEventListener("fullscreenchange", onChange);
+  }, []);
+  // Never leave the document stuck in fullscreen when the studio unmounts (e.g. route change).
+  useEffect(() => () => { if (document.fullscreenElement) void document.exitFullscreen?.().catch(() => {}); }, []);
+
   const start = useCallback(async () => {
+    enterFocus();
     setReward(null);
     setSummary(null);
     prevScore.current = 0;
@@ -139,7 +164,7 @@ export default function SessionStudio({ sessionId, userId }: { sessionId: string
     startedAt.current = Date.now();
     void liveRef.current.loadAll();
     await pose.start();
-  }, [pose, sessionId]);
+  }, [pose, sessionId, enterFocus]);
 
   // Inference + stream loop.
   useEffect(() => {
@@ -192,6 +217,7 @@ export default function SessionStudio({ sessionId, userId }: { sessionId: string
   }, [running, pose.latest]);
 
   const finish = useCallback(async () => {
+    exitFocus();
     setFinishing(true);
     pose.stop();
     const m = modeRef.current;
@@ -238,7 +264,7 @@ export default function SessionStudio({ sessionId, userId }: { sessionId: string
       /* best-effort rewards */
     }
     setFinishing(false);
-  }, [pose, sessionId, supabase, reach.score, reach.attempts, inferences]);
+  }, [pose, sessionId, supabase, reach.score, reach.attempts, inferences, exitFocus]);
 
   // Post-session view
   if (summary) {
@@ -287,8 +313,27 @@ export default function SessionStudio({ sessionId, userId }: { sessionId: string
 
       <div className="grid gap-5 lg:grid-cols-[1fr_360px]">
         <div className="space-y-5">
-          <div className="relative">
-            <PoseStage videoRef={pose.videoRef} landmarks={pose.latest} running={running} showVideo={showVideo} mode={mode} side={side} tempoSpm={tempoSpm} difficulty={difficulty} onStats={onStats} />
+          <div
+            ref={stageRef}
+            className={cn(
+              "relative",
+              isFullscreen && "z-50 flex h-full w-full items-center justify-center bg-night p-4 sm:p-8",
+            )}
+          >
+            <div className={cn(isFullscreen ? "w-full max-w-[min(92vw,117vh)]" : "w-full")}>
+              <PoseStage videoRef={pose.videoRef} landmarks={pose.latest} running={running} showVideo={showVideo} mode={mode} side={side} tempoSpm={tempoSpm} difficulty={difficulty} onStats={onStats} />
+            </div>
+            {isFullscreen && (
+              <FocusOverlay
+                mode={mode}
+                reach={reach}
+                gait={gait}
+                fps={pose.fps}
+                finishing={finishing}
+                onFinish={finish}
+                onExit={exitFocus}
+              />
+            )}
           </div>
           {mode === "gait" ? (
             <div className="grid grid-cols-3 gap-4">
@@ -404,6 +449,76 @@ export default function SessionStudio({ sessionId, userId }: { sessionId: string
           </Panel>
         </aside>
       </div>
+    </div>
+  );
+}
+
+// Focus-mode overlay — the only chrome left on screen while the stage is fullscreen. Gives the user a
+// persistent stop action plus a non-destructive way back out, so they're never trapped in focus mode.
+function FocusOverlay({
+  mode,
+  reach,
+  gait,
+  fps,
+  finishing,
+  onFinish,
+  onExit,
+}: {
+  mode: SessionMode;
+  reach: ReachingStats;
+  gait: GaitStats;
+  fps: number;
+  finishing: boolean;
+  onFinish: () => void;
+  onExit: () => void;
+}) {
+  const primary = mode === "gait"
+    ? { label: "Steps", value: String(gait.steps) }
+    : { label: "Reaches", value: String(reach.score) };
+  const secondary = mode === "gait"
+    ? { label: "On-beat", value: `${Math.round(gait.rhythmPct * 100)}%` }
+    : { label: "Attempts", value: String(reach.attempts) };
+  return (
+    <div className="pointer-events-none absolute inset-0 z-10 flex flex-col justify-between p-4 sm:p-8">
+      <div className="flex items-start justify-between">
+        <span className="inline-flex items-center gap-2 rounded-pill bg-signal/15 px-3 py-1.5 font-mono text-[11px] uppercase tracking-[0.14em] text-signal-bright backdrop-blur">
+          <span className="live-dot size-2 rounded-full bg-signal" />
+          Recording · focus mode
+        </span>
+        <button
+          type="button"
+          onClick={onExit}
+          className="pointer-events-auto inline-flex items-center gap-2 rounded-pill bg-white/10 px-3 py-1.5 font-mono text-[11px] uppercase tracking-[0.14em] text-paper-soft backdrop-blur transition-colors hover:bg-white/20"
+        >
+          <Minimize2 className="size-3.5" strokeWidth={2} />
+          Exit focus
+        </button>
+      </div>
+      <div className="pointer-events-auto mx-auto flex w-full max-w-2xl flex-wrap items-center justify-between gap-4 rounded-xl bg-black/40 px-5 py-3.5 backdrop-blur">
+        <div className="flex items-center gap-6">
+          <FocusMetric label={primary.label} value={primary.value} />
+          <FocusMetric label={secondary.label} value={secondary.value} />
+          <FocusMetric label="FPS" value={String(fps)} />
+        </div>
+        <button
+          type="button"
+          onClick={onFinish}
+          disabled={finishing}
+          className="inline-flex items-center gap-2 rounded-pill bg-white px-5 py-2.5 text-sm font-medium text-night transition-colors hover:bg-paper-soft disabled:opacity-60"
+        >
+          {finishing ? <Loader2 className="size-4 animate-spin" strokeWidth={1.8} /> : <Square className="size-4" strokeWidth={2} />}
+          {finishing ? "Saving…" : "Finish & save"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function FocusMetric({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <div className="font-mono text-[10px] uppercase tracking-[0.16em] text-paper-soft/60">{label}</div>
+      <div className="tnum text-xl text-white">{value}</div>
     </div>
   );
 }

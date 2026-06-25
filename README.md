@@ -1,6 +1,8 @@
 # MOVA
 
-![MOVA Banner](docs/assets/banner.png)
+<p align="center">
+  <img src="services/frontend/public/logo-mova.png" alt="MOVA" width="320" />
+</p>
 
 <p align="left">
   <a href="#license">

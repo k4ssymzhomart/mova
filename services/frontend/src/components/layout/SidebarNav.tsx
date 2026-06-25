@@ -25,6 +25,7 @@ import {
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
+import { useTranslation } from "@/locales";
 import { cn } from "@/lib/utils";
 
 interface NavItem {
@@ -36,17 +37,18 @@ interface NavItem {
   prefetch?: boolean;
 }
 
+// `label` holds an i18n key (see src/locales/ru.json); resolved through t() at render time.
 const NAV: NavItem[] = [
-  { href: "/app", label: "Today", icon: Home, ready: true, match: "/app" },
-  { href: "/program", label: "My Program", icon: ClipboardList, ready: true },
-  { href: "/app/session/new", label: "Train", icon: Activity, ready: true, match: "/app/session", prefetch: false },
-  { href: "/exercises", label: "Exercises", icon: Dumbbell, ready: true },
-  { href: "/progress", label: "Progress", icon: TrendingUp, ready: true },
-  { href: "/achievements", label: "Achievements", icon: Trophy, ready: true },
-  { href: "/devices", label: "Devices", icon: Bluetooth, ready: false },
-  { href: "/care-team", label: "Care Team", icon: Users, ready: false },
-  { href: "/learn", label: "Learn", icon: BookOpen, ready: false },
-  { href: "/settings", label: "Settings", icon: Settings, ready: false },
+  { href: "/app", label: "nav.today", icon: Home, ready: true, match: "/app" },
+  { href: "/program", label: "nav.myProgram", icon: ClipboardList, ready: true },
+  { href: "/app/session/new", label: "nav.train", icon: Activity, ready: true, match: "/app/session", prefetch: false },
+  { href: "/exercises", label: "nav.exercises", icon: Dumbbell, ready: true },
+  { href: "/progress", label: "nav.progress", icon: TrendingUp, ready: true },
+  { href: "/achievements", label: "nav.achievements", icon: Trophy, ready: true },
+  { href: "/devices", label: "nav.devices", icon: Bluetooth, ready: false },
+  { href: "/care-team", label: "nav.careTeam", icon: Users, ready: false },
+  { href: "/learn", label: "nav.learn", icon: BookOpen, ready: false },
+  { href: "/settings", label: "nav.settings", icon: Settings, ready: false },
 ];
 
 /** Longest matching nav prefix wins, so /app/session/[id] highlights Train, not Today. */
@@ -78,6 +80,7 @@ export default function SidebarNav({
 }) {
   const pathname = usePathname() ?? "/app";
   const current = activeHref(pathname);
+  const { t } = useTranslation();
 
   return (
     <div className="flex h-full flex-col">
@@ -112,7 +115,7 @@ export default function SidebarNav({
           <div className="min-w-0">
             <div className="truncate text-sm font-medium text-ink">{name}</div>
             <div className="font-mono text-[11px] tabular-nums text-ink-faint">
-              {streak > 0 ? `${streak}-day streak` : "Start your streak"}
+              {streak > 0 ? t("sidebar.streak", { n: streak }) : t("sidebar.startStreak")}
             </div>
           </div>
         )}
@@ -129,7 +132,7 @@ export default function SidebarNav({
               href={item.href}
               prefetch={item.prefetch}
               onClick={onNavigate}
-              title={collapsed ? item.label : undefined}
+              title={collapsed ? t(item.label) : undefined}
               aria-current={active ? "page" : undefined}
               className={cn(
                 "group relative flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm transition-all duration-200 ease-editorial",
@@ -140,10 +143,10 @@ export default function SidebarNav({
               )}
             >
               <Icon className="size-[18px] shrink-0" strokeWidth={active ? 2 : 1.7} />
-              {!collapsed && <span className="truncate">{item.label}</span>}
+              {!collapsed && <span className="truncate">{t(item.label)}</span>}
               {!collapsed && !item.ready && (
                 <span className="ml-auto rounded-full bg-ink/[0.06] px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wide text-ink-faint">
-                  soon
+                  {t("nav.soon")}
                 </span>
               )}
               {collapsed && !item.ready && (
@@ -159,26 +162,26 @@ export default function SidebarNav({
         <Link
           href="/learn"
           onClick={onNavigate}
-          title={collapsed ? "Help & support" : undefined}
+          title={collapsed ? t("nav.helpSupport") : undefined}
           className={cn(
             "flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-ink-soft transition-colors hover:bg-paper-soft hover:text-ink",
             collapsed && "justify-center px-0",
           )}
         >
           <HelpCircle className="size-[18px] shrink-0" strokeWidth={1.7} />
-          {!collapsed && <span>Help &amp; support</span>}
+          {!collapsed && <span>{t("nav.helpSupport")}</span>}
         </Link>
         <form action="/auth/signout" method="post">
           <button
             type="submit"
-            title={collapsed ? "Sign out" : undefined}
+            title={collapsed ? t("nav.signOut") : undefined}
             className={cn(
               "flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-ink-soft transition-colors hover:bg-card/70 hover:text-ink",
               collapsed && "justify-center px-0",
             )}
           >
             <LogOut className="size-[18px] shrink-0" strokeWidth={1.7} />
-            {!collapsed && <span>Sign out</span>}
+            {!collapsed && <span>{t("nav.signOut")}</span>}
           </button>
         </form>
       </div>

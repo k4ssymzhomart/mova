@@ -3,6 +3,7 @@ import Link from "next/link";
 import { ArrowRight, CalendarCheck, Dumbbell, Gauge, NotebookPen, Target } from "lucide-react";
 
 import { createClient } from "@/lib/supabase/server";
+import { t } from "@/locales";
 
 export const metadata: Metadata = { title: "My Program · Mova" };
 
@@ -47,11 +48,11 @@ function one<T>(v: OneOrMany<T>): T | null {
 }
 
 const MODALITY_LABEL: Record<string, string> = {
-  upper_limb_reaching: "Upper-limb reaching",
-  hand_grasp: "Hand & grasp",
-  head_neck: "Head & neck",
-  gait_balance: "Gait & balance",
-  sit_to_stand_lower_limb: "Sit-to-stand",
+  upper_limb_reaching: t("modality.upper_limb_reaching"),
+  hand_grasp: t("modality.hand_grasp"),
+  head_neck: t("modality.head_neck"),
+  gait_balance: t("modality.gait_balance"),
+  sit_to_stand_lower_limb: t("modality.sit_to_stand_lower_limb"),
 };
 
 const SIDE: Record<string, string> = { l: "Left", r: "Right" };
@@ -99,7 +100,7 @@ export default async function ProgramPage() {
   const primaryEx = primary ? one(primary.exercise) : null;
   const moduleTitle = primaryEx
     ? MODALITY_LABEL[primaryEx.modality] ?? primaryEx.name
-    : program?.title ?? "Free training";
+    : program?.title ?? t("modality.free_training");
 
   // Weekly adherence: completed sessions vs. the prescribed weekly dose.
   const completedThisWeek = week.filter((s) => s.status === "completed").length;
@@ -119,14 +120,12 @@ export default async function ProgramPage() {
   return (
     <div className="space-y-8">
       <header>
-        <div className="font-mono text-[11px] uppercase tracking-[0.22em] text-signal">My Program</div>
-        <h1 className="mt-2 font-serif text-4xl italic leading-none text-ink">
-          Your prescribed plan.
+        <div className="font-mono text-[11px] uppercase tracking-[0.22em] text-signal">{t("program.eyebrow")}</div>
+        <h1 className="mt-2 text-4xl leading-none text-ink">
+          {t("program.title")}
         </h1>
         <p className="mt-3 max-w-xl text-sm leading-relaxed text-ink-soft">
-          {program
-            ? "The plan your care team set for you — today's focus, your weekly dose, and how you're tracking."
-            : "You don't have a prescribed plan yet. You can still train freely while your care team sets one up."}
+          {program ? t("program.introWithPlan") : t("program.introNoPlan")}
         </p>
       </header>
 
@@ -135,9 +134,9 @@ export default async function ProgramPage() {
         <div className="relative flex flex-wrap items-end justify-between gap-6">
           <div className="min-w-0">
             <div className="font-mono text-[11px] uppercase tracking-[0.22em] text-signal">
-              {program ? "Today's focus" : "Today"}
+              {program ? t("program.todaysFocus") : t("program.today")}
             </div>
-            <h2 className="mt-2 font-serif text-4xl italic leading-tight text-ink sm:text-5xl">
+            <h2 className="mt-2 text-4xl leading-tight text-ink sm:text-5xl">
               {moduleTitle}
             </h2>
             {primaryEx?.description && (
@@ -148,7 +147,7 @@ export default async function ProgramPage() {
             {primary?.frequency_per_week != null && (
               <div className="mt-4 inline-flex items-center gap-2 rounded-pill border border-line bg-paper-soft px-3 py-1 font-mono text-[11px] uppercase tracking-[0.14em] text-ink-soft">
                 <CalendarCheck className="size-3.5 text-signal" strokeWidth={2} />
-                {primary.frequency_per_week}× per week
+                {t("program.perWeek", { n: primary.frequency_per_week })}
               </div>
             )}
           </div>
@@ -157,7 +156,7 @@ export default async function ProgramPage() {
             prefetch={false}
             className="inline-flex shrink-0 items-center gap-2 rounded-pill bg-signal px-6 py-3 text-sm font-medium text-white transition-colors hover:bg-signal-bright"
           >
-            Start today&apos;s session
+            {t("program.startTodaysSession")}
             <ArrowRight className="size-4" strokeWidth={2} />
           </Link>
         </div>
@@ -165,18 +164,18 @@ export default async function ProgramPage() {
 
       {/* Weekly adherence */}
       <section>
-        <h2 className="mb-4 font-serif text-2xl italic text-ink">This week</h2>
+        <h2 className="mb-4 text-2xl text-ink">{t("program.thisWeek")}</h2>
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-          <Metric icon={Gauge} label="Adherence" value={adherencePct != null ? `${adherencePct}%` : "—"} />
-          <Metric icon={CalendarCheck} label="Sessions done" value={`${completedThisWeek}`} />
+          <Metric icon={Gauge} label={t("program.adherence")} value={adherencePct != null ? `${adherencePct}%` : "—"} />
+          <Metric icon={CalendarCheck} label={t("program.sessionsDone")} value={`${completedThisWeek}`} />
           <Metric
             icon={Target}
-            label="Weekly dose"
+            label={t("program.weeklyDose")}
             value={targetPerWeek > 0 ? `${targetPerWeek}×` : "—"}
           />
           <Metric
             icon={Gauge}
-            label="Avg quality"
+            label={t("program.avgQuality")}
             value={avgQuality != null ? avgQuality.toFixed(2) : "—"}
           />
         </div>
@@ -185,10 +184,10 @@ export default async function ProgramPage() {
       {/* Prescribed exercises */}
       <section>
         <div className="mb-4 flex items-baseline justify-between">
-          <h2 className="font-serif text-2xl italic text-ink">Prescribed exercises</h2>
+          <h2 className="text-2xl text-ink">{t("program.prescribedExercises")}</h2>
           {prescriptions.length > 0 && (
             <span className="font-mono text-[11px] uppercase tracking-[0.14em] text-ink-faint">
-              {prescriptions.length} active
+              {t("program.activeCount", { n: prescriptions.length })}
             </span>
           )}
         </div>
@@ -197,11 +196,11 @@ export default async function ProgramPage() {
           <div className="rounded-lg border border-dashed border-line bg-paper-soft/50 px-6 py-10 text-center">
             <Dumbbell className="mx-auto size-6 text-ink-faint" strokeWidth={1.6} />
             <p className="mt-3 text-sm text-ink-soft">
-              No exercises prescribed yet. Browse the{" "}
+              {t("program.emptyExercisesLead")}{" "}
               <Link href="/exercises" className="text-signal-deep underline-offset-2 hover:underline">
-                exercise library
+                {t("program.exerciseLibrary")}
               </Link>{" "}
-              or start a free session to begin.
+              {t("program.emptyExercisesTail")}
             </p>
           </div>
         ) : (
@@ -221,12 +220,12 @@ export default async function ProgramPage() {
                       </span>
                     )}
                   </div>
-                  <h3 className="mt-3 font-serif text-xl text-ink">{ex.name}</h3>
+                  <h3 className="mt-3 text-xl text-ink">{ex.name}</h3>
                   {ex.description && (
                     <p className="mt-1.5 text-[13px] leading-relaxed text-ink-soft">{ex.description}</p>
                   )}
                   <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 font-mono text-[11px] text-ink-faint">
-                    {p.frequency_per_week != null && <span>{p.frequency_per_week}× / week</span>}
+                    {p.frequency_per_week != null && <span>{t("program.timesPerWeek", { n: p.frequency_per_week })}</span>}
                     {ex.target_joints && ex.target_joints.length > 0 && (
                       <span>{ex.target_joints.map(jointLabel).join(" · ")}</span>
                     )}
@@ -248,7 +247,7 @@ export default async function ProgramPage() {
         <section className="rounded-lg border border-line bg-paper-soft/50 p-5">
           <div className="flex items-center gap-2 font-mono text-[11px] uppercase tracking-[0.16em] text-ink-faint">
             <NotebookPen className="size-3.5" strokeWidth={1.8} />
-            Care-team note
+            {t("program.careTeamNote")}
           </div>
           <p className="mt-2 text-sm leading-relaxed text-ink-soft">{program.notes}</p>
         </section>
@@ -272,7 +271,7 @@ function Metric({
         <Icon className="size-3.5" strokeWidth={1.8} />
         {label}
       </div>
-      <div className="tnum mt-2 font-serif text-3xl text-ink">{value}</div>
+      <div className="tnum mt-2 text-3xl text-ink">{value}</div>
     </div>
   );
 }

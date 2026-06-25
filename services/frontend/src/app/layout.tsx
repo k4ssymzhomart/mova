@@ -20,6 +20,13 @@ export const metadata: Metadata = {
   title: "Mova — Motion intelligence for movement rehabilitation",
   description:
     "The first camera-free platform turning everyday wearable motion into clinical-grade gait and freezing-of-gait insight that generalises across patients and devices.",
+  // Served from services/frontend/public/icon.png so Chrome and other browsers show the Mova mark
+  // in the tab/bookmark instead of the default globe.
+  icons: {
+    icon: "/icon.png",
+    shortcut: "/icon.png",
+    apple: "/icon.png",
+  },
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {
