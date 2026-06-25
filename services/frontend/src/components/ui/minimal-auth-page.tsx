@@ -4,6 +4,7 @@ import React from "react";
 import { ChevronLeftIcon, Loader2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { authCallbackUrl } from "@/lib/auth/urls";
 import { createClient } from "@/lib/supabase/client";
 
 type Provider = "google";
@@ -26,10 +27,7 @@ export function MinimalAuthPage() {
   const nextParam = () =>
     new URLSearchParams(window.location.search).get("next") ?? "/app";
 
-  const callbackUrl = () =>
-    `${window.location.origin}/auth/callback?next=${encodeURIComponent(
-      nextParam(),
-    )}`;
+  const callbackUrl = () => authCallbackUrl(nextParam());
 
   async function signInWithProvider(provider: Provider) {
     setBusy(provider);

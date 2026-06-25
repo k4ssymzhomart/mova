@@ -9,6 +9,7 @@
 import type { Session, User } from "@supabase/supabase-js";
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
 
+import { authCallbackUrl } from "@/lib/auth/urls";
 import { createClient, isSupabaseConfigured } from "@/lib/supabase/client";
 
 type Result = { error?: string; info?: string };
@@ -30,14 +31,6 @@ interface AuthState {
 const GUEST_KEY = "mova.guest";
 const Ctx = createContext<AuthState | null>(null);
 
-/** Build an absolute callback URL that the /auth/callback route exchanges into a cookie session. */
-/** Build an absolute callback URL that the /auth/callback route exchanges into a cookie session. */
-/** Build an absolute callback URL. */
-function callbackTo(next = "/app"): string {
-  // Hard-force the production URL. Ignore window.location completely.
-  const baseUrl = "https://mova-frontend.onrender.com";
-  return `${baseUrl}/auth/callback?next=${encodeURIComponent(next)}`;
-}
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const configured = isSupabaseConfigured();
   // One cookie-backed browser client for the whole app; null when env is unset (guest-only mode).
@@ -72,7 +65,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (!supabase) return { error: "Sign-in isn't configured yet — continue as guest, or add Supabase keys." };
         const { error } = await supabase.auth.signInWithOAuth({
           provider: "google",
-          options: { redirectTo: callbackTo("/app") },
+          options: { redirectTo: authCallbackUrl("/app") },
         });
         return error ? { error: error.message } : {};
       },
@@ -86,7 +79,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const { data, error } = await supabase.auth.signUp({
           email,
           password,
-          options: { emailRedirectTo: callbackTo("/app") },
+          options: { emailRedirectTo: authCallbackUrl("/app") },
         });
         if (error) return { error: error.message };
         if (!data.session) return { info: "Account created — check your email to confirm, then sign in." };

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 
+import { publicOrigin } from "@/lib/auth/urls";
 import { createClient } from "@/lib/supabase/server";
 
 /**
@@ -8,9 +9,11 @@ import { createClient } from "@/lib/supabase/server";
  * training session immediately. Redirects to `next` (default /app).
  */
 export async function GET(request: Request) {
-  const { searchParams, origin } = new URL(request.url);
+  const { searchParams } = new URL(request.url);
   const code = searchParams.get("code");
   const next = searchParams.get("next") ?? "/app";
+  // Redirect against the PUBLIC origin, never request.url's internal proxy host (localhost:$PORT).
+  const base = publicOrigin(request);
 
   if (code) {
     const supabase = createClient();
@@ -18,9 +21,9 @@ export async function GET(request: Request) {
     if (!error) {
       // Ensure a patient record exists before the first session is created.
       await supabase.rpc("provision_self_serve_patient");
-      return NextResponse.redirect(`${origin}${next}`);
+      return NextResponse.redirect(`${base}${next}`);
     }
   }
 
-  return NextResponse.redirect(`${origin}/signin?error=auth_callback`);
+  return NextResponse.redirect(`${base}/signin?error=auth_callback`);
 }
