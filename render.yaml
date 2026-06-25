@@ -24,7 +24,7 @@ services:
     region: oregon
     rootDir: services/frontend
     buildCommand: npm ci && npm run build
-    startCommand: npm start
+    startCommand: npx next start -p $PORT
     autoDeploy: false
     envVars:
       - key: NODE_VERSION
