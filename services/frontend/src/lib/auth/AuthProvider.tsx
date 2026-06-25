@@ -31,9 +31,11 @@ const GUEST_KEY = "mova.guest";
 const Ctx = createContext<AuthState | null>(null);
 
 /** Build an absolute callback URL that the /auth/callback route exchanges into a cookie session. */
+/** Build an absolute callback URL that the /auth/callback route exchanges into a cookie session. */
 function callbackTo(next = "/app"): string {
-  if (typeof window === "undefined") return next;
-  return `${window.location.origin}/auth/callback?next=${encodeURIComponent(next)}`;
+  // Use the production URL from environment variables, or fallback to production origin
+  const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://mova-frontend.onrender.com";
+  return `${baseUrl}/auth/callback?next=${encodeURIComponent(next)}`;
 }
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
