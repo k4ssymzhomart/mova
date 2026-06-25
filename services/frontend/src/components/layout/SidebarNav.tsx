@@ -106,7 +106,7 @@ export default function SidebarNav({
       </div>
 
       {/* profile + streak */}
-      <div className={cn("mx-2 mb-2 flex items-center gap-3 rounded-2xl px-2 py-2", collapsed && "justify-center px-0")}>
+      <div className={cn("mx-2 mb-2 flex items-center gap-3 rounded-lg px-2 py-2", collapsed && "justify-center px-0")}>
         <StreakRing days={streak} initial={(name[0] ?? "M").toUpperCase()} />
         {!collapsed && (
           <div className="min-w-0">

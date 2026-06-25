@@ -64,9 +64,9 @@ export default async function CareTeamPage() {
       <div className="grid gap-5 lg:grid-cols-[1fr_1.1fr] lg:items-start">
         {/* left column: clinician + review */}
         <div className="space-y-5">
-          <section className="rounded-3xl border border-line bg-card p-7">
+          <section className="rounded-xl border border-line bg-card p-7">
             <div className="flex items-center gap-4">
-              <span className="grid size-16 shrink-0 place-items-center rounded-2xl bg-night font-serif text-2xl text-paper">
+              <span className="grid size-16 shrink-0 place-items-center rounded-lg bg-night font-serif text-2xl text-paper">
                 {initials}
               </span>
               <div className="min-w-0">
@@ -107,7 +107,7 @@ export default async function CareTeamPage() {
           </section>
 
           {/* next review */}
-          <section className="rounded-3xl border border-line bg-card p-7">
+          <section className="rounded-xl border border-line bg-card p-7">
             <div className="flex items-center gap-2 font-mono text-[11px] uppercase tracking-[0.16em] text-ink-faint">
               <CalendarClock className="size-4 text-signal" strokeWidth={1.8} />
               Next scheduled review

@@ -129,20 +129,14 @@ html.lenis body {
   display: none;
 }
 
-/* ---- Grain overlay ---- */
+/* ---- Grain overlay (disabled — flat clinical aesthetic) ---- */
 .grain::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  opacity: 0.5;
-  mix-blend-mode: overlay;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.55'/%3E%3C/svg%3E");
+  content: none;
 }
 
-/* Soft brand glow used behind live elements */
+/* Brand "glow" — flattened to a crisp hairline emphasis (no glow in the clinical system). */
 .glow-signal {
-  box-shadow: 0 0 60px -10px rgba(52, 210, 126, 0.55);
+  box-shadow: none;
 }
 
 /* ---- Ken Burns ---- */
@@ -171,37 +165,24 @@ html.lenis body {
   animation: marquee 38s linear infinite;
 }
 
-/* ---- Live pulse dot ---- */
+/* ---- Live pulse dot (opacity pulse — no glow ring) ---- */
 @keyframes livepulse {
-  0% {
-    box-shadow: 0 0 0 0 rgba(52, 210, 126, 0.55);
-  }
-  70% {
-    box-shadow: 0 0 0 8px rgba(52, 210, 126, 0);
-  }
+  0%,
   100% {
-    box-shadow: 0 0 0 0 rgba(52, 210, 126, 0);
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
   }
 }
 .live-dot {
-  animation: livepulse 2s ease-out infinite;
-}
-
-/* ---- Animated conic aurora (for dark section backdrops) ---- */
-@keyframes spin-slow {
-  to {
-    transform: rotate(360deg);
-  }
-}
-.aurora {
-  animation: spin-slow 24s linear infinite;
+  animation: livepulse 1.6s ease-in-out infinite;
 }
 
 @media (prefers-reduced-motion: reduce) {
   .kenburns,
   .marquee-track,
-  .live-dot,
-  .aurora {
+  .live-dot {
     animation: none !important;
   }
 }

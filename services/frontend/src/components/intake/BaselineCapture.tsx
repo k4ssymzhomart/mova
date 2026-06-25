@@ -133,7 +133,7 @@ export default function BaselineCapture({
 
   return (
     <div>
-      <div className="relative aspect-[4/3] w-full overflow-hidden rounded-[1.25rem] border border-line bg-card shadow-soft">
+      <div className="relative aspect-[4/3] w-full overflow-hidden rounded-lg border border-line bg-card shadow-soft">
         <canvas ref={canvasRef} className="absolute inset-0 h-full w-full" />
         {running && (
           <div className="absolute left-4 right-4 top-4 flex items-center gap-3">

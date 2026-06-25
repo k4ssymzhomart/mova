@@ -54,22 +54,21 @@ export default function SessionReward({
   const barWidth = `${Math.round((filled ? lp.fraction : leveledUp ? 0 : prevLp.fraction) * 100)}%`;
 
   return (
-    <section className="relative mt-10 overflow-hidden rounded-3xl bg-night px-7 py-8 shadow-sm sm:px-10 sm:py-10">
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(120%_120%_at_88%_-25%,rgba(22,163,91,0.30),transparent_60%)]" />
+    <section className="relative mt-10 overflow-hidden rounded-xl border border-line bg-card px-7 py-8 sm:px-10 sm:py-10">
       <div className="relative">
-        <div className="font-mono text-[11px] uppercase tracking-[0.22em] text-signal-bright">
+        <div className="font-mono text-[11px] uppercase tracking-[0.22em] text-signal">
           Session complete
         </div>
         <div className="mt-3 flex items-baseline gap-3">
-          <span className="font-serif text-5xl italic leading-none text-paper">
+          <span className="font-serif text-5xl italic leading-none text-ink">
             +{xp.toLocaleString()}
           </span>
-          <span className="font-mono text-sm uppercase tracking-[0.18em] text-paper/50">XP earned</span>
+          <span className="font-mono text-sm uppercase tracking-[0.18em] text-ink-faint">XP earned</span>
         </div>
 
         <div className="mt-7 max-w-md">
           <div className="flex items-baseline justify-between gap-3">
-            <span className="font-mono text-[11px] uppercase tracking-[0.18em] text-paper/50">
+            <span className="font-mono text-[11px] uppercase tracking-[0.18em] text-ink-faint">
               Level {lp.level}
             </span>
             {leveledUp && (
@@ -77,11 +76,11 @@ export default function SessionReward({
                 Level up
               </span>
             )}
-            <span className="font-mono text-[11px] text-paper/45">
+            <span className="font-mono text-[11px] text-ink-faint">
               {lp.toNext.toLocaleString()} XP to {lp.level + 1}
             </span>
           </div>
-          <div className="mt-2 h-2 w-full overflow-hidden rounded-pill bg-paper/[0.14]">
+          <div className="mt-2 h-2 w-full overflow-hidden rounded-pill bg-paper-soft">
             <div
               className="h-full rounded-pill bg-signal transition-[width] duration-1000 ease-editorial"
               style={{ width: barWidth }}
@@ -89,8 +88,8 @@ export default function SessionReward({
           </div>
         </div>
 
-        <div className="mt-6 inline-flex items-center gap-2 text-paper/70">
-          <Flame className="size-4 text-signal-bright" strokeWidth={2} />
+        <div className="mt-6 inline-flex items-center gap-2 text-ink-soft">
+          <Flame className="size-4 text-signal" strokeWidth={2} />
           <span className="text-sm">
             {reward.current_streak > 0
               ? `${reward.current_streak}-day streak`
@@ -100,21 +99,21 @@ export default function SessionReward({
 
         {reward.new_badges.length > 0 && (
           <div className="mt-7">
-            <div className="font-mono text-[11px] uppercase tracking-[0.18em] text-paper/50">
+            <div className="font-mono text-[11px] uppercase tracking-[0.18em] text-ink-faint">
               {reward.new_badges.length === 1 ? "Badge unlocked" : "Badges unlocked"}
             </div>
             <div className="mt-3 flex flex-wrap gap-3">
               {reward.new_badges.map((b) => (
                 <div
                   key={b.code}
-                  className="flex items-center gap-3 rounded-2xl bg-paper/[0.06] px-4 py-3 ring-1 ring-paper/10"
+                  className="flex items-center gap-3 rounded-lg border border-line bg-paper-soft px-4 py-3"
                 >
-                  <div className="grid size-11 shrink-0 place-items-center rounded-xl bg-paper/[0.06]">
+                  <div className="grid size-11 shrink-0 place-items-center rounded-xl bg-card">
                     <BadgeMark code={b.code} earned />
                   </div>
                   <div>
-                    <div className="text-sm font-medium text-paper">{b.title}</div>
-                    <div className="font-mono text-[11px] text-signal-bright">+{b.xp_reward} XP</div>
+                    <div className="text-sm font-medium text-ink">{b.title}</div>
+                    <div className="font-mono text-[11px] text-signal">+{b.xp_reward} XP</div>
                   </div>
                 </div>
               ))}
@@ -131,14 +130,14 @@ export default function SessionReward({
           </Link>
           <Link
             href="/progress"
-            className="rounded-pill border border-paper/20 px-5 py-2.5 text-sm font-medium text-paper/85 transition-colors hover:bg-paper/10"
+            className="rounded-pill border border-line px-5 py-2.5 text-sm font-medium text-ink-soft transition-colors hover:bg-paper-soft"
           >
             See progress
           </Link>
           <button
             type="button"
             onClick={onRestart}
-            className="rounded-pill border border-paper/20 px-5 py-2.5 text-sm font-medium text-paper/85 transition-colors hover:bg-paper/10"
+            className="rounded-pill border border-line px-5 py-2.5 text-sm font-medium text-ink-soft transition-colors hover:bg-paper-soft"
           >
             New session
           </button>

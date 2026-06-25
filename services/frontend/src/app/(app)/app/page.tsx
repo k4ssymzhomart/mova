@@ -97,28 +97,27 @@ export default async function TodayPage() {
       </header>
 
       {/* NEXT UP — the command center hero */}
-      <section className="relative overflow-hidden rounded-3xl bg-night px-7 py-8 shadow-sm sm:px-10 sm:py-10">
-        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(120%_120%_at_85%_-20%,rgba(22,163,91,0.32),transparent_60%)]" />
+      <section className="relative overflow-hidden rounded-xl border border-line bg-card px-7 py-8 sm:px-10 sm:py-10">
         <div className="relative">
-          <div className="flex items-center gap-2 font-mono text-[11px] uppercase tracking-[0.22em] text-signal-bright">
+          <div className="flex items-center gap-2 font-mono text-[11px] uppercase tracking-[0.22em] text-signal">
             <Sparkles className="size-3.5" strokeWidth={2} />
             Next up
           </div>
-          <h2 className="mt-3 max-w-2xl font-serif text-4xl leading-tight text-paper sm:text-6xl">{nextTitle}</h2>
-          <p className="mt-4 max-w-lg text-sm leading-relaxed text-paper/60">{nextDesc}</p>
+          <h2 className="mt-3 max-w-2xl font-serif text-4xl leading-tight text-ink sm:text-6xl">{nextTitle}</h2>
+          <p className="mt-4 max-w-lg text-sm leading-relaxed text-ink-soft">{nextDesc}</p>
 
           <div className="mt-7 flex flex-wrap items-center gap-4">
             <Link
               href="/app/session/new"
               prefetch={false}
-              className="inline-flex items-center gap-2 rounded-pill bg-signal px-7 py-3.5 text-sm font-medium text-white shadow-sm transition-colors hover:bg-signal-bright"
+              className="inline-flex items-center gap-2 rounded-pill bg-signal px-7 py-3.5 text-sm font-medium text-white transition-colors hover:bg-signal-bright"
             >
               <Play className="size-4" strokeWidth={2} />
               Start session
             </Link>
             {activeRx[0]?.frequency_per_week != null && (
-              <span className="inline-flex items-center gap-2 font-mono text-[11px] uppercase tracking-[0.14em] text-paper/55">
-                <CalendarCheck className="size-3.5 text-signal-bright" strokeWidth={2} />
+              <span className="inline-flex items-center gap-2 font-mono text-[11px] uppercase tracking-[0.14em] text-ink-faint">
+                <CalendarCheck className="size-3.5 text-signal" strokeWidth={2} />
                 {activeRx[0].frequency_per_week}× per week
               </span>
             )}
@@ -139,7 +138,7 @@ export default async function TodayPage() {
         <SummaryCard icon={CalendarCheck} label="Completed" value={`${completed}`} sub="recent sessions" />
         <Link
           href="/achievements"
-          className="group flex flex-col justify-between rounded-2xl border border-line bg-card p-5 transition-colors hover:border-ink/20"
+          className="group flex flex-col justify-between rounded-lg border border-line bg-card p-5 transition-colors hover:border-ink/20"
         >
           <div className="flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.14em] text-ink-faint">
             <Sparkles className="size-3.5" strokeWidth={1.8} />
@@ -167,11 +166,11 @@ export default async function TodayPage() {
           </Link>
         </div>
         {sessions.length === 0 ? (
-          <div className="rounded-2xl border border-dashed border-line bg-paper-soft/50 px-6 py-10 text-center text-sm text-ink-soft">
+          <div className="rounded-lg border border-dashed border-line bg-paper-soft/50 px-6 py-10 text-center text-sm text-ink-soft">
             No sessions yet — your first one starts above.
           </div>
         ) : (
-          <div className="overflow-hidden rounded-2xl border border-line bg-card">
+          <div className="overflow-hidden rounded-lg border border-line bg-card">
             {sessions.map((s, i) => {
               const m = one(s.session_metrics);
               return (
@@ -221,7 +220,7 @@ function SummaryCard({
   accent?: boolean;
 }) {
   return (
-    <div className={`rounded-2xl border p-5 ${accent ? "border-signal/30 bg-signal/[0.05]" : "border-line bg-card"}`}>
+    <div className={`rounded-lg border p-5 ${accent ? "border-signal/30 bg-signal/[0.05]" : "border-line bg-card"}`}>
       <div className="flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.14em] text-ink-faint">
         <Icon className={`size-3.5 ${accent ? "text-signal" : ""}`} strokeWidth={1.8} />
         {label}

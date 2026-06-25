@@ -46,8 +46,10 @@ export function useOnnxModel(modelUrl: string) {
   const [error, setError] = useState<string | null>(null);
   const [io, setIo] = useState<{ inputs: string[]; outputs: string[] } | null>(null);
 
-  const load = useCallback(async () => {
-    if (sessionRef.current) return;
+  // Returns the resolved status so callers (useLiveInference) can decide synchronously whether to
+  // switch to simulated scoring — React state updates here aren't readable until the next render.
+  const load = useCallback(async (): Promise<OnnxStatus> => {
+    if (sessionRef.current) return "ready";
     setStatus("loading");
     setError(null);
     try {
@@ -55,7 +57,7 @@ export function useOnnxModel(modelUrl: string) {
       const head = await fetch(modelUrl, { method: "HEAD" }).catch(() => null);
       if (!head || !head.ok) {
         setStatus("unavailable");
-        return;
+        return "unavailable";
       }
       const ort = (await import(/* webpackIgnore: true */ ORT_ESM_URL)) as typeof OrtNS;
       ort.env.wasm.wasmPaths = ORT_CDN_DIST;
@@ -68,9 +70,11 @@ export function useOnnxModel(modelUrl: string) {
       sessionRef.current = session;
       setIo({ inputs: [...session.inputNames], outputs: [...session.outputNames] });
       setStatus("ready");
+      return "ready";
     } catch (err) {
       setStatus("error");
       setError((err as Error).message ?? "Failed to load ONNX model.");
+      return "error";
     }
   }, [modelUrl]);
 

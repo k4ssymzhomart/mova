@@ -34,6 +34,7 @@ export interface LivePrediction {
   mode: InferMode;
   latencyMs: number;
   at: number;
+  simulated?: boolean; // true when produced by the offline fallback, not the real ONNX graph
 }
 
 /**
@@ -71,11 +72,49 @@ function softmax(logits: number[]): number[] {
   return ex.map((v) => v / s);
 }
 
+// — Simulated fallback ————————————————————————————————————————————————————————
+// When the .onnx binaries aren't deployed, we still want a live, plausible, clearly-labelled readout
+// so the session never bricks. This produces a smoothly-drifting FoG risk + a mode-appropriate HAR
+// distribution from the (git-tracked) label vocab. It is explicitly flagged `simulated: true`.
+const MOCK_HAR: Record<InferMode, string[]> = {
+  gait: ["walking", "stairs_up", "stairs_down", "standing", "knees_bending_crouching"],
+  reach: ["frontal_elevation_arms", "lateral_elevation_arms", "arms_inner_rotation", "shoulders_high_rotation", "frontal_crossing_arms"],
+};
+
+function mockPredict(meta: ModelMeta, mode: InferMode, side: Side, tick: number): LivePrediction {
+  // FoG risk: slow sine drift + light jitter; gait sits in a higher, in-distribution band.
+  const base = mode === "gait" ? 0.32 : 0.16;
+  const wave = (Math.sin(tick / 9) + 1) / 2; // 0..1, ~slow
+  const jitter = (Math.random() - 0.5) * 0.07;
+  const risk = Math.min(0.96, Math.max(0.02, base + wave * 0.4 + jitter));
+
+  const pool = MOCK_HAR[mode].filter((l) => meta.har_labels.includes(l));
+  const labels = pool.length ? pool : meta.har_labels.slice(0, 5);
+  const lead = Math.floor(((Math.sin(tick / 17) + 1) / 2) * labels.length) % labels.length;
+  const ranked = labels
+    .map((label, i) => ({ label, p: i === lead ? 1.6 : Math.random() * 0.5 }))
+    .sort((a, b) => b.p - a.p);
+  const probs = softmax(ranked.map((r) => r.p));
+  const top = ranked.map((r, i) => ({ label: r.label, p: probs[i] })).slice(0, 3);
+
+  return {
+    har: { label: top[0].label, prob: top[0].p, top },
+    fog: { risk, valid: mode === "gait" },
+    mode,
+    latencyMs: 0,
+    at: performance.now(),
+    simulated: true,
+  };
+}
+
 export function useLiveInference() {
   const fog = useOnnxModel("/models/fog.onnx");
   const har = useOnnxModel("/models/har.onnx");
   const metaRef = useRef<ModelMeta | null>(null);
   const [ready, setReady] = useState(false);
+  const [simulated, setSimulated] = useState(false);
+  const simulatedRef = useRef(false);
+  const tickRef = useRef(0);
   const busyRef = useRef(false);
 
   const loadAll = useCallback(async () => {
@@ -83,7 +122,13 @@ export function useLiveInference() {
       const res = await fetch("/models/model_meta.json").catch(() => null);
       if (res?.ok) metaRef.current = (await res.json()) as ModelMeta;
     }
-    await Promise.all([fog.load(), har.load()]);
+    const [fogStatus, harStatus] = await Promise.all([fog.load(), har.load()]);
+    // If either real graph is missing/broken, fall back to simulated scoring (labels come from the
+    // git-tracked model_meta.json, so this works even with zero .onnx binaries on the server).
+    const realReady = fogStatus === "ready" && harStatus === "ready";
+    const sim = !realReady && !!metaRef.current;
+    simulatedRef.current = sim;
+    setSimulated(sim);
     setReady(true);
   }, [fog, har]);
 
@@ -91,7 +136,10 @@ export function useLiveInference() {
   const infer = useCallback(
     async (raw: Float32Array, mode: InferMode = "reach", side: Side = "right"): Promise<LivePrediction | null> => {
       const meta = metaRef.current;
-      if (busyRef.current || !meta) return null;
+      if (!meta) return null;
+      // Offline fallback: synthesize a plausible, clearly-flagged readout (no real graph available).
+      if (simulatedRef.current) return mockPredict(meta, mode, side, ++tickRef.current);
+      if (busyRef.current) return null;
       busyRef.current = true;
       try {
         const { mean, std } = meta.norm_stats;
@@ -130,16 +178,17 @@ export function useLiveInference() {
     [fog, har],
   );
 
+  const realReady = fog.status === "ready" && har.status === "ready";
   const status: OnnxStatus =
-    fog.status === "ready" && har.status === "ready"
-      ? "ready"
-      : fog.status === "unavailable" || har.status === "unavailable"
-        ? "unavailable"
-        : fog.status === "loading" || har.status === "loading"
-          ? "loading"
+    realReady || simulated
+      ? "ready" // simulated mode is "ready" too — the live loop runs and produces flagged readouts
+      : fog.status === "loading" || har.status === "loading"
+        ? "loading"
+        : fog.status === "unavailable" || har.status === "unavailable"
+          ? "unavailable"
           : fog.status === "error" || har.status === "error"
             ? "error"
             : "idle";
 
-  return { status, ready, loadAll, infer, meta: metaRef };
+  return { status, ready, simulated, loadAll, infer, meta: metaRef };
 }

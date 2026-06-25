@@ -78,7 +78,7 @@ export default async function ExercisesPage() {
       </header>
 
       {exercises.length === 0 ? (
-        <div className="rounded-2xl border border-dashed border-line bg-paper-soft/50 px-6 py-12 text-center text-sm text-ink-soft">
+        <div className="rounded-lg border border-dashed border-line bg-paper-soft/50 px-6 py-12 text-center text-sm text-ink-soft">
           The catalog is being prepared. Check back shortly.
         </div>
       ) : (
@@ -102,7 +102,7 @@ export default async function ExercisesPage() {
               {group.items.map((ex) => (
                 <article
                   key={ex.id}
-                  className="flex flex-col rounded-2xl border border-line bg-card p-5 transition-shadow hover:shadow-card"
+                  className="flex flex-col rounded-lg border border-line bg-card p-5 transition-shadow hover:shadow-card"
                 >
                   <div className="flex items-start justify-between gap-3">
                     <h3 className="font-serif text-xl leading-tight text-ink">{ex.name}</h3>

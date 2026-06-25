@@ -7,7 +7,7 @@
 // and awards XP/streak/badges (award_session_rewards). Keyed to the session id created upstream
 // (/app/session/new). Replaces the old standalone /session + the capture-only LiveCapturePanel.
 
-import { CloudOff, Loader2, Play, Square } from "lucide-react";
+import { Loader2, Play, Square } from "lucide-react";
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 
@@ -29,7 +29,7 @@ import { abilityFor, loadProfile, startingCadence } from "@/lib/profile/store";
 import type { PatientProfile } from "@/lib/profile/types";
 import { createClient } from "@/lib/supabase/client";
 import { FogEpisodeDetector } from "@/lib/telemetry/fogEpisodes";
-import { type StreamerCounters, TelemetryStreamer } from "@/lib/telemetry/streamer";
+import { type BufferCounters, TelemetryBuffer } from "@/lib/telemetry/buffer";
 
 const INFER_MS = 600;
 const CH = 6;
@@ -76,13 +76,13 @@ export default function SessionStudio({ sessionId, userId }: { sessionId: string
   const [prediction, setPrediction] = useState<LivePrediction | null>(null);
   const [fill, setFill] = useState(0);
   const [inferences, setInferences] = useState(0);
-  const [counters, setCounters] = useState<StreamerCounters>({ framesSent: 0, eventsSent: 0, pending: 0, errors: 0, lastError: null });
+  const [counters, setCounters] = useState<BufferCounters>({ framesSent: 0, eventsSent: 0, pending: 0, errors: 0, lastError: null });
   const [finishing, setFinishing] = useState(false);
   const [reward, setReward] = useState<SessionRewardData | null>(null);
   const [summary, setSummary] = useState<{ record: SessionRecord; history: SessionRecord[] } | null>(null);
 
   // accumulators + stream
-  const streamer = useRef<TelemetryStreamer | null>(null);
+  const streamer = useRef<TelemetryBuffer | null>(null);
   const detector = useRef<FogEpisodeDetector | null>(null);
   const seq = useRef(0);
   const startedAt = useRef(0);
@@ -96,7 +96,6 @@ export default function SessionStudio({ sessionId, userId }: { sessionId: string
   const running = pose.status === "running";
   const meta = MODES.find((m) => m.id === mode)!;
   const difficulty = abilityFor(profile, mode);
-  const modelsOffline = live.status === "unavailable" || live.status === "error";
 
   useEffect(() => {
     const p = loadProfile(userId);
@@ -134,8 +133,8 @@ export default function SessionStudio({ sessionId, userId }: { sessionId: string
     setPrediction(null);
     setCounters({ framesSent: 0, eventsSent: 0, pending: 0, errors: 0, lastError: null });
     pipeline.current.reset();
-    streamer.current = new TelemetryStreamer(sessionId, setCounters);
-    streamer.current.start();
+    streamer.current = new TelemetryBuffer(sessionId, setCounters);
+    await streamer.current.start();
     detector.current = new FogEpisodeDetector({ source: "fog.onnx" });
     startedAt.current = Date.now();
     void liveRef.current.loadAll();
@@ -175,6 +174,7 @@ export default function SessionStudio({ sessionId, userId }: { sessionId: string
             har_label: pred.har?.label ?? null,
             mode: pred.mode,
             side: sideRef.current,
+            simulated: pred.simulated ?? false,
           },
           quality: round(cover, 3),
         });
@@ -184,7 +184,7 @@ export default function SessionStudio({ sessionId, userId }: { sessionId: string
         fogAccum.current.n += 1;
         fogSamples.current.push(pred.fog.risk);
         const ep = detector.current?.update(pred.fog.risk, pred.fog.valid, wall);
-        if (ep && s) void s.sendEvents([ep]);
+        if (ep && s) s.pushEvent(ep);
       }
       if (pred.har) harCounts.current[pred.har.label] = (harCounts.current[pred.har.label] ?? 0) + 1;
     }, INFER_MS);
@@ -221,10 +221,10 @@ export default function SessionStudio({ sessionId, userId }: { sessionId: string
     saveSession(record, userId);
     setSummary({ record, history: loadSessions(userId) });
 
-    // Close any open FoG episode, flush the frame buffer, then score + award on the backend.
+    // Close any open FoG episode, flush the buffer, then score + award on the backend.
     const ep = detector.current?.finalize(now);
-    if (ep && streamer.current) await streamer.current.sendEvents([ep]);
-    await streamer.current?.stop();
+    if (ep) streamer.current?.pushEvent(ep);
+    await streamer.current?.stop(); // awaited final flush — no trailing frames lost
     const quality = m === "gait" ? (g.steps ? g.rhythmPct : null) : reach.attempts > 0 ? reach.score / reach.attempts : null;
     try {
       await supabase.rpc("finish_training_session", {
@@ -248,7 +248,7 @@ export default function SessionStudio({ sessionId, userId }: { sessionId: string
         {reward ? (
           <SessionReward reward={reward} onRestart={() => location.assign("/app/session/new")} />
         ) : (
-          <div className="mt-8 rounded-3xl border border-line bg-card p-6 text-sm text-ink-soft">
+          <div className="mt-8 rounded-xl border border-line bg-card p-6 text-sm text-ink-soft">
             Session saved. {finishing ? "Scoring…" : "Rewards are offline — your metrics were still recorded."}
           </div>
         )}
@@ -289,18 +289,6 @@ export default function SessionStudio({ sessionId, userId }: { sessionId: string
         <div className="space-y-5">
           <div className="relative">
             <PoseStage videoRef={pose.videoRef} landmarks={pose.latest} running={running} showVideo={showVideo} mode={mode} side={side} tempoSpm={tempoSpm} difficulty={difficulty} onStats={onStats} />
-            {modelsOffline && (
-              <div className="absolute inset-0 z-10 flex items-center justify-center rounded-card bg-night/80 p-6 text-center backdrop-blur-sm">
-                <div className="max-w-sm">
-                  <CloudOff className="mx-auto size-7 text-signal-bright" strokeWidth={1.6} />
-                  <div className="mt-3 font-mono text-[11px] uppercase tracking-[0.2em] text-signal-bright">Inference engine offline</div>
-                  <p className="mt-2 text-sm leading-relaxed text-paper/80">
-                    The FoG/HAR models couldn't be loaded. Live scoring is paused.
-                  </p>
-                  <code className="mt-3 inline-block rounded-md bg-paper/10 px-3 py-1.5 font-mono text-[12px] text-paper">npm run models:sync</code>
-                </div>
-              </div>
-            )}
           </div>
           {mode === "gait" ? (
             <div className="grid grid-cols-3 gap-4">
@@ -405,7 +393,7 @@ export default function SessionStudio({ sessionId, userId }: { sessionId: string
             </div>
           </Panel>
 
-          <SessionTelemetry status={live.status} prediction={prediction} mode={mode} fill={fill} inferences={inferences} />
+          <SessionTelemetry status={live.status} simulated={live.simulated} prediction={prediction} mode={mode} fill={fill} inferences={inferences} />
 
           <Panel label="Recording">
             <p className="text-[13px] leading-relaxed text-ink-soft">
