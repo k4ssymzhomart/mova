@@ -1,7 +1,7 @@
 # MOVA
 
 <p align="center">
-  <img src="services/frontend/public/Logo-white.png" alt="MOVA" width="320" />
+  <img src="services/frontend/public/Logo_white.png" alt="MOVA" width="320" />
 </p>
 
 <p align="left">
