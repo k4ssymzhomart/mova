@@ -89,3 +89,6 @@ supabase/.temp/
 .idea/
 .vscode/
 *.log
+
+# Vercel CLI link/state
+.vercel
