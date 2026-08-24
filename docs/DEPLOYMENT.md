@@ -15,12 +15,15 @@ a WebSocket open), and the root `render.yaml` Blueprint still describes it.
 `services/api` is written as a normal FastAPI app served by uvicorn (that is what the Dockerfile and
 `docker-compose.yml` do). Two small pieces adapt it to Vercel without forking the application:
 
-- **`services/api/api/index.py`** — Vercel's Python runtime serves any module under `api/` that
-  exports an ASGI `app`. This module fixes `sys.path` (Python puts the *function's* directory on the
-  path, not the project root) and re-exports `app.main:app`.
-- **`services/api/vercel.json`** — rewrites every request onto that one function. Because a rewrite
-  replaces the path the function sees, the rewrite smuggles the original path through as
-  `?__path=…`, and `index.py` restores it onto the ASGI scope before FastAPI routes the request.
+- **`services/api/api/index.py`** — Vercel detects a FastAPI project and routes every request to the
+  module under `api/` that exports an ASGI `app`, with the client's path preserved. This module only
+  fixes `sys.path` (Python puts the *function's* directory on the path, not the project root) and
+  re-exports `app.main:app`.
+- **`services/api/vercel.json`** — carries `includeFiles: app/**` so the application package is
+  bundled with the function, and nothing else. In particular it declares **no `rewrites`**: an
+  internal rewrite in a backend-framework project makes the function see the rewrite *destination*
+  rather than the requested path, so every route 404s. If `/health` starts returning FastAPI's
+  `{"detail":"Not Found"}`, a stray rewrite is the first thing to check.
 
 **WebSockets are not available on serverless functions.** On Vercel only `POST /api/v1/predict/fog`
 is reachable; `/api/v1/predict/fog/stream` still works wherever the same image runs under uvicorn.

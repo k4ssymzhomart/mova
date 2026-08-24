@@ -19,7 +19,7 @@
  *   contracts/inference/v1/inference.schema.json -> /docs API contract
  */
 
-import { readFileSync, writeFileSync, mkdirSync, readdirSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync, mkdirSync, readdirSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -28,6 +28,19 @@ const REPO_ROOT = resolve(__dirname, "../../.."); // services/frontend/scripts -
 const OUT_DIR = resolve(__dirname, "../src/content/generated");
 
 mkdirSync(OUT_DIR, { recursive: true });
+
+// The credibility pages import only the JSON in OUT_DIR, and that JSON is committed. A standalone
+// build of services/frontend — Vercel's root directory, a Docker context, a release tarball — has no
+// repo root to read from, so regenerate when the source artifacts are reachable and otherwise keep
+// what is in git. Like fetch-models.mjs, this must never be the reason a deploy fails.
+const SENTINEL = "data_manifests/model_registry.json";
+if (!existsSync(join(REPO_ROOT, SENTINEL))) {
+  console.warn(
+    `content:sync — ${SENTINEL} is not reachable from ${REPO_ROOT}; keeping the committed\n` +
+      "  src/content/generated/ as-is. Run `npm run sync:content` from a full checkout to refresh it.",
+  );
+  process.exit(0);
+}
 
 const readText = (rel) => readFileSync(join(REPO_ROOT, rel), "utf8");
 const readJson = (rel) => JSON.parse(readText(rel));
