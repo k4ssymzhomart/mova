@@ -275,25 +275,32 @@ class LiveHttp implements LiveTransport {
   private readonly url: string | null;
   private readonly onState: (s: StateChange) => void;
   private healthy = false;
+  private settled = false; // has a probe resolved the initial unknown state yet?
   private inFlight = false;
   private closed = false;
   private backoff = BACKOFF_MIN_MS;
   private retryTimer: number | null = null;
+  private connectTimer: number | null = null;
+  private abort: AbortController | null = null;
 
   constructor(onState: (s: StateChange) => void) {
     this.url = httpUrl();
     this.onState = onState;
   }
 
+  /** Idempotent: a restart cancels the previous lifecycle instead of racing a second one against it. */
   start(): void {
+    this.cancelTimers();
     this.closed = false;
+    this.settled = false;
     if (!this.url) {
       this.onState({ status: "ready", simulated: true });
       return;
     }
     this.onState({ status: "loading", simulated: false });
     // Run simulated while the first probe is in flight; a cold function can take several seconds.
-    window.setTimeout(() => {
+    this.connectTimer = window.setTimeout(() => {
+      this.connectTimer = null;
       if (!this.closed && !this.healthy) this.onState({ status: "ready", simulated: true });
     }, CONNECT_TIMEOUT_MS);
     void this.probe();
@@ -301,7 +308,7 @@ class LiveHttp implements LiveTransport {
 
   /** One scoring request doubles as the health probe: cheap, and it warms the exact path we use. */
   private async probe(): Promise<void> {
-    this.retryTimer = null;
+    this.clearRetry();
     if (this.closed || !this.url) return;
     const ok = (await this.post(PROBE_WINDOW, PROBE_TIMEOUT_MS)) !== null;
     if (this.closed) return;
@@ -321,14 +328,32 @@ class LiveHttp implements LiveTransport {
     this.retryTimer = window.setTimeout(() => void this.probe(), delay);
   }
 
+  /** Always clear through here: dropping the handle without clearing leaks a timer `close()` can't cancel. */
+  private clearRetry(): void {
+    if (this.retryTimer != null) window.clearTimeout(this.retryTimer);
+    this.retryTimer = null;
+  }
+
+  private cancelTimers(): void {
+    this.clearRetry();
+    if (this.connectTimer != null) window.clearTimeout(this.connectTimer);
+    this.connectTimer = null;
+  }
+
+  /** Emit on transitions, plus once when the first probe resolves the initially-unknown state. */
   private setHealthy(next: boolean): void {
+    const changed = this.healthy !== next;
     this.healthy = next;
+    if (!changed && this.settled) return;
+    this.settled = true;
     this.onState({ status: "ready", simulated: !next });
   }
 
-  private async post(frame: number[][], timeoutMs: number): Promise<FogPrediction | null> {
+  /** `undefined` = the backend answered but rejected this window; null = it could not answer at all. */
+  private async post(frame: number[][], timeoutMs: number): Promise<FogPrediction | null | undefined> {
     if (!this.url) return null;
     const ctl = new AbortController();
+    this.abort = ctl;
     const timer = window.setTimeout(() => ctl.abort(), timeoutMs);
     try {
       const res = await fetch(this.url, {
@@ -338,15 +363,19 @@ class LiveHttp implements LiveTransport {
         signal: ctl.signal,
         cache: "no-store",
       });
+      // A 4xx (bar the retryable two) means this payload was wrong, not that the service is down —
+      // demoting on it would flap forever, since the probe's payload always validates.
+      if (res.status >= 400 && res.status < 500 && res.status !== 408 && res.status !== 429) return undefined;
       if (!res.ok) return null;
       const data: unknown = await res.json();
       // The backend emits either a FogPrediction or `{ error }`; only the former carries `confidence`.
       const ok = !!data && typeof data === "object" && typeof (data as { confidence?: unknown }).confidence === "number";
-      return ok ? (data as FogPrediction) : null;
+      return ok ? (data as FogPrediction) : undefined;
     } catch {
       return null; // network error, non-JSON body, or the abort above
     } finally {
       window.clearTimeout(timer);
+      if (this.abort === ctl) this.abort = null;
     }
   }
 
@@ -360,11 +389,11 @@ class LiveHttp implements LiveTransport {
     this.inFlight = true;
     try {
       const pred = await this.post(frame, REPLY_TIMEOUT_MS);
-      if (!pred && !this.closed) {
+      if (pred === null && !this.closed) {
         this.setHealthy(false); // the backend just went away — degrade and start re-probing
         this.scheduleProbe();
       }
-      return pred;
+      return pred ?? null;
     } finally {
       this.inFlight = false;
     }
@@ -372,9 +401,11 @@ class LiveHttp implements LiveTransport {
 
   close(): void {
     this.closed = true;
-    if (this.retryTimer != null) window.clearTimeout(this.retryTimer);
-    this.retryTimer = null;
+    this.cancelTimers();
+    this.abort?.abort(); // don't leave a 10 s probe running past unmount
+    this.abort = null;
     this.healthy = false;
+    this.settled = false;
   }
 }
 
@@ -426,6 +457,10 @@ export function useLiveInference() {
             simulated: false,
           };
         }
+        // Still live, so this window was dropped (transport busy, or one bad reply) rather than the
+        // backend going away. Skip the tick: fabricating a reading here would be labelled live,
+        // because `simulated` tracks the transport's health and the transport is healthy.
+        if (sock.isLive()) return null;
       }
       return mockPredict(mode, side, ++tickRef.current);
     },

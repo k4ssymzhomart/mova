@@ -71,9 +71,11 @@ not change when the frontend moves.
 
 ## Gotchas
 
-- **Blocked deployments.** Vercel refuses a deployment whose commit author email is not attached to
-  the GitHub account. Keep `git config user.email` set to a verified GitHub address; the
-  `<id>+<login>@users.noreply.github.com` alias always matches.
+- **Blocked deployments.** Vercel refuses a deployment whose commit author email does not belong to a
+  member of the Vercel team. Set `git config user.email` to the address on your Vercel account —
+  a GitHub-only address is not sufficient, and the `<id>+<login>@users.noreply.github.com` alias is
+  rejected with *"Git author … must have access to the team"*. The first symptom is a deployment
+  stuck at `UNKNOWN` in `vercel ls`; `readyStateReason` on the deployment names the offending email.
 - **Missing ONNX binaries.** `scripts/fetch-models.mjs` resolves `fog.onnx` / `har.onnx` from a local
   `checkpoints/onnx/` or from `MOVA_MODELS_BASE_URL`. Neither is present on a clean CI clone, so the
   build logs a warning and the app degrades to simulated on-device scoring. It never fails the build.

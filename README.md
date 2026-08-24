@@ -208,13 +208,17 @@ Both services deploy to Vercel as two projects out of this one repository. See
 | `mova` | `services/frontend` | The Next.js patient + clinician app |
 | `mova-api` | `services/api` | The FastAPI inference gateway, as a Python Serverless Function |
 
-`services/api/vercel.json` rewrites every request onto `api/index.py`, which re-exports the same ASGI
-app the Dockerfile runs. Serverless functions cannot hold a socket open, so on Vercel the frontend
+Vercel routes FastAPI projects to the ASGI app itself, so `services/api/api/index.py` only fixes
+`sys.path` and re-exports the same app the Dockerfile runs — and `vercel.json` deliberately declares
+**no rewrites** (one would make the function see the rewrite destination instead of the requested
+path, 404-ing every route). Serverless functions cannot hold a socket open, so on Vercel the frontend
 talks to `POST /api/v1/predict/fog` (`NEXT_PUBLIC_BACKEND_HTTP_URL`) instead of the streaming socket —
 `useLiveInference` implements both transports behind one interface and picks whichever is configured.
 
-Vercel blocks a deployment whose commit author email is not attached to the GitHub account, so keep
-`git config user.email` set to a verified GitHub address (the `@users.noreply.github.com` alias works).
+Vercel blocks a deployment whose commit author email does not belong to a member of the Vercel team,
+so set `git config user.email` to the address on your Vercel account. A GitHub-only address is not
+enough: the `@users.noreply.github.com` alias is rejected with "Git author … must have access to the
+team".
 
 ### Deployment (Render — alternative)
 
