@@ -166,8 +166,13 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=<YOUR_SUPABASE_ANON_KEY>
 # Server-only — bypasses Row-Level Security, must never reach the client
 SUPABASE_SERVICE_ROLE_KEY=<YOUR_SUPABASE_SERVICE_ROLE_KEY>
 
-# Live inference backend (services/api). Optional — unset falls back to a simulated readout.
-NEXT_PUBLIC_BACKEND_WS_URL=<YOUR_BACKEND_WS_URL>   # e.g. wss://mova-api.onrender.com
+# Public origin of this deployment. Optional locally; required behind a proxy so the auth
+# callback redirects to the public host instead of the internal bind address.
+NEXT_PUBLIC_SITE_URL=<YOUR_SITE_URL>               # e.g. https://mova.vercel.app
+
+# Live inference backend (services/api). Set ONE of these; unset falls back to a simulated readout.
+NEXT_PUBLIC_BACKEND_HTTP_URL=<YOUR_API_ORIGIN>     # serverless hosts, e.g. https://mova-api-seven.vercel.app
+NEXT_PUBLIC_BACKEND_WS_URL=<YOUR_BACKEND_WS_URL>   # long-lived hosts, e.g. wss://mova-api.onrender.com
 ```
 
 | Variable | Scope | Where to find it |
@@ -175,7 +180,9 @@ NEXT_PUBLIC_BACKEND_WS_URL=<YOUR_BACKEND_WS_URL>   # e.g. wss://mova-api.onrende
 | `NEXT_PUBLIC_SUPABASE_URL` | Public | Supabase → Project Settings → API → Project URL |
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Public | Supabase → Project Settings → API → `anon` public key |
 | `SUPABASE_SERVICE_ROLE_KEY` | Server only | Supabase → Project Settings → API → `service_role` key |
-| `NEXT_PUBLIC_BACKEND_WS_URL` | Public | Origin of the deployed `services/api` (the live session connects to `…/api/v1/predict/fog/stream`) |
+| `NEXT_PUBLIC_SITE_URL` | Public | The deployment's own public origin, used for OAuth redirects |
+| `NEXT_PUBLIC_BACKEND_HTTP_URL` | Public | Origin of the deployed `services/api`; the session posts each window to `…/api/v1/predict/fog`. Takes precedence over the WS variable |
+| `NEXT_PUBLIC_BACKEND_WS_URL` | Public | Origin of the deployed `services/api` when it runs on a host that keeps sockets open (`…/api/v1/predict/fog/stream`) |
 
 > ⚠️ The `service_role` key has full database privileges and bypasses RLS. Keep it server-side only and
 > never expose it through a `NEXT_PUBLIC_*` variable.
@@ -191,17 +198,31 @@ supabase link --project-ref sbdtujkpklqyevaoxfph
 supabase db push   # apply the local migrations to the linked project
 ```
 
-### Deployment (Render)
+### Deployment (Vercel — primary)
 
-The repository ships a [`render.yaml`](render.yaml) Blueprint at the root that provisions both services
-as a microarchitecture:
+Both services deploy to Vercel as two projects out of this one repository. See
+[`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) for the full runbook; the shape is:
 
-- **`mova-api`** — the Python inference backend (`services/api`), built from its Dockerfile.
-- **`mova-frontend`** — the Next.js web app (`services/frontend`), `npm ci && npm run build` → `npm start`.
+| Project | Root directory | Serves |
+|---|---|---|
+| `mova` | `services/frontend` | The Next.js patient + clinician app |
+| `mova-api` | `services/api` | The FastAPI inference gateway, as a Python Serverless Function |
 
-Create a new **Blueprint** in the Render dashboard pointed at this repo, then set the three Supabase
-variables above on the `mova-frontend` service (they are declared with `sync: false`, so Render prompts
-for them and they stay out of version control).
+`services/api/vercel.json` rewrites every request onto `api/index.py`, which re-exports the same ASGI
+app the Dockerfile runs. Serverless functions cannot hold a socket open, so on Vercel the frontend
+talks to `POST /api/v1/predict/fog` (`NEXT_PUBLIC_BACKEND_HTTP_URL`) instead of the streaming socket —
+`useLiveInference` implements both transports behind one interface and picks whichever is configured.
+
+Vercel blocks a deployment whose commit author email is not attached to the GitHub account, so keep
+`git config user.email` set to a verified GitHub address (the `@users.noreply.github.com` alias works).
+
+### Deployment (Render — alternative)
+
+The root [`render.yaml`](render.yaml) Blueprint provisions the same two services on Render, where the
+API runs from its Dockerfile under uvicorn and the WebSocket transport
+(`NEXT_PUBLIC_BACKEND_WS_URL`) is available. Create a new **Blueprint** pointed at this repo, then set
+the three Supabase variables above on the `mova-frontend` service (they are declared with
+`sync: false`, so Render prompts for them and they stay out of version control).
 
 ## Gamification Ecosystem
 
