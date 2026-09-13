@@ -1,26 +1,30 @@
 // i18n core — isomorphic, dependency-free (no React, no next) so it is safe to import in Server
 // Components, Client Components, and at module scope. Russian is the default and the fallback: a key
 // missing from the active locale falls back to ru.json, then to the key itself (so a typo renders
-// visibly instead of crashing). Dot-path keys index ru.json/en.json; `{n}` placeholders interpolate.
+// visibly instead of crashing). Dot-path keys index the dictionaries; `{n}` placeholders interpolate.
+//
+// ru.json and en.json carry identical key sets (npm run i18n:check). kk.json is partial for now: it covers
+// the patient app, and anything it lacks falls back to Russian. Kazakh copy needs native-speaker review.
 //
 // - Module scope / "I don't care about runtime locale": import { t } — always Russian.
 // - Client Components: import { useTranslation } from "@/locales/client" — reacts to the toggle.
 // - Server Components: import { getTranslation } from "@/locales/server" — reads the locale cookie.
 
 import en from "./en.json";
+import kk from "./kk.json";
 import ru from "./ru.json";
 
 export type TranslateVars = Record<string, string | number>;
-export type Locale = "ru" | "en";
+export type Locale = "ru" | "kk" | "en";
 
-export const LOCALES: Locale[] = ["ru", "en"];
+export const LOCALES: Locale[] = ["ru", "kk", "en"];
 export const DEFAULT_LOCALE: Locale = "ru";
 export const LOCALE_COOKIE = "mova.locale";
 
-const DICTS: Record<Locale, unknown> = { ru, en };
+const DICTS: Record<Locale, unknown> = { ru, kk, en };
 
 export function isLocale(value: unknown): value is Locale {
-  return value === "ru" || value === "en";
+  return value === "ru" || value === "kk" || value === "en";
 }
 
 function lookup(source: unknown, path: string): unknown {

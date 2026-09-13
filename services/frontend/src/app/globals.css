@@ -186,3 +186,46 @@ html.lenis body {
     animation: none !important;
   }
 }
+
+/* ---- Patient app ----
+   Inter with real weights and full Cyrillic (Kazakh included), scoped to the (app) group; the landing keeps
+   its own face. Every font token resolves to Inter here, so `font-sans` and `font-mono` never fall through
+   to a second typeface on a Russian screen. */
+.app-type {
+  --font-inter: var(--font-inter-face), system-ui, sans-serif;
+  --font-serif: var(--font-inter);
+  --font-mono: var(--font-inter);
+  font-family: var(--font-inter);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-type *,
+  .app-type *::before,
+  .app-type *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Keep a focused control clear of the sticky context bar and the fixed tab bar (WCAG 2.2 SC 2.4.11). AppShell
+   sets these classes on <html> while it is mounted. */
+html.app-shell {
+  scroll-padding-top: 6.5rem;
+  scroll-padding-bottom: calc(5.25rem + env(safe-area-inset-bottom));
+}
+html.app-shell.app-flow {
+  scroll-padding-bottom: 1rem;
+}
+@media (min-width: 1024px) {
+  html.app-shell {
+    scroll-padding-top: 4.5rem;
+    scroll-padding-bottom: 1rem;
+  }
+}
+@media (max-height: 500px) {
+  html.app-shell {
+    scroll-padding-top: 1rem;
+  }
+}

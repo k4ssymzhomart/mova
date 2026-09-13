@@ -35,7 +35,7 @@ export default function ClinicHeader() {
           <Link href="/app" className="rounded-pill px-3.5 py-1.5 text-sm text-ink-soft transition-colors hover:text-ink">
             {t("clinician.header.patientApp")}
           </Link>
-          <LanguageToggle className="ml-1" />
+          <LanguageToggle className="ml-1" locales={["ru", "en"]} />
           {authed ? (
             <div className="ml-2 flex items-center gap-2">
               <span className="hidden max-w-[180px] truncate text-sm text-ink-faint sm:inline">

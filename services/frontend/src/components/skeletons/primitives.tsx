@@ -24,17 +24,6 @@ export function HeaderSkeleton({ wide = false }: { wide?: boolean }) {
   );
 }
 
-/** A row of equal stat tiles (the 4-up rollup grids). */
-export function TileRow({ count = 4 }: { count?: number }) {
-  return (
-    <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-      {Array.from({ length: count }).map((_, i) => (
-        <Block key={i} className="h-24" />
-      ))}
-    </div>
-  );
-}
-
 /** Wrap a skeleton in the page's animate-pulse + vertical rhythm. */
 export function Page({ children }: { children: React.ReactNode }) {
   return (

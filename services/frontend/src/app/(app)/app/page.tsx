@@ -1,239 +1,193 @@
+// Today (/app): the first screen of the patient app, with one job (НТЗ §16.2): the exercises the clinic has
+// prescribed and the way into the exercise flow. Post-operative day and operated side come from the shell and
+// are not repeated here.
+//
+// - The list is the active prescriptions of the patient's newest active program. There is no per-day schedule
+//   yet, so nothing here says an exercise is "due today".
+// - Rows are filtered to the signed-in patient explicitly, not left to RLS (#20 is reworking it).
+// - No scores and no session history: camera-era session_metrics are never read. TKA scores arrive with #23.
+// - Dose is not shown. Nothing in supabase/migrations or seed.sql defines the keys inside prescriptions.dose,
+//   so any rendering would be a guess. TODO(#20): show sets / reps / hold once the TKA schema fixes the shape.
+// - A failed read says so. It is never shown as "no plan", which would tell the patient something untrue.
+
+import { CalendarDays, ClipboardList, CloudOff, Play } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
-import { ArrowRight, ArrowUpRight, CalendarCheck, Flame, Play, Sparkles, Trophy } from "lucide-react";
 
-import { levelProgress } from "@/lib/gamification/levels";
+import EmptyState from "@/components/app/EmptyState";
+import LocalDateTime from "@/components/app/LocalDateTime";
+import PageHeader from "@/components/app/PageHeader";
+import PrecautionsCard from "@/components/app/PrecautionsCard";
+import { bodyText, card, cardTitle, primaryButton, sectionTitle } from "@/components/app/recipes";
+import { getPatientContext } from "@/lib/patient/context";
 import { createClient } from "@/lib/supabase/server";
+import type { Locale } from "@/locales";
 import { getTranslation } from "@/locales/server";
 
-export const metadata: Metadata = { title: "Today · Mova" };
+const INTL_LOCALE: Record<Locale, string> = { ru: "ru-RU", kk: "kk-KZ", en: "en-GB" };
 
-type OneOrMany<T> = T | T[] | null;
-function one<T>(v: OneOrMany<T>): T | null {
-  return (Array.isArray(v) ? (v[0] ?? null) : v) ?? null;
-}
+type Translate = (key: string, vars?: Record<string, string | number>) => string;
+type SupabaseServer = ReturnType<typeof createClient>;
 
 interface ExerciseRef {
-  name: string;
-  modality: string;
-  description: string | null;
+  name: string | null;
+  slug: string | null;
 }
 interface PrescriptionRow {
-  status: string;
-  frequency_per_week: number | null;
-  exercise: OneOrMany<ExerciseRef>;
-}
-interface ProgramRow {
-  title: string;
-  prescriptions: PrescriptionRow[] | null;
-}
-type Metric = { quality_score: number | null } | null;
-interface SessionRow {
   id: string;
-  status: string;
-  started_at: string;
-  session_metrics: OneOrMany<Metric>;
+  frequency_per_week: number | null;
+  exercise: ExerciseRef | ExerciseRef[] | null;
+}
+interface ExerciseItem {
+  prescriptionId: string;
+  name: string | null;
+  perWeek: number | null;
+}
+type ExerciseList = { status: "error" } | { status: "none" } | { status: "ok"; items: ExerciseItem[] };
+
+export async function generateMetadata(): Promise<Metadata> {
+  const { t } = getTranslation();
+  return { title: `${t("today.metaTitle")} · Mova` };
 }
 
 export default async function TodayPage() {
-  const { t } = getTranslation();
+  const { t, locale } = getTranslation();
   const supabase = createClient();
+  // Creates the patients row for a first-time self-serve user. Idempotent, and must run before the reads below.
   await supabase.rpc("provision_self_serve_patient");
 
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  if (!user) return null; // layout redirects unauth; guard the race so we never deref a null user
+  if (!user) return null; // the layout redirects; this guards the race so we never deref a null user
 
-  const [{ data: profile }, { data: programData }, { data: sessionsData }, { data: xpRows }, { data: streakRow }] =
-    await Promise.all([
-      supabase.from("profiles").select("full_name, display_name").eq("id", user!.id).maybeSingle(),
-      supabase
-        .from("programs")
-        .select(
-          `title, prescriptions:prescriptions(status, frequency_per_week, exercise:exercises(name, modality, description))`,
-        )
-        .eq("status", "active")
-        .order("created_at", { ascending: false })
-        .limit(1)
-        .maybeSingle(),
-      supabase
-        .from("sessions")
-        .select("id, status, started_at, session_metrics(quality_score)")
-        .order("started_at", { ascending: false })
-        .limit(5),
-      supabase.from("xp_ledger").select("delta"),
-      supabase.from("streaks").select("current_streak, longest_streak").maybeSingle(),
-    ]);
+  const [{ data: profile }, exercises, context] = await Promise.all([
+    supabase.from("profiles").select("full_name, display_name").eq("id", user.id).maybeSingle(),
+    loadExercises(supabase, user.id),
+    getPatientContext(user.id),
+  ]);
 
-  const name = profile?.display_name || profile?.full_name || user!.email?.split("@")[0] || "there";
-  const program = (programData ?? null) as ProgramRow | null;
-  const sessions = (sessionsData ?? []) as unknown as SessionRow[];
-  const totalXp = (xpRows ?? []).reduce((s: number, r: { delta: number }) => s + r.delta, 0);
-  const lp = levelProgress(totalXp);
-  const streak = streakRow?.current_streak ?? 0;
-  const completed = sessions.filter((s) => s.status === "completed").length;
-
-  const activeRx = (program?.prescriptions ?? []).filter((p) => p.status === "active");
-  const nextEx = activeRx[0] ? one(activeRx[0].exercise) : null;
-  const nextTitle = nextEx ? t(`modality.${nextEx.modality}`) ?? nextEx.name : t("today.freeSession");
-  const nextDesc = nextEx?.description ?? t("today.nextDesc");
-
-  const today = new Date().toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" });
+  const name =
+    profile?.display_name?.trim() || profile?.full_name?.trim() || user.email?.split("@")[0]?.trim() || null;
 
   return (
     <div className="space-y-8">
-      <header>
-        <div className="font-mono text-[11px] uppercase tracking-[0.22em] text-signal">{t("today.eyebrow")} · {today}</div>
-        <h1 className="mt-2 text-4xl leading-none text-ink sm:text-5xl">{t("today.welcome", { name })}</h1>
-      </header>
+      <PageHeader
+        eyebrow={<LocalDateTime iso={new Date().toISOString()} format="weekday" />}
+        title={name ? t("today.greeting", { name }) : t("today.greetingNoName")}
+      />
 
-      {/* NEXT UP — the command center hero */}
-      <section className="relative overflow-hidden rounded-xl border border-line bg-card px-7 py-8 sm:px-10 sm:py-10">
-        <div className="relative">
-          <div className="flex items-center gap-2 font-mono text-[11px] uppercase tracking-[0.22em] text-signal">
-            <Sparkles className="size-3.5" strokeWidth={2} />
-            {t("today.nextUp")}
-          </div>
-          <h2 className="mt-3 max-w-2xl text-4xl leading-tight text-ink sm:text-6xl">{nextTitle}</h2>
-          <p className="mt-4 max-w-lg text-sm leading-relaxed text-ink-soft">{nextDesc}</p>
+      <PrecautionsCard precautions={context.precautions} />
 
-          <div className="mt-7 flex flex-wrap items-center gap-4">
-            <Link
-              href="/app/session/new"
-              prefetch={false}
-              className="inline-flex items-center gap-2 rounded-pill bg-signal px-7 py-3.5 text-sm font-medium text-white transition-colors hover:bg-signal-bright"
-            >
-              <Play className="size-4" strokeWidth={2} />
-              {t("today.startSession")}
-            </Link>
-            {activeRx[0]?.frequency_per_week != null && (
-              <span className="inline-flex items-center gap-2 font-mono text-[11px] uppercase tracking-[0.14em] text-ink-faint">
-                <CalendarCheck className="size-3.5 text-signal" strokeWidth={2} />
-                {t("common.perWeek", { n: activeRx[0].frequency_per_week })}
-              </span>
-            )}
-          </div>
+      <section aria-labelledby="today-exercises" className="space-y-4">
+        <div>
+          <h2 id="today-exercises" className={sectionTitle}>
+            {t("today.exercisesTitle")}
+          </h2>
+          {exercises.status === "ok" && <p className={`mt-2 max-w-2xl ${bodyText}`}>{t("today.exercisesLead")}</p>}
         </div>
-      </section>
 
-      {/* daily summary */}
-      <section className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <SummaryCard icon={Trophy} label={t("today.levelLabel")} value={`${lp.level}`} sub={`${lp.totalXp.toLocaleString()} XP`} />
-        <SummaryCard
-          icon={Flame}
-          label={t("today.currentStreak")}
-          value={`${streak}`}
-          sub={streak === 1 ? t("today.day") : t("today.days")}
-          accent={streak > 0}
-        />
-        <SummaryCard icon={CalendarCheck} label={t("today.completed")} value={`${completed}`} sub={t("today.recentSessionsSub")} />
-        <Link
-          href="/achievements"
-          className="group flex flex-col justify-between rounded-lg border border-line bg-card p-5 transition-colors hover:border-ink/20"
-        >
-          <div className="flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.14em] text-ink-faint">
-            <Sparkles className="size-3.5" strokeWidth={1.8} />
-            {t("today.nextLevel")}
-          </div>
-          <div>
-            <div className="tnum text-3xl text-ink">{lp.toNext.toLocaleString()}</div>
-            <div className="flex items-center gap-1 font-mono text-[11px] text-ink-faint">
-              {t("today.xpToGo")}{" "}
-              <ArrowUpRight className="size-3 transition-transform group-hover:translate-x-0.5" strokeWidth={2} />
-            </div>
-          </div>
-        </Link>
-      </section>
+        {exercises.status === "error" && (
+          <EmptyState icon={CloudOff} headingLevel={3} title={t("today.errorTitle")} body={t("today.errorBody")} />
+        )}
 
-      {/* recent activity */}
-      <section>
-        <div className="mb-4 flex items-baseline justify-between">
-          <h2 className="text-2xl text-ink">{t("today.recentActivity")}</h2>
-          <Link
-            href="/progress"
-            className="font-mono text-[11px] uppercase tracking-[0.14em] text-signal-deep hover:underline"
-          >
-            {t("today.allProgress")}
-          </Link>
-        </div>
-        {sessions.length === 0 ? (
-          <div className="rounded-lg border border-dashed border-line bg-paper-soft/50 px-6 py-10 text-center text-sm text-ink-soft">
-            {t("today.noSessions")}
-          </div>
-        ) : (
-          <div className="overflow-hidden rounded-lg border border-line bg-card">
-            {sessions.map((s, i) => {
-              const m = one(s.session_metrics);
-              return (
-                <Link
-                  key={s.id}
-                  href={`/app/session/${s.id}`}
-                  className={`flex items-center justify-between gap-3 px-5 py-4 transition-colors hover:bg-paper-soft/50 ${
-                    i ? "border-t border-line" : ""
-                  }`}
-                >
-                  <div className="flex items-center gap-3">
-                    <StatusDot status={s.status} />
-                    <div>
-                      <div className="text-sm text-ink">{new Date(s.started_at).toLocaleDateString()}</div>
-                      <div className="font-mono text-[11px] uppercase tracking-[0.1em] text-ink-faint">
-                        {s.status.replace("_", " ")}
-                      </div>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-4">
-                    <span className="tnum font-mono text-sm text-ink-soft">
-                      {m?.quality_score != null ? `${(m.quality_score * 100).toFixed(0)}% ${t("today.quality")}` : "—"}
-                    </span>
-                    <ArrowRight className="size-4 text-ink-faint" strokeWidth={1.8} />
-                  </div>
-                </Link>
-              );
-            })}
-          </div>
+        {exercises.status === "none" && (
+          <EmptyState
+            icon={ClipboardList}
+            headingLevel={3}
+            title={t("today.emptyTitle")}
+            body={t("today.emptyBody")}
+          />
+        )}
+
+        {exercises.status === "ok" && (
+          <ul className="space-y-4">
+            {exercises.items.map((item) => (
+              <ExerciseCard key={item.prescriptionId} item={item} t={t} locale={locale} />
+            ))}
+          </ul>
         )}
       </section>
     </div>
   );
 }
 
-function SummaryCard({
-  icon: Icon,
-  label,
-  value,
-  sub,
-  accent = false,
-}: {
-  icon: typeof Flame;
-  label: string;
-  value: string;
-  sub: string;
-  accent?: boolean;
-}) {
+function ExerciseCard({ item, t, locale }: { item: ExerciseItem; t: Translate; locale: Locale }) {
+  const titleId = `rx-${item.prescriptionId}-title`;
+  const startId = `rx-${item.prescriptionId}-start`;
   return (
-    <div className={`rounded-lg border p-5 ${accent ? "border-signal/30 bg-signal/[0.05]" : "border-line bg-card"}`}>
-      <div className="flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.14em] text-ink-faint">
-        <Icon className={`size-3.5 ${accent ? "text-signal" : ""}`} strokeWidth={1.8} />
-        {label}
+    <li className={`${card} flex flex-col gap-5 p-5 sm:flex-row sm:items-center sm:justify-between sm:p-6`}>
+      <div className="min-w-0">
+        {/* Exercise name as stored in the catalog; it is not translated. */}
+        <h3 id={titleId} className={`${cardTitle} break-words`}>
+          {item.name ?? t("today.nameUnavailable")}
+        </h3>
+        {item.perWeek != null && (
+          <p className="mt-2 flex items-center gap-2 text-base text-ink-soft">
+            <CalendarDays className="size-5 shrink-0" strokeWidth={1.8} aria-hidden="true" />
+            {perWeekLabel(t, locale, item.perWeek)}
+          </p>
+        )}
       </div>
-      <div className="mt-2 flex items-baseline gap-1.5">
-        <span className="tnum text-3xl text-ink">{value}</span>
-        <span className="text-sm text-ink-faint">{sub}</span>
-      </div>
-    </div>
+      {/* Every card has a "Start" button, so the accessible name adds the exercise: "Start, <name>". */}
+      <Link
+        id={startId}
+        href={`/app/session/new/${encodeURIComponent(item.prescriptionId)}`}
+        prefetch={false}
+        aria-labelledby={`${startId} ${titleId}`}
+        className={`${primaryButton} w-full shrink-0 sm:w-auto`}
+      >
+        <Play className="size-5" strokeWidth={2} aria-hidden="true" />
+        {t("today.start")}
+      </Link>
+    </li>
   );
 }
 
-function StatusDot({ status }: { status: string }) {
-  const done = status === "completed";
-  return (
-    <span
-      className={`grid size-9 shrink-0 place-items-center rounded-full ${
-        done ? "bg-signal/10" : "bg-amber-50"
-      }`}
-    >
-      <span className={`size-2 rounded-full ${done ? "bg-signal" : "bg-amber-500"}`} />
-    </span>
-  );
+async function loadExercises(supabase: SupabaseServer, profileId: string): Promise<ExerciseList> {
+  const { data: patient, error: patientError } = await supabase
+    .from("patients")
+    .select("id")
+    .eq("profile_id", profileId)
+    .maybeSingle();
+  if (patientError) return { status: "error" };
+  if (!patient) return { status: "none" };
+
+  const { data: program, error: programError } = await supabase
+    .from("programs")
+    .select("id")
+    .eq("patient_id", patient.id)
+    .eq("status", "active")
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (programError) return { status: "error" };
+  if (!program) return { status: "none" };
+
+  const { data, error } = await supabase
+    .from("prescriptions")
+    .select("id, frequency_per_week, exercise:exercises(name, slug)")
+    .eq("patient_id", patient.id)
+    .eq("program_id", program.id)
+    .eq("status", "active")
+    .order("created_at", { ascending: true });
+  if (error) return { status: "error" };
+
+  const items = ((data ?? []) as unknown as PrescriptionRow[]).map((row): ExerciseItem => {
+    const exercise = Array.isArray(row.exercise) ? (row.exercise[0] ?? null) : row.exercise;
+    return {
+      prescriptionId: row.id,
+      name: exercise?.name?.trim() || null,
+      // 0 is allowed by the column check but is not a usable instruction, so it is left out like null.
+      perWeek: row.frequency_per_week != null && row.frequency_per_week > 0 ? row.frequency_per_week : null,
+    };
+  });
+  return items.length > 0 ? { status: "ok", items } : { status: "none" };
+}
+
+/** "{n} раз / раза в неделю": Russian needs the plural category; the dictionaries carry one/few/many/other. */
+function perWeekLabel(t: Translate, locale: Locale, n: number): string {
+  const category = new Intl.PluralRules(INTL_LOCALE[locale]).select(n);
+  const key = category === "one" || category === "few" || category === "many" ? category : "other";
+  return t(`today.perWeek.${key}`, { n });
 }

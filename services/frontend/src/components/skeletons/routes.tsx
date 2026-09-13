@@ -1,20 +1,22 @@
 // Per-route skeletons. Each mirrors the real page's structure (card shapes, counts, grid columns) so a
 // navigation reads as "loading *this* page". Composed from the shared primitives; pure presentational.
 
-import { Bar, Block, HeaderSkeleton, Page, TileRow } from "./primitives";
+import { Bar, Block, HeaderSkeleton, Page } from "./primitives";
 
-/** Today (/app): hero "next session" banner, stat tiles, recent-activity list. */
+/** Today (/app): greeting header, precautions card, the exercises heading with its lead, then one large card per prescribed exercise. */
 export function TodaySkeleton() {
   return (
     <Page>
-      <HeaderSkeleton wide />
-      <Block className="h-40" />
-      <TileRow count={4} />
-      <div className="space-y-3">
-        <Bar className="h-6 w-44 rounded-xl" />
-        <div className="space-y-2">
-          {Array.from({ length: 4 }).map((_, i) => (
-            <Block key={i} className="h-16" />
+      <HeaderSkeleton />
+      <Block className="h-36 sm:h-32" />
+      <div className="space-y-4">
+        <div className="space-y-3">
+          <Bar className="h-7 w-56 rounded-xl" />
+          <Bar className="h-4 w-full max-w-md" />
+        </div>
+        <div className="space-y-4">
+          {Array.from({ length: 3 }).map((_, i) => (
+            <Block key={i} className="h-40 sm:h-28" />
           ))}
         </div>
       </div>
@@ -22,101 +24,130 @@ export function TodaySkeleton() {
   );
 }
 
-/** Program: header, week strip, prescribed-exercise cards. */
-export function ProgramSkeleton() {
+/** Plan (/program): header with lead, precautions card, program card, then the prescribed-exercise card grid. */
+export function PlanSkeleton() {
   return (
     <Page>
-      <HeaderSkeleton />
+      <div className="space-y-3">
+        <HeaderSkeleton />
+        <Bar className="h-4 w-full max-w-xl" />
+      </div>
       <Block className="h-28" />
-      <div className="grid gap-3 sm:grid-cols-2">
-        {Array.from({ length: 4 }).map((_, i) => (
-          <Block key={i} className="h-32" />
-        ))}
+      <Block className="h-32" />
+      <div className="space-y-4">
+        <Bar className="h-7 w-64 rounded-xl" />
+        <div className="grid gap-4 md:grid-cols-2">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <Block key={i} className="h-48" />
+          ))}
+        </div>
       </div>
     </Page>
   );
 }
 
-/** Exercises: header then two modality sections, each a card grid. */
-export function ExercisesSkeleton() {
+/** Plan detail (/program/[prescriptionId]): back button, header, about card, prescription card, safety card, instructions card. */
+export function PlanDetailSkeleton() {
   return (
     <Page>
-      <HeaderSkeleton wide />
-      {Array.from({ length: 2 }).map((_, s) => (
-        <div key={s} className="space-y-4">
-          <Bar className="h-5 w-56 rounded-xl" />
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {Array.from({ length: 3 }).map((_, i) => (
-              <Block key={i} className="h-44" />
-            ))}
-          </div>
-        </div>
-      ))}
+      <Bar className="h-12 w-44" />
+      <div className="space-y-3">
+        <HeaderSkeleton />
+        <Bar className="h-4 w-48" />
+      </div>
+      <Block className="h-32" />
+      <Block className="h-72" />
+      <Block className="h-28" />
+      <Block className="h-48" />
     </Page>
   );
 }
 
-/** Progress: header, big metric tiles, trend charts, session history. */
+/** Progress: header with lead, two count tiles, the scores-not-available card, session history rows. */
 export function ProgressSkeleton() {
   return (
     <Page>
-      <HeaderSkeleton wide />
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        {Array.from({ length: 4 }).map((_, i) => (
+      <div className="space-y-3">
+        <HeaderSkeleton wide />
+        <Bar className="h-4 w-full max-w-xl" />
+      </div>
+      <div className="grid gap-3 sm:grid-cols-2">
+        {Array.from({ length: 2 }).map((_, i) => (
           <Block key={i} className="h-28" />
         ))}
       </div>
-      <div className="grid gap-4 sm:grid-cols-2">
-        <Block className="h-48" />
-        <Block className="h-48" />
-      </div>
-      <div className="space-y-2">
-        <Bar className="h-6 w-44 rounded-xl" />
-        {Array.from({ length: 5 }).map((_, i) => (
-          <Block key={i} className="h-14" />
-        ))}
+      <Block className="h-36" />
+      <div className="space-y-4">
+        <Bar className="h-7 w-52 rounded-xl" />
+        <div className="space-y-3">
+          {Array.from({ length: 5 }).map((_, i) => (
+            <Block key={i} className="h-28" />
+          ))}
+        </div>
       </div>
     </Page>
   );
 }
 
-/** Achievements: level banner + badge grid. */
-export function AchievementsSkeleton() {
+/** Progress session: back link, header, the five-row details card, the scores-not-available card. */
+export function ProgressSessionSkeleton() {
+  return (
+    <Page>
+      <div className="space-y-4">
+        <Bar className="h-6 w-44" />
+        <HeaderSkeleton />
+      </div>
+      <Block className="h-80" />
+      <Block className="h-36" />
+    </Page>
+  );
+}
+
+/** Care team: header with lead, assigned-specialist cards (two-up on wide screens), the messaging notice. */
+export function CareTeamSkeleton() {
+  return (
+    <Page>
+      <div className="space-y-3">
+        <HeaderSkeleton />
+        <Bar className="h-5 w-full max-w-xl" />
+      </div>
+      <div className="grid gap-4 lg:grid-cols-2">
+        <Block className="h-44" />
+        <Block className="h-44" />
+      </div>
+      <Block className="h-28" />
+    </Page>
+  );
+}
+
+/** Settings: header with lead, profile form card, read-only operated-knee card, then the data section's two panels. */
+export function SettingsSkeleton() {
+  return (
+    <Page>
+      <div className="space-y-3">
+        <HeaderSkeleton />
+        <Bar className="h-4 w-full max-w-lg" />
+      </div>
+      <Block className="h-[40rem] sm:h-[27rem]" />
+      <Block className="h-72" />
+      <div className="space-y-4">
+        <Bar className="h-7 w-48 rounded-xl" />
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Block className="h-60" />
+          <Block className="h-60" />
+        </div>
+      </div>
+    </Page>
+  );
+}
+
+/** Exercise flow step (content only; the flow frame stays mounted around it): header, the step's card, its action. */
+export function FlowStepSkeleton() {
   return (
     <Page>
       <HeaderSkeleton />
-      <Block className="h-36" />
-      <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
-        {Array.from({ length: 8 }).map((_, i) => (
-          <Block key={i} className="h-40" />
-        ))}
-      </div>
-    </Page>
-  );
-}
-
-/** Session studio: the camera stage + control aside. */
-export function SessionSkeleton() {
-  return (
-    <Page>
-      <div className="flex items-end justify-between gap-4">
-        <HeaderSkeleton />
-        <Bar className="h-5 w-20 rounded-xl" />
-      </div>
-      <div className="grid gap-5 lg:grid-cols-[1fr_360px]">
-        <div className="space-y-5">
-          <Block className="aspect-video w-full" />
-          <div className="grid grid-cols-3 gap-4">
-            {Array.from({ length: 3 }).map((_, i) => (
-              <Block key={i} className="h-20" />
-            ))}
-          </div>
-        </div>
-        <div className="space-y-5">
-          <Block className="h-64" />
-          <Block className="h-40" />
-        </div>
-      </div>
+      <Block className="h-72" />
+      <Bar className="h-12 w-44" />
     </Page>
   );
 }

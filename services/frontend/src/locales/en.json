@@ -14,31 +14,7 @@
     "openMenu": "Open menu",
     "closeMenu": "Close menu",
     "soon": "soon",
-    "perWeek": "{n}× per week",
     "language": "Language"
-  },
-  "nav": {
-    "today": "Today",
-    "myProgram": "My program",
-    "train": "Train",
-    "exercises": "Exercises",
-    "progress": "Progress",
-    "achievements": "Achievements",
-    "devices": "Devices",
-    "careTeam": "Care team",
-    "learn": "Learn",
-    "settings": "Settings",
-    "helpSupport": "Help & support",
-    "signOut": "Sign out",
-    "soon": "soon"
-  },
-  "sidebar": {
-    "streak": "{n}-day streak",
-    "startStreak": "Start your streak"
-  },
-  "comingSoon": {
-    "tag": "Coming soon",
-    "back": "Back to Today"
   },
   "auth": {
     "title": "Sign in to Mova",
@@ -78,121 +54,6 @@
       "company": "Company",
       "rights": "© {year} Mova. All rights reserved."
     }
-  },
-  "today": {
-    "eyebrow": "Today",
-    "welcome": "Welcome back, {name}.",
-    "nextUp": "Next up",
-    "startSession": "Start session",
-    "freeTraining": "Free training",
-    "level": "Level {n}",
-    "toNext": "to next level",
-    "xp": "XP",
-    "recentActivity": "Recent activity",
-    "noSessions": "No sessions yet. Start your first and it will appear here.",
-    "statSessions": "Sessions",
-    "statStreak": "Streak",
-    "statQuality": "Quality",
-    "levelLabel": "Level",
-    "nextDesc": "Open a guided session — the camera tracks your movement and scores range, smoothness, and freeze-risk in real time.",
-    "freeSession": "Free training session",
-    "allProgress": "All progress",
-    "currentStreak": "Current streak",
-    "day": "day",
-    "days": "days",
-    "completed": "Completed",
-    "recentSessionsSub": "recent sessions",
-    "nextLevel": "Next level",
-    "xpToGo": "XP to go",
-    "quality": "quality"
-  },
-  "modality": {
-    "upper_limb_reaching": "Upper-limb reaching",
-    "hand_grasp": "Hand & grasp",
-    "head_neck": "Head & neck",
-    "gait_balance": "Gait & balance",
-    "sit_to_stand_lower_limb": "Sit-to-stand",
-    "free_training": "Free training"
-  },
-  "program": {
-    "eyebrow": "My program",
-    "title": "Your prescribed plan.",
-    "introWithPlan": "The plan your care team built — today's focus, your weekly dose, and your progress.",
-    "introNoPlan": "You don't have a prescribed plan yet. You can train freely while your care team prepares one.",
-    "todaysFocus": "Today's focus",
-    "today": "Today",
-    "perWeek": "{n}× per week",
-    "startTodaysSession": "Start today's session",
-    "thisWeek": "This week",
-    "adherence": "Adherence",
-    "sessionsDone": "Sessions done",
-    "weeklyDose": "Weekly dose",
-    "avgQuality": "Avg quality",
-    "prescribedExercises": "Prescribed exercises",
-    "activeCount": "{n} active",
-    "emptyExercisesLead": "No exercises prescribed yet. Open the",
-    "exerciseLibrary": "exercise library",
-    "emptyExercisesTail": "or start free training.",
-    "timesPerWeek": "{n}× per week",
-    "careTeamNote": "Care-team note"
-  },
-  "exercises": {
-    "eyebrow": "Exercise library",
-    "title": "Every exercise maps to a validated clinical metric.",
-    "subtitle": "Pick by modality. Each pack rests on a computer-vision evidence base.",
-    "start": "Start",
-    "difficulty": "Difficulty",
-    "targets": "Target joints",
-    "safety": "Safety notes",
-    "empty": "No exercises published yet."
-  },
-  "progress": {
-    "eyebrow": "Progress",
-    "title": "Your movement over time.",
-    "subtitle": "Every figure is derived from real in-session measurements — nothing invented.",
-    "trends": "Trends",
-    "insights": "Insights for you",
-    "history": "Session history",
-    "empty": "Complete a session to see your progress.",
-    "totalSessions": "Total sessions",
-    "streak": "Streak",
-    "bestCadence": "Best cadence",
-    "reachTrend": "Reach-time trend",
-    "sessionsStat": "Sessions",
-    "dayStreak": "Day streak",
-    "targetsReached": "Targets reached",
-    "cuedSteps": "Cued steps",
-    "reachTime": "Reach time",
-    "onBeatAccuracy": "On-beat accuracy",
-    "freezeRisk": "Freeze-risk",
-    "faster": "faster",
-    "steadier": "steadier",
-    "calmer": "calmer",
-    "startFirst": "Start your first session",
-    "emptyBody": "No sessions yet. Complete a reaching or gait bout and Mova starts charting your range, speed, cadence, and consistency — and surfaces personalised insights here."
-  },
-  "achievements": {
-    "eyebrow": "Achievements",
-    "title": "Your rewards and streaks.",
-    "level": "Level {n}",
-    "xp": "{n} XP",
-    "toNext": "{n} XP to level {level}",
-    "badges": "Badges",
-    "locked": "Locked",
-    "earned": "Earned",
-    "empty": "Train to unlock badges.",
-    "levelLabel": "Level",
-    "toLevelN": "To level {n}",
-    "thisLevel": "{into} / {span} XP this level",
-    "badgesCount": "{n}/{total} badges",
-    "currentStreak": "Current streak",
-    "longestStreak": "Longest streak",
-    "keepAlive": "Keep it alive — train again today.",
-    "startToday": "Train today to start a streak.",
-    "personalBest": "Your personal best.",
-    "day": "day",
-    "days": "days",
-    "earnedCount": "{n} earned"
   },
   "session": {
     "eyebrowReach": "Training session · upper-limb reaching",
@@ -372,14 +233,395 @@
       "disclaimer": "Decision support, not diagnosis. Freeze-risk figures derive from an on-device research model and are not a clinical determination. Generated by Mova on {date}."
     }
   },
+  "nav": {
+    "primary": "Main navigation",
+    "today": "Today",
+    "plan": "Plan",
+    "progress": "Progress",
+    "careTeam": "Care team",
+    "settings": "Settings",
+    "signOut": "Sign out",
+    "signedInAs": "Signed in as {name}"
+  },
+  "shell": {
+    "skipToContent": "Skip to content",
+    "menu": "Menu",
+    "closeMenu": "Close menu",
+    "expandSidebar": "Expand sidebar",
+    "collapseSidebar": "Collapse sidebar",
+    "patientContext": "Surgery details",
+    "home": "Home",
+    "patientFallback": "Patient"
+  },
+  "language": {
+    "label": "Language",
+    "ru": "Русский",
+    "kk": "Қазақша",
+    "en": "English"
+  },
+  "postOp": {
+    "day": "Day {n} after surgery",
+    "dayOfSurgery": "Day of surgery",
+    "scheduled": "Surgery scheduled for {date}",
+    "unknown": "Surgery date not entered",
+    "conventionPending": "Day after surgery not calculated yet",
+    "invalidDate": "Surgery date recorded incorrectly — tell your clinic"
+  },
+  "side": {
+    "label": "Operated knee",
+    "left": "Left knee",
+    "right": "Right knee",
+    "unknown": "Operated side not recorded"
+  },
+  "precautions": {
+    "title": "Precautions",
+    "unavailable": "Precautions not entered in the app",
+    "unavailableBody": "Your clinic hasn't entered your precautions in the app yet. That doesn't mean you have none.",
+    "weightBearing": "Weight bearing",
+    "individual": "Individual precautions"
+  },
+  "sensors": {
+    "title": "Sensors",
+    "role": {
+      "thigh": "Thigh",
+      "shank": "Shin",
+      "foot": "Foot"
+    },
+    "link": {
+      "unsupported": "This browser doesn't support Bluetooth",
+      "disconnected": "Not connected",
+      "connecting": "Connecting…",
+      "streaming": "Connected",
+      "lost": "Connection lost"
+    },
+    "battery": "Battery {n}%",
+    "allReady": "All three sensors connected",
+    "notReady": "All three sensors are needed to start",
+    "mockBanner": "Simulated sensors: this is not real data",
+    "mockControls": "Change a sensor's state:"
+  },
+  "safety": {
+    "stop": "Stop",
+    "red": {
+      "eyebrow": "Safety",
+      "title": "Session stopped",
+      "instructionPending": "The approved instruction text hasn't been received from the clinic yet.",
+      "toHome": "Home"
+    }
+  },
+  "flow": {
+    "title": "Session",
+    "stepOf": "Step {n} of {total}",
+    "stepsLabel": "Session steps",
+    "steps": {
+      "sensors": "Sensors",
+      "calibrate": "Calibration",
+      "exercise": "Exercise",
+      "checkIn": "Check-in",
+      "summary": "Summary"
+    },
+    "next": "Next",
+    "toStep": "Next: {step}",
+    "untitledExercise": "Exercise",
+    "sensors": {
+      "lead": "Let's check that all three sensors are connected: on your thigh, shin and foot. The exercise won't start without them.",
+      "blockedNoTransport": "Connecting sensors isn't available in the app yet, so you can't start for now.",
+      "blockedMock": "Simulated sensors are on. A real session never starts with them.",
+      "blockedNotReady": "Connect all three sensors and the button will become available."
+    },
+    "pending": {
+      "title": "This step isn't connected yet",
+      "calibrate": "Here the app will adjust the sensors to how they sit on your leg.",
+      "exercise": "Here you'll do the exercise while the app follows your movement through the sensors.",
+      "checkIn": "Here, after the exercise, you'll answer a short questionnaire."
+    },
+    "summary": {
+      "detailsTitle": "About this session",
+      "started": "Started",
+      "duration": "Duration",
+      "status": "Status",
+      "scoresTitle": "Scores aren't available yet",
+      "scoresBody": "Sensor-based scores aren't ready yet. When they are, you'll see them here.",
+      "scoreUnavailable": "Not yet",
+      "score": {
+        "technique": "Technique",
+        "reps": "Repetitions",
+        "target": "Movement goal",
+        "overall": "Overall"
+      }
+    },
+    "unavailable": {
+      "title": "Can't open this session",
+      "sessionNotFound": {
+        "title": "Session not found",
+        "body": "There's no such session among yours. Go back home and start your session from there."
+      },
+      "prescriptionNotFound": {
+        "title": "Exercise not found",
+        "body": "This exercise isn't prescribed to you right now. Go back home and choose your session there."
+      },
+      "notStarted": {
+        "title": "This session hasn't started",
+        "body": "Start it from the home page."
+      },
+      "loadError": {
+        "title": "Couldn't load the data",
+        "body": "Check your internet connection and reload the page."
+      }
+    }
+  },
+  "today": {
+    "metaTitle": "Today",
+    "greeting": "Hello, {name}",
+    "greetingNoName": "Hello",
+    "exercisesTitle": "Your exercises",
+    "exercisesLead": "Press “Start” to connect your sensors and begin the exercise.",
+    "start": "Start",
+    "perWeek": {
+      "one": "Once a week",
+      "few": "{n} times a week",
+      "many": "{n} times a week",
+      "other": "{n} times a week"
+    },
+    "nameUnavailable": "Exercise name unavailable",
+    "emptyTitle": "Your exercise plan has not been set up yet",
+    "emptyBody": "Your clinic sets your exercises. When your plan is ready, the exercises will appear here.",
+    "errorTitle": "Your exercises could not be loaded",
+    "errorBody": "Please try reloading the page a little later."
+  },
+  "plan": {
+    "metaTitle": "Plan",
+    "title": "Your recovery plan",
+    "lead": "Everything your care team has prescribed: your exercises, how often to do them, and your precautions. Exercise sessions start from the Today page.",
+    "programLabel": "Program",
+    "programUntitled": "Recovery program",
+    "careTeamNote": "A note from your care team",
+    "clinicianNote": "Note from your specialist",
+    "details": "Details",
+    "frequencyLabel": "How often",
+    "frequencyUnknown": "Not specified",
+    "frequency": {
+      "one": "Once a week",
+      "few": "{n} times a week",
+      "many": "{n} times a week",
+      "other": "{n} times a week"
+    },
+    "difficultyLabel": "Difficulty",
+    "difficulty": {
+      "intro": "Introductory",
+      "easy": "Easy",
+      "moderate": "Moderate",
+      "hard": "Hard",
+      "expert": "Very hard"
+    },
+    "units": {
+      "seconds": {
+        "one": "{n} second",
+        "few": "{n} seconds",
+        "many": "{n} seconds",
+        "other": "{n} seconds"
+      },
+      "minutes": {
+        "one": "{n} minute",
+        "few": "{n} minutes",
+        "many": "{n} minutes",
+        "other": "{n} minutes"
+      }
+    },
+    "empty": {
+      "title": "Your clinic has not set up your plan yet",
+      "body": "When your care team prescribes exercises, they will appear on this page. If you are waiting for a plan, contact your care team."
+    },
+    "exercises": {
+      "title": "Prescribed exercises",
+      "count": "Total: {n}",
+      "emptyTitle": "No exercises in your plan yet",
+      "emptyBody": "Your care team has not added exercises to your plan yet. When they do, they will appear here."
+    },
+    "detail": {
+      "metaTitle": "Exercise in your plan",
+      "back": "Back to plan",
+      "fromProgram": "Program: {title}",
+      "about": "About this exercise",
+      "prescription": "Your prescription",
+      "inactive": {
+        "title": "This prescription is not active right now",
+        "body": "The exercises you do now are listed on the Plan page. If you are not sure whether to do this exercise, ask your care team."
+      },
+      "dose": {
+        "title": "Dose",
+        "sets": "Sets",
+        "reps": "Repetitions",
+        "hold": "Hold",
+        "duration": "Duration",
+        "rest": "Rest",
+        "partial": "Part of the dose cannot be shown in the app yet. Check it with your care team.",
+        "unreadable": "The dose is recorded in a form the app cannot show yet. Check it with your care team.",
+        "missing": "No dose has been specified. Check it with your care team."
+      },
+      "safety": {
+        "title": "Important for your safety",
+        "missing": "No safety notes have been added for this exercise",
+        "missingBody": "This does not mean there is nothing to watch for. If anything feels uncertain, ask your care team."
+      },
+      "instructions": {
+        "title": "How to do it",
+        "missing": "Instructions have not been added yet."
+      },
+      "notFound": {
+        "title": "Exercise not found",
+        "emptyTitle": "This exercise is not in your plan",
+        "body": "The link may be out of date. All your exercises are listed on the Plan page."
+      },
+      "error": {
+        "title": "This exercise could not be loaded",
+        "body": "Please try reloading the page a little later."
+      }
+    },
+    "error": {
+      "title": "Your plan could not be loaded",
+      "body": "Please try reloading the page a little later."
+    }
+  },
+  "progress": {
+    "metaTitle": "Progress",
+    "eyebrow": "Progress",
+    "title": "Your sessions",
+    "lead": "All your sessions in one place. The history is kept in your account, so it is the same on every device.",
+    "summary": {
+      "label": "At a glance",
+      "finished": "Sessions completed",
+      "lastSession": "Last completed session"
+    },
+    "scores": {
+      "title": "Exercise scores",
+      "unavailable": "Not available yet",
+      "body": "Your “Technique”, “Repetitions”, “Movement goal” and “Overall” scores will appear here once the app starts scoring your movements from the sensors."
+    },
+    "history": {
+      "title": "Session history",
+      "showingLatest": "Showing the latest {shown} of {total}"
+    },
+    "exerciseNotRecorded": "Exercise not recorded",
+    "status": {
+      "scheduled": "Scheduled",
+      "inProgress": "Not finished",
+      "completed": "Completed",
+      "aborted": "Stopped early",
+      "reviewed": "Reviewed by your care team",
+      "unknown": "Status unknown"
+    },
+    "duration": {
+      "label": "Duration",
+      "underMinute": "Under a minute",
+      "minutes": "{n} min",
+      "hours": "{h} h",
+      "hoursMinutes": "{h} h {m} min",
+      "unknown": "Unknown: no end time recorded"
+    },
+    "empty": {
+      "title": "No sessions yet",
+      "body": "Once you do your first session, it will appear here.",
+      "action": "Go to Today"
+    },
+    "error": {
+      "title": "Couldn't load your sessions",
+      "body": "Check your internet connection and reload the page."
+    },
+    "detail": {
+      "metaTitle": "Session",
+      "title": "Session",
+      "back": "Back to progress",
+      "detailsTitle": "About this session",
+      "date": "Date",
+      "start": "Started",
+      "end": "Ended",
+      "endNotRecorded": "Not recorded",
+      "status": "Status",
+      "errorTitle": "Couldn't load this session"
+    },
+    "notFound": {
+      "title": "Session not found",
+      "body": "This session isn't in your history. The link may be out of date."
+    }
+  },
+  "careTeam": {
+    "metaTitle": "Care team",
+    "title": "Your specialists",
+    "lead": "The specialists your clinic has assigned to you in the app.",
+    "listLabel": "Assigned specialists",
+    "nameUnavailable": "Name not available",
+    "detailsUnavailable": "The app can't show this specialist's details yet.",
+    "relationshipLabel": "Role",
+    "titleLabel": "Position",
+    "specialtiesLabel": "Specialties",
+    "relationship": {
+      "primary": "Primary specialist",
+      "secondary": "Additional specialist",
+      "consulting": "Consulting specialist"
+    },
+    "empty": {
+      "title": "No specialist assigned yet",
+      "body": "No specialist has been assigned to you in the app yet. When your clinic assigns one, they will appear here."
+    },
+    "error": {
+      "title": "Couldn't load your specialists",
+      "body": "Try opening this page again a little later."
+    },
+    "messaging": {
+      "title": "Messages",
+      "body": "You can't message a specialist through the app yet: this feature isn't ready."
+    }
+  },
   "settings": {
+    "metaTitle": "Settings",
     "eyebrow": "Settings",
-    "title": "Your account.",
-    "account": "Account",
-    "email": "Email",
-    "language": "Interface language",
-    "data": "Your data",
-    "sessions": "Sessions",
-    "signOut": "Sign out"
+    "title": "Profile and data",
+    "lead": "Your name, the app language and who can see your data.",
+    "profile": {
+      "title": "Profile",
+      "lead": "Your name is saved to your account. The language is remembered on this device.",
+      "firstName": "First name",
+      "lastName": "Last name",
+      "email": "Email",
+      "emailHint": "You sign in to the app with this address. It can't be changed here.",
+      "language": "App language",
+      "save": "Save",
+      "saving": "Saving…",
+      "saved": "Saved",
+      "saveError": "Couldn't save. Check your internet connection and try again.",
+      "loadError": "Couldn't load your profile. Reload the page to change your name."
+    },
+    "side": {
+      "lead": "Your operated knee will appear here once your clinic adds it to the app.",
+      "readOnly": "It can't be changed in the app.",
+      "wrongHint": "If the wrong knee is shown, tell your clinic."
+    },
+    "privacy": {
+      "title": "Your data",
+      "lead": "Download your data and see who can view it.",
+      "export": {
+        "title": "Download my data",
+        "body": "One file with your profile and every session stored in the app.",
+        "button": "Download",
+        "preparing": "Preparing the file…",
+        "error": "Couldn't prepare the file. Please try again."
+      },
+      "access": {
+        "title": "Who can see your data",
+        "body": "Your profile and sessions can be seen by anyone whose Mova account belongs to your clinic.",
+        "contact": "This can't be changed in the app. For questions about access, contact your clinic."
+      }
+    }
+  },
+  "devices": {
+    "metaTitle": "Sensors",
+    "eyebrow": "Devices",
+    "title": "Sensors",
+    "lead": "Three sensors, on the thigh, shin and foot, follow how your leg moves during exercises.",
+    "empty": {
+      "title": "Sensor settings are not available yet",
+      "body": "Sensors are connected at the start of each exercise. You will be able to manage them on this page once Bluetooth support is added to the app."
+    }
   }
 }

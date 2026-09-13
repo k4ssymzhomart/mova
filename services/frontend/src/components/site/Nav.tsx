@@ -129,7 +129,7 @@ export default function Nav() {
                 {l.label}
               </a>
             ))}
-            <LanguageToggle variant={dark ? "landing" : "app"} />
+            <LanguageToggle variant={dark ? "landing" : "app"} locales={["ru", "en"]} />
             <a
               href="/signin"
               className="inline-flex items-center gap-2 rounded-pill bg-signal px-4 py-2.5 text-sm font-medium text-white transition-colors duration-300 hover:bg-signal-bright"
@@ -189,7 +189,7 @@ export default function Nav() {
             ))}
 
             <div className="mt-6 flex justify-center">
-              <LanguageToggle variant="landing" />
+              <LanguageToggle variant="landing" locales={["ru", "en"]} />
             </div>
             <a
               href="/signin"

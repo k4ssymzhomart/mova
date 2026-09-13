@@ -1,11 +1,22 @@
+import { Inter } from "next/font/google";
 import { redirect } from "next/navigation";
 
 import AppShell from "@/components/layout/AppShell";
+import { getPatientContext } from "@/lib/patient/context";
 import { createClient } from "@/lib/supabase/server";
+import { getTranslation } from "@/locales/server";
+
+// Inter for the patient app: real weights and full Cyrillic, Kazakh letters included. Electrolize has no
+// Cyrillic glyphs, so on the Russian default it never rendered anything but Latin and digits. docs/ia.md.
+const inter = Inter({
+  subsets: ["latin", "latin-ext", "cyrillic", "cyrillic-ext"],
+  display: "swap",
+  variable: "--font-inter-face",
+});
 
 /**
- * Shared layout for the authenticated patient app. Gates the whole group server-side (so the SSR
- * pages under /app are safe to assume a user) and wraps every route in the persistent AppShell.
+ * Shared layout for the authenticated patient app. Gates the whole group server-side (so the SSR pages under
+ * it can assume a user), resolves the patient's clinical context once, and wraps every route in AppShell.
  */
 export default async function PatientAppLayout({ children }: { children: React.ReactNode }) {
   const supabase = createClient();
@@ -14,18 +25,20 @@ export default async function PatientAppLayout({ children }: { children: React.R
   } = await supabase.auth.getUser();
   if (!user) redirect("/signin?next=/app");
 
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("full_name, display_name")
-    .eq("id", user.id)
-    .maybeSingle();
+  const { t } = getTranslation();
+  const [{ data: profile }, context] = await Promise.all([
+    supabase.from("profiles").select("full_name, display_name").eq("id", user.id).maybeSingle(),
+    getPatientContext(user.id),
+  ]);
 
   const name =
-    profile?.display_name || profile?.full_name || user.email?.split("@")[0] || "Patient";
+    profile?.display_name || profile?.full_name || user.email?.split("@")[0] || t("shell.patientFallback");
 
   return (
-    <AppShell name={name} email={user.email ?? ""} userId={user.id}>
-      {children}
-    </AppShell>
+    <div className={`${inter.variable} app-type`}>
+      <AppShell name={name} context={context}>
+        {children}
+      </AppShell>
+    </div>
   );
 }

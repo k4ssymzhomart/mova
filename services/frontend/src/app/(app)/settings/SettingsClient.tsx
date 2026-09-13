@@ -1,261 +1,333 @@
 "use client";
 
-// SettingsClient — the patient's control hub. Three sections:
-//  · Profile      — name + clinical side, written to Supabase (profiles + patients) under RLS.
-//  · Preferences  — audio cues, metronome volume, camera privacy default; on-device, scoped per user.
-//  · Compliance   — GDPR/HIPAA controls: export everything we hold, and revoke clinical access.
-// Editorial Spatial, minimal, lucide iconography. No gradients, no charts.
+// SettingsClient: the patient's account page, in three sections.
+//  · Profile        First and last name (saved to profiles.full_name / display_name), a read-only email, and
+//                   the interface language. The select starts from the ACTIVE locale, which lives in the
+//                   per-browser mova.locale cookie. Saving still writes profiles.locale, but nothing reads it
+//                   back, so the copy says the language is remembered on this device. Name columns are written
+//                   only when the name fields were edited, so a language-only save cannot rewrite the name.
+//  · Operated knee  Read-only. Shows the side from getPatientContext. Until the clinical schema (#20) adds a
+//                   clinic-written operated-knee field the side is always unknown: patients.affected_side was
+//                   entered by patients in the earlier stroke app and is not the operated knee. The copy never
+//                   says the clinic has recorded a value.
+//  · Your data      Export everything we hold for this patient, and a plain statement of who can see it.
+//                   clinic_caseload() and clinic_patient_overview() (0022) are SECURITY DEFINER and return every
+//                   patient in the caller's clinic with no role or care_team_links check, alongside
+//                   can_access_patient (0011); self-serve patients all share the "Mova Personal" clinic (0017).
+//                   A patient cannot change any of that from the app, so there is no link count and no revoke.
 
-import { Camera, Check, Download, Loader2, Music2, ShieldCheck, SlidersHorizontal, UserRound, UserX, Volume2 } from "lucide-react";
-import { useEffect, useState } from "react";
+import {
+  Check,
+  CircleAlert,
+  ClipboardCheck,
+  Download,
+  Loader2,
+  Lock,
+  type LucideIcon,
+  ShieldCheck,
+  TriangleAlert,
+  UserRound,
+} from "lucide-react";
+import { useRouter } from "next/navigation";
+import { type FormEvent, type ReactNode, useEffect, useId, useState } from "react";
 
+import PageHeader from "@/components/app/PageHeader";
+import {
+  bodyText,
+  card,
+  cardTitle,
+  focusRing,
+  primaryButton,
+  secondaryButton,
+  sectionTitle,
+} from "@/components/app/recipes";
+import type { SideContext } from "@/lib/patient/context";
 import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
+import { LOCALES, type Locale } from "@/locales";
+import { useLocale, useTranslation } from "@/locales/client";
 
-type Side = "left" | "right" | "bilateral" | "none";
-type Locale = "en" | "ru" | "kk";
+type SaveState = "idle" | "saving" | "saved" | "error";
+type NameParts = { first: string; last: string };
 
-interface Prefs {
-  audioCues: boolean;
-  metronomeVolume: number;
-  cameraOffByDefault: boolean;
-}
-const DEFAULT_PREFS: Prefs = { audioCues: true, metronomeVolume: 70, cameraOffByDefault: true };
-
-function prefsKey(uid: string) {
-  return `mova.prefs::${uid}`;
+/**
+ * Splits the stored name into the two fields so that `${first} ${last}` is the stored full_name again.
+ * display_name is the first name (0020); when full_name begins with it, it is kept whole, so a compound given
+ * name stays in the first field. Otherwise the first word of full_name is the first name.
+ */
+function seedName(fullName: string, displayName: string): NameParts {
+  const full = fullName.trim().replace(/\s+/g, " ");
+  const given = displayName.trim().replace(/\s+/g, " ");
+  if (!full) return { first: given, last: "" };
+  if (given && (full === given || full.startsWith(`${given} `))) {
+    return { first: given, last: full.slice(given.length).trim() };
+  }
+  const [first = "", ...rest] = full.split(" ");
+  return { first, last: rest.join(" ") };
 }
 
 export default function SettingsClient({
   userId,
+  patientId,
   email,
+  profileLoaded,
   fullName,
   displayName,
-  locale,
-  affectedSide,
-  activeCareLinks,
+  side,
 }: {
   userId: string;
+  patientId: string | null;
   email: string;
+  profileLoaded: boolean;
   fullName: string;
   displayName: string;
-  locale: Locale;
-  affectedSide: string;
-  activeCareLinks: number;
+  side: SideContext;
 }) {
+  const { t, locale } = useTranslation();
+  const { setLocale } = useLocale();
+  const router = useRouter();
   const [supabase] = useState(() => createClient());
 
-  // ---- Profile -------------------------------------------------------------
-  const [first, setFirst] = useState(() => (displayName || fullName).split(" ")[0] ?? "");
-  const [last, setLast] = useState(() => fullName.split(" ").slice(1).join(" "));
-  const [side, setSide] = useState<Side>((affectedSide as Side) || "none");
-  const [loc, setLoc] = useState<Locale>(locale);
-  const [saving, setSaving] = useState(false);
-  const [saved, setSaved] = useState(false);
-  const [profileErr, setProfileErr] = useState<string | null>(null);
+  const firstId = useId();
+  const lastId = useId();
+  const emailId = useId();
+  const emailHintId = useId();
+  const langId = useId();
 
-  async function saveProfile() {
-    setSaving(true);
-    setSaved(false);
-    setProfileErr(null);
-    const full = `${first} ${last}`.trim();
-    const { error: pErr } = await supabase
-      .from("profiles")
-      .update({ full_name: full || null, display_name: first || full || null, locale: loc })
-      .eq("id", userId);
-    const { error: ptErr } = await supabase
-      .from("patients")
-      .update({ affected_side: side })
-      .eq("profile_id", userId);
-    setSaving(false);
-    if (pErr || ptErr) {
-      setProfileErr((pErr ?? ptErr)!.message);
+  // ---- Profile -------------------------------------------------------------
+  // `stored` is what the account holds now; the fields are compared with it to tell whether the name changed.
+  const [stored, setStored] = useState<NameParts>(() => seedName(fullName, displayName));
+  const [first, setFirst] = useState(stored.first);
+  const [last, setLast] = useState(stored.last);
+  const [lang, setLang] = useState<Locale>(locale);
+  const [saveState, setSaveState] = useState<SaveState>("idle");
+
+  // The sidebar language switch changes the locale too; keep the select in step with it.
+  useEffect(() => {
+    setLang(locale);
+  }, [locale]);
+
+  // "Saved" stays on screen until the next edit, so it cannot vanish before it is read.
+  function edited() {
+    if (saveState === "saved" || saveState === "error") setSaveState("idle");
+  }
+
+  async function saveProfile(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!profileLoaded) return;
+    setSaveState("saving");
+    const given = first.trim();
+    const family = last.trim();
+    const firstChanged = given !== stored.first;
+    const lastChanged = family !== stored.last;
+
+    const update: { locale: Locale; full_name?: string | null; display_name?: string | null } = { locale: lang };
+    if (firstChanged || lastChanged) {
+      const full = `${given} ${family}`.trim();
+      update.full_name = full || null;
+      // display_name is the first name used in greetings; leave it alone when only the last name changed.
+      if (firstChanged) update.display_name = given || full || null;
+    }
+
+    try {
+      const { data, error } = await supabase.from("profiles").update(update).eq("id", userId).select("id");
+      if (error || !data || data.length === 0) {
+        setSaveState("error");
+        return;
+      }
+    } catch {
+      setSaveState("error");
       return;
     }
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2500);
+    setStored({ first: given, last: family });
+    setSaveState("saved");
+    // setLocale refreshes Server Components itself; otherwise refresh so the shell shows the new name.
+    if (lang !== locale) setLocale(lang);
+    else router.refresh();
   }
 
-  // ---- Preferences (on-device, per user) -----------------------------------
-  const [prefs, setPrefs] = useState<Prefs>(DEFAULT_PREFS);
-  useEffect(() => {
-    try {
-      const raw = window.localStorage.getItem(prefsKey(userId));
-      if (raw) setPrefs({ ...DEFAULT_PREFS, ...(JSON.parse(raw) as Partial<Prefs>) });
-    } catch {
-      /* keep defaults */
-    }
-  }, [userId]);
-  function updatePref<K extends keyof Prefs>(key: K, value: Prefs[K]) {
-    setPrefs((p) => {
-      const next = { ...p, [key]: value };
-      window.localStorage.setItem(prefsKey(userId), JSON.stringify(next));
-      return next;
-    });
-  }
-
-  // ---- Compliance ----------------------------------------------------------
+  // ---- Data export ---------------------------------------------------------
   const [exporting, setExporting] = useState(false);
+  const [exportFailed, setExportFailed] = useState(false);
+
   async function exportData() {
     setExporting(true);
-    const [{ data: profile }, { data: sessions }] = await Promise.all([
-      supabase.from("profiles").select("*").eq("id", userId).maybeSingle(),
-      supabase.from("sessions").select("*, session_metrics(*)").order("started_at", { ascending: false }),
-    ]);
-    const bundle = { exported_at: new Date().toISOString(), account: { id: userId, email }, profile, sessions };
-    const blob = new Blob([JSON.stringify(bundle, null, 2)], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `mova-data-export-${new Date().toISOString().slice(0, 10)}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
-    setExporting(false);
+    setExportFailed(false);
+    try {
+      const profileRes = await supabase.from("profiles").select("*").eq("id", userId).maybeSingle();
+      // Without a patient record there are no sessions to include.
+      const sessionsRes = patientId
+        ? await supabase
+            .from("sessions")
+            .select("*, session_metrics(*)")
+            .eq("patient_id", patientId)
+            .order("started_at", { ascending: false })
+        : { data: [], error: null };
+      if (profileRes.error || sessionsRes.error) {
+        setExportFailed(true);
+        return;
+      }
+      const bundle = {
+        exported_at: new Date().toISOString(),
+        account: { id: userId, email },
+        profile: profileRes.data,
+        sessions: sessionsRes.data,
+      };
+      const blob = new Blob([JSON.stringify(bundle, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `mova-data-export-${new Date().toISOString().slice(0, 10)}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      setExportFailed(true);
+    } finally {
+      setExporting(false);
+    }
   }
 
-  const [revoking, setRevoking] = useState(false);
-  const [revokeMsg, setRevokeMsg] = useState<string | null>(null);
-  async function revokeAccess() {
-    if (!confirm("Revoke your care team's access to your data? They will no longer see your sessions.")) return;
-    setRevoking(true);
-    setRevokeMsg(null);
-    const { error } = await supabase.from("care_team_links").update({ is_active: false }).eq("is_active", true);
-    setRevoking(false);
-    setRevokeMsg(error ? "We've logged your request — your clinic administrator will confirm it." : "Clinical access revoked.");
-  }
+  const inputCls = cn(
+    "block min-h-12 w-full rounded-lg border border-ink-faint bg-card px-4 text-base text-ink transition-colors",
+    focusRing,
+  );
 
   return (
     <div className="space-y-8">
-      <header>
-        <div className="font-mono text-[11px] uppercase tracking-[0.22em] text-signal">Settings</div>
-        <h1 className="mt-2 text-4xl leading-none text-ink sm:text-5xl">Your account.</h1>
-      </header>
+      <PageHeader eyebrow={t("settings.eyebrow")} title={t("settings.title")} lead={t("settings.lead")} />
 
       {/* PROFILE */}
-      <Section icon={UserRound} title="Profile" desc="Your name and clinical focus. Saved to your record.">
-        <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="First name">
-            <input className={inputCls} value={first} onChange={(e) => setFirst(e.target.value)} placeholder="First" />
-          </Field>
-          <Field label="Last name">
-            <input className={inputCls} value={last} onChange={(e) => setLast(e.target.value)} placeholder="Last" />
-          </Field>
-          <Field label="Email">
-            <input className={cn(inputCls, "cursor-not-allowed text-ink-faint")} value={email} disabled />
-          </Field>
-          <Field label="Language">
-            <select className={inputCls} value={loc} onChange={(e) => setLoc(e.target.value as Locale)}>
-              <option value="en">English</option>
-              <option value="ru">Русский</option>
-              <option value="kk">Қазақша</option>
-            </select>
-          </Field>
-          <Field label="Affected side">
-            <div className="grid grid-cols-4 gap-1.5">
-              {(["left", "right", "bilateral", "none"] as Side[]).map((s) => (
-                <button
-                  key={s}
-                  type="button"
-                  onClick={() => setSide(s)}
-                  className={cn(
-                    "rounded-lg border px-2 py-2 text-[12px] capitalize transition-colors",
-                    side === s ? "border-signal bg-signal/10 text-signal-deep" : "border-line text-ink-soft hover:bg-paper-soft",
-                  )}
-                >
-                  {s}
-                </button>
-              ))}
-            </div>
-          </Field>
-        </div>
-        <div className="mt-5 flex items-center gap-3">
-          <button
-            type="button"
-            onClick={saveProfile}
-            disabled={saving}
-            className="inline-flex items-center gap-2 rounded-pill bg-night px-6 py-2.5 text-sm font-medium text-paper-soft transition-colors hover:bg-ink disabled:opacity-60"
-          >
-            {saving ? <Loader2 className="size-4 animate-spin" strokeWidth={1.8} /> : saved ? <Check className="size-4" strokeWidth={2} /> : null}
-            {saving ? "Saving…" : saved ? "Saved" : "Save changes"}
-          </button>
-          {profileErr && <span className="text-sm text-destructive">{profileErr}</span>}
-        </div>
-      </Section>
-
-      {/* PREFERENCES */}
-      <Section icon={SlidersHorizontal} title="Preferences" desc="How sessions look and sound. Stored on this device.">
-        <div className="divide-y divide-line">
-          <ToggleRow
-            icon={Volume2}
-            label="Audio cues"
-            desc="Spoken prompts and scoring chimes during a session."
-            on={prefs.audioCues}
-            onToggle={() => updatePref("audioCues", !prefs.audioCues)}
-          />
-          <div className="flex items-center gap-4 py-4">
-            <Music2 className="size-4 shrink-0 text-ink-faint" strokeWidth={1.8} />
-            <div className="min-w-0 flex-1">
-              <div className="text-sm text-ink">Metronome volume</div>
-              <div className="text-[13px] text-ink-soft">The beat that paces your gait cadence.</div>
-            </div>
-            <div className="flex w-40 items-center gap-3">
+      <Section icon={UserRound} title={t("settings.profile.title")} lead={t("settings.profile.lead")}>
+        {!profileLoaded && (
+          <Message tone="error" role="alert" className="mb-5">
+            {t("settings.profile.loadError")}
+          </Message>
+        )}
+        <form onSubmit={saveProfile} noValidate>
+          <div className="grid gap-5 sm:grid-cols-2">
+            <Field id={firstId} label={t("settings.profile.firstName")}>
               <input
-                type="range"
-                min={0}
-                max={100}
-                value={prefs.metronomeVolume}
-                onChange={(e) => updatePref("metronomeVolume", Number(e.target.value))}
-                className="w-full accent-signal"
-                aria-label="Metronome volume"
+                id={firstId}
+                className={inputCls}
+                value={first}
+                autoComplete="given-name"
+                onChange={(e) => {
+                  setFirst(e.target.value);
+                  edited();
+                }}
               />
-              <span className="tnum w-9 text-right font-mono text-xs text-ink-faint">{prefs.metronomeVolume}</span>
-            </div>
+            </Field>
+            <Field id={lastId} label={t("settings.profile.lastName")}>
+              <input
+                id={lastId}
+                className={inputCls}
+                value={last}
+                autoComplete="family-name"
+                onChange={(e) => {
+                  setLast(e.target.value);
+                  edited();
+                }}
+              />
+            </Field>
+            <Field id={emailId} label={t("settings.profile.email")} hint={t("settings.profile.emailHint")} hintId={emailHintId}>
+              <input
+                id={emailId}
+                type="email"
+                readOnly
+                value={email}
+                aria-describedby={emailHintId}
+                className={cn(inputCls, "bg-paper-soft")}
+              />
+            </Field>
+            <Field id={langId} label={t("settings.profile.language")}>
+              <select
+                id={langId}
+                className={inputCls}
+                value={lang}
+                onChange={(e) => {
+                  setLang(e.target.value as Locale);
+                  edited();
+                }}
+              >
+                {LOCALES.map((code) => (
+                  <option key={code} value={code} lang={code}>
+                    {t(`language.${code}`)}
+                  </option>
+                ))}
+              </select>
+            </Field>
           </div>
-          <ToggleRow
-            icon={Camera}
-            label="Camera off by default"
-            desc="Start sessions with the live preview hidden (tracking still runs)."
-            on={prefs.cameraOffByDefault}
-            onToggle={() => updatePref("cameraOffByDefault", !prefs.cameraOffByDefault)}
-          />
-        </div>
+
+          <div className="mt-6 flex flex-wrap items-center gap-4">
+            <button type="submit" disabled={!profileLoaded || saveState === "saving"} className={primaryButton}>
+              {saveState === "saving" && <Loader2 className="size-5 animate-spin" strokeWidth={2} aria-hidden="true" />}
+              {saveState === "saving" ? t("settings.profile.saving") : t("settings.profile.save")}
+            </button>
+            <div role="status" aria-live="polite">
+              {saveState === "saved" && <Message tone="done">{t("settings.profile.saved")}</Message>}
+            </div>
+            {saveState === "error" && (
+              <Message tone="error" role="alert">
+                {t("settings.profile.saveError")}
+              </Message>
+            )}
+          </div>
+        </form>
       </Section>
 
-      {/* COMPLIANCE */}
-      <Section icon={ShieldCheck} title="Data & privacy" desc="Your GDPR / HIPAA controls.">
-        <div className="grid gap-3 sm:grid-cols-2">
-          <div className="rounded-lg border border-line p-5">
-            <div className="text-sm font-medium text-ink">Export my data</div>
-            <p className="mt-1 text-[13px] leading-relaxed text-ink-soft">
-              Download everything we hold about you — profile and every session — as a portable JSON file.
-            </p>
-            <button
-              type="button"
-              onClick={exportData}
-              disabled={exporting}
-              className="mt-4 inline-flex items-center gap-2 rounded-pill border border-line px-4 py-2 text-sm text-ink transition-colors hover:bg-paper-soft disabled:opacity-60"
-            >
-              {exporting ? <Loader2 className="size-4 animate-spin" strokeWidth={1.8} /> : <Download className="size-4" strokeWidth={1.8} />}
-              {exporting ? "Preparing…" : "Export"}
-            </button>
+      {/* OPERATED KNEE (read-only) */}
+      <Section
+        icon={ClipboardCheck}
+        title={t("side.label")}
+        lead={side.status === "known" ? undefined : t("settings.side.lead")}
+      >
+        {side.status === "known" ? (
+          <p className="inline-flex items-center rounded-pill border-2 border-ink px-4 py-2 text-lg font-semibold text-ink">
+            {t(side.side === "left" ? "side.left" : "side.right")}
+          </p>
+        ) : (
+          <p className="inline-flex items-center gap-2 rounded-pill border border-dashed border-ink/40 px-4 py-2 text-base text-ink">
+            <TriangleAlert className="size-5 shrink-0 text-amber-700" strokeWidth={2} aria-hidden="true" />
+            {t("side.unknown")}
+          </p>
+        )}
+        <p className={cn("mt-5 flex items-start gap-2", bodyText)}>
+          <Lock className="mt-1 size-4 shrink-0 text-ink-soft" strokeWidth={2} aria-hidden="true" />
+          <span>{t("settings.side.readOnly")}</span>
+        </p>
+        {side.status === "known" && <p className={cn("mt-1 pl-6", bodyText)}>{t("settings.side.wrongHint")}</p>}
+      </Section>
+
+      {/* DATA & PRIVACY */}
+      <Section icon={ShieldCheck} title={t("settings.privacy.title")} lead={t("settings.privacy.lead")}>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div className="flex flex-col rounded-card border border-line p-5">
+            <h3 className={cardTitle}>{t("settings.privacy.export.title")}</h3>
+            <p className={cn("mt-2", bodyText)}>{t("settings.privacy.export.body")}</p>
+            <div className="mt-auto pt-5">
+              <button type="button" onClick={exportData} disabled={exporting} className={secondaryButton}>
+                {exporting ? (
+                  <Loader2 className="size-5 animate-spin" strokeWidth={2} aria-hidden="true" />
+                ) : (
+                  <Download className="size-5" strokeWidth={1.9} aria-hidden="true" />
+                )}
+                {exporting ? t("settings.privacy.export.preparing") : t("settings.privacy.export.button")}
+              </button>
+              {exportFailed && (
+                <Message tone="error" role="alert" className="mt-3">
+                  {t("settings.privacy.export.error")}
+                </Message>
+              )}
+            </div>
           </div>
-          <div className="rounded-lg border border-line p-5">
-            <div className="text-sm font-medium text-ink">Revoke clinical access</div>
-            <p className="mt-1 text-[13px] leading-relaxed text-ink-soft">
-              {activeCareLinks > 0
-                ? `${activeCareLinks} clinician${activeCareLinks > 1 ? "s" : ""} can currently view your sessions.`
-                : "No clinician currently has access to your data."}
+
+          <div className="flex flex-col rounded-card border border-line p-5">
+            <h3 className={cardTitle}>{t("settings.privacy.access.title")}</h3>
+            <p className={cn("mt-2", bodyText)}>{t("settings.privacy.access.body")}</p>
+            <p className={cn("mt-3 flex items-start gap-2", bodyText)}>
+              <Lock className="mt-1 size-4 shrink-0 text-ink-soft" strokeWidth={2} aria-hidden="true" />
+              <span>{t("settings.privacy.access.contact")}</span>
             </p>
-            <button
-              type="button"
-              onClick={revokeAccess}
-              disabled={revoking || activeCareLinks === 0}
-              className="mt-4 inline-flex items-center gap-2 rounded-pill border border-destructive/30 px-4 py-2 text-sm text-destructive transition-colors hover:bg-destructive/5 disabled:opacity-40"
-            >
-              {revoking ? <Loader2 className="size-4 animate-spin" strokeWidth={1.8} /> : <UserX className="size-4" strokeWidth={1.8} />}
-              Revoke access
-            </button>
-            {revokeMsg && <p className="mt-2 text-[12px] text-ink-soft">{revokeMsg}</p>}
           </div>
         </div>
       </Section>
@@ -263,29 +335,29 @@ export default function SettingsClient({
   );
 }
 
-const inputCls =
-  "w-full rounded-lg border border-line bg-card px-3 py-2.5 text-sm text-ink outline-none transition-colors placeholder:text-ink-faint focus:border-signal focus:ring-2 focus:ring-signal/20";
-
 function Section({
   icon: Icon,
   title,
-  desc,
+  lead,
   children,
 }: {
-  icon: typeof UserRound;
+  icon: LucideIcon;
   title: string;
-  desc: string;
-  children: React.ReactNode;
+  lead?: string;
+  children: ReactNode;
 }) {
+  const titleId = useId();
   return (
-    <section className="rounded-xl border border-line bg-card p-6 sm:p-8">
-      <div className="flex items-start gap-3">
-        <span className="mt-0.5 grid size-9 shrink-0 place-items-center rounded-xl bg-paper-soft text-ink-soft ring-1 ring-line">
-          <Icon className="size-[18px]" strokeWidth={1.7} />
+    <section aria-labelledby={titleId} className={cn(card, "p-5 sm:p-8")}>
+      <div className="flex items-start gap-4">
+        <span className="grid size-11 shrink-0 place-items-center rounded-full bg-paper-soft text-ink-soft ring-1 ring-line">
+          <Icon className="size-5" strokeWidth={1.9} aria-hidden="true" />
         </span>
-        <div>
-          <h2 className="text-2xl text-ink">{title}</h2>
-          <p className="text-[13px] text-ink-soft">{desc}</p>
+        <div className="min-w-0">
+          <h2 id={titleId} className={sectionTitle}>
+            {title}
+          </h2>
+          {lead && <p className={cn("mt-1", bodyText)}>{lead}</p>}
         </div>
       </div>
       <div className="mt-6">{children}</div>
@@ -293,49 +365,55 @@ function Section({
   );
 }
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
+function Field({
+  id,
+  label,
+  hint,
+  hintId,
+  children,
+}: {
+  id: string;
+  label: string;
+  hint?: string;
+  hintId?: string;
+  children: ReactNode;
+}) {
   return (
-    <label className="block">
-      <span className="mb-1.5 block font-mono text-[10px] uppercase tracking-[0.14em] text-ink-faint">{label}</span>
+    <div>
+      <label htmlFor={id} className="mb-2 block text-base font-medium text-ink">
+        {label}
+      </label>
       {children}
-    </label>
+      {hint && (
+        <p id={hintId} className="mt-2 text-sm text-ink-soft">
+          {hint}
+        </p>
+      )}
+    </div>
   );
 }
 
-function ToggleRow({
-  icon: Icon,
-  label,
-  desc,
-  on,
-  onToggle,
+/** A status line: icon plus words, so colour is never the only signal. Text stays ink for contrast. */
+function Message({
+  tone,
+  role,
+  className,
+  children,
 }: {
-  icon: typeof Volume2;
-  label: string;
-  desc: string;
-  on: boolean;
-  onToggle: () => void;
+  tone: "done" | "error";
+  role?: "alert";
+  className?: string;
+  children: ReactNode;
 }) {
+  const Icon = tone === "done" ? Check : CircleAlert;
   return (
-    <div className="flex items-center gap-4 py-4">
-      <Icon className="size-4 shrink-0 text-ink-faint" strokeWidth={1.8} />
-      <div className="min-w-0 flex-1">
-        <div className="text-sm text-ink">{label}</div>
-        <div className="text-[13px] text-ink-soft">{desc}</div>
-      </div>
-      <button
-        type="button"
-        role="switch"
-        aria-checked={on}
-        onClick={onToggle}
-        className={cn("relative h-6 w-11 shrink-0 rounded-full transition-colors", on ? "bg-signal" : "bg-line")}
-      >
-        <span
-          className={cn(
-            "absolute top-0.5 size-5 rounded-full bg-white shadow-sm transition-transform",
-            on ? "translate-x-[22px]" : "translate-x-0.5",
-          )}
-        />
-      </button>
-    </div>
+    <p role={role} className={cn("flex items-start gap-2 text-base font-medium text-ink", className)}>
+      <Icon
+        className={cn("mt-0.5 size-5 shrink-0", tone === "done" ? "text-signal-deep" : "text-red-700")}
+        strokeWidth={2}
+        aria-hidden="true"
+      />
+      <span>{children}</span>
+    </p>
   );
 }

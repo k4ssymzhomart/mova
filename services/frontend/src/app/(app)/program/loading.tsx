@@ -1,5 +1,5 @@
-import { ProgramSkeleton } from "@/components/skeletons/routes";
+import { PlanSkeleton } from "@/components/skeletons/routes";
 
 export default function Loading() {
-  return <ProgramSkeleton />;
+  return <PlanSkeleton />;
 }

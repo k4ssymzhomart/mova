@@ -1,193 +1,114 @@
 "use client";
 
-// SidebarNav — the patient-app navigation, shared by the desktop sidebar and the mobile drawer.
-// Editorial/spatial language: sits on the soft gray page canvas; the active item floats up as a white
-// rounded card. Collapses to icon-only on desktop. Routes that aren't built yet point at a ComingSoon
-// stub (no 404) and carry a subtle "soon" marker.
+// SidebarNav — the patient app's navigation, shared by the desktop rail and the mobile drawer. Four primary
+// destinations; Settings, the language switch and sign-out live in the footer. On desktop the rail collapses
+// to icons, and each label stays in the accessibility tree as sr-only text so collapsed links keep a name.
+// The active item carries four cues at once: background, weight, an edge bar and aria-current.
 
-import {
-  Activity,
-  BookOpen,
-  Bluetooth,
-  ClipboardList,
-  Dumbbell,
-  HelpCircle,
-  Home,
-  type LucideIcon,
-  LogOut,
-  PanelLeft,
-  PanelLeftClose,
-  Settings,
-  TrendingUp,
-  Trophy,
-  Users,
-} from "lucide-react";
+import { LogOut, PanelLeft, PanelLeftClose } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
+import { focusRing } from "@/components/app/recipes";
 import LanguageToggle from "@/components/LanguageToggle";
-import { useTranslation } from "@/locales/client";
+import { activeHref } from "@/lib/nav/match";
 import { cn } from "@/lib/utils";
+import { useTranslation } from "@/locales/client";
 
-interface NavItem {
-  href: string;
-  label: string;
-  icon: LucideIcon;
-  ready: boolean;
-  match?: string; // active-state prefix (defaults to href); longest match wins
-  prefetch?: boolean;
-}
+import { ALL_NAV, FOOTER_NAV, type NavItem, PRIMARY_NAV } from "./nav";
 
-// `label` holds an i18n key (see src/locales/ru.json); resolved through t() at render time.
-const NAV: NavItem[] = [
-  { href: "/app", label: "nav.today", icon: Home, ready: true, match: "/app" },
-  { href: "/program", label: "nav.myProgram", icon: ClipboardList, ready: true },
-  { href: "/app/session/new", label: "nav.train", icon: Activity, ready: true, match: "/app/session", prefetch: false },
-  { href: "/exercises", label: "nav.exercises", icon: Dumbbell, ready: true },
-  { href: "/progress", label: "nav.progress", icon: TrendingUp, ready: true },
-  { href: "/achievements", label: "nav.achievements", icon: Trophy, ready: true },
-  { href: "/devices", label: "nav.devices", icon: Bluetooth, ready: false },
-  { href: "/care-team", label: "nav.careTeam", icon: Users, ready: false },
-  { href: "/learn", label: "nav.learn", icon: BookOpen, ready: false },
-  { href: "/settings", label: "nav.settings", icon: Settings, ready: false },
-];
-
-/** Longest matching nav prefix wins, so /app/session/[id] highlights Train, not Today. */
-function activeHref(pathname: string): string | null {
-  let best: string | null = null;
-  let bestLen = -1;
-  for (const it of NAV) {
-    const m = it.match ?? it.href;
-    if ((pathname === m || pathname.startsWith(`${m}/`)) && m.length > bestLen) {
-      best = it.href;
-      bestLen = m.length;
-    }
-  }
-  return best;
+function rowClass(collapsed: boolean) {
+  return cn(
+    "relative flex min-h-12 items-center gap-3 rounded-lg px-3 text-base transition-colors duration-200 ease-editorial",
+    focusRing,
+    collapsed && "justify-center px-0",
+  );
 }
 
 export default function SidebarNav({
   collapsed,
   name,
-  streak,
+  showBrand = true,
+  navLabel,
   onToggleCollapse,
   onNavigate,
 }: {
   collapsed: boolean;
   name: string;
-  streak: number;
+  showBrand?: boolean;
+  navLabel?: string;
   onToggleCollapse?: () => void;
   onNavigate?: () => void;
 }) {
   const pathname = usePathname() ?? "/app";
-  const current = activeHref(pathname);
+  const current = activeHref(pathname, ALL_NAV);
   const { t } = useTranslation();
 
   return (
     <div className="flex h-full flex-col">
-      {/* brand + collapse toggle */}
-      <div className={cn("flex items-center px-3 pt-4 pb-3", collapsed ? "justify-center" : "justify-between")}>
-        {!collapsed && (
-          <Link href="/app" onClick={onNavigate} className="flex items-center gap-2.5">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/logo-mova.png" alt="Mova" className="h-7 w-auto" />
-          </Link>
-        )}
-        {onToggleCollapse && (
-          <button
-            type="button"
-            onClick={onToggleCollapse}
-            aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-            className="grid size-8 place-items-center rounded-lg text-ink-faint transition-colors hover:bg-paper-soft hover:text-ink"
-          >
-            {collapsed ? (
-              <PanelLeft className="size-[18px]" strokeWidth={1.7} />
-            ) : (
-              <PanelLeftClose className="size-[18px]" strokeWidth={1.7} />
-            )}
-          </button>
-        )}
-      </div>
-
-      {/* profile + streak */}
-      <div className={cn("mx-2 mb-2 flex items-center gap-3 rounded-lg px-2 py-2", collapsed && "justify-center px-0")}>
-        <StreakRing days={streak} initial={(name[0] ?? "M").toUpperCase()} />
-        {!collapsed && (
-          <div className="min-w-0">
-            <div className="truncate text-sm font-medium text-ink">{name}</div>
-            <div className="font-mono text-[11px] tabular-nums text-ink-faint">
-              {streak > 0 ? t("sidebar.streak", { n: streak }) : t("sidebar.startStreak")}
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* nav */}
-      <nav className="flex-1 space-y-0.5 overflow-y-auto px-2 py-1">
-        {NAV.map((item) => {
-          const active = current === item.href;
-          const Icon = item.icon;
-          return (
-            <Link
-              key={item.href}
-              href={item.href}
-              prefetch={item.prefetch}
-              onClick={onNavigate}
-              title={collapsed ? t(item.label) : undefined}
-              aria-current={active ? "page" : undefined}
+      {(showBrand || onToggleCollapse) && (
+        <div className={cn("flex items-center px-3 pb-3 pt-4", collapsed ? "justify-center" : "justify-between")}>
+          {showBrand && !collapsed && (
+            <Link href="/app" onClick={onNavigate} className={cn("flex items-center rounded-lg p-1", focusRing)}>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src="/logo-mova.png" alt="Mova" className="h-7 w-auto" />
+            </Link>
+          )}
+          {onToggleCollapse && (
+            <button
+              type="button"
+              onClick={onToggleCollapse}
+              aria-label={collapsed ? t("shell.expandSidebar") : t("shell.collapseSidebar")}
+              aria-expanded={!collapsed}
               className={cn(
-                "group relative flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm transition-all duration-200 ease-editorial",
-                collapsed && "justify-center px-0",
-                active
-                  ? "bg-signal/10 font-medium text-signal-deep"
-                  : "text-ink-soft hover:bg-paper-soft hover:text-ink",
+                "grid size-12 place-items-center rounded-lg text-ink-soft transition-colors hover:bg-paper-soft hover:text-ink",
+                focusRing,
               )}
             >
-              <Icon className="size-[18px] shrink-0" strokeWidth={active ? 2 : 1.7} />
-              {!collapsed && <span className="truncate">{t(item.label)}</span>}
-              {!collapsed && !item.ready && (
-                <span className="ml-auto rounded-full bg-ink/[0.06] px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wide text-ink-faint">
-                  {t("nav.soon")}
-                </span>
+              {collapsed ? (
+                <PanelLeft className="size-5" strokeWidth={1.8} aria-hidden="true" />
+              ) : (
+                <PanelLeftClose className="size-5" strokeWidth={1.8} aria-hidden="true" />
               )}
-              {collapsed && !item.ready && (
-                <span className="absolute right-1.5 top-1.5 size-1.5 rounded-full bg-ink-faint/40" />
-              )}
-            </Link>
-          );
-        })}
+            </button>
+          )}
+        </div>
+      )}
+
+      <nav aria-label={navLabel ?? t("nav.primary")} className="flex-1 overflow-y-auto px-2 py-2">
+        <ul className="space-y-1">
+          {PRIMARY_NAV.map((item) => (
+            <li key={item.href}>
+              <NavLink item={item} active={current === item.href} collapsed={collapsed} onNavigate={onNavigate} />
+            </li>
+          ))}
+        </ul>
       </nav>
 
-      {/* footer */}
-      <div className="mt-2 space-y-0.5 border-t border-line px-2 py-3">
+      <div className="space-y-2 border-t border-line px-2 py-3">
+        {FOOTER_NAV.map((item) => (
+          <NavLink
+            key={item.href}
+            item={item}
+            active={current === item.href}
+            collapsed={collapsed}
+            onNavigate={onNavigate}
+          />
+        ))}
         {!collapsed && (
-          <div className="mb-1 px-1">
-            <LanguageToggle className="w-full justify-center" />
+          <div className="px-1 pt-1">
+            <LanguageToggle variant="patient" className="w-full" />
           </div>
         )}
-        <Link
-          href="/learn"
-          onClick={onNavigate}
-          title={collapsed ? t("nav.helpSupport") : undefined}
-          className={cn(
-            "flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-ink-soft transition-colors hover:bg-paper-soft hover:text-ink",
-            collapsed && "justify-center px-0",
-          )}
-        >
-          <HelpCircle className="size-[18px] shrink-0" strokeWidth={1.7} />
-          {!collapsed && <span>{t("nav.helpSupport")}</span>}
-        </Link>
+        {!collapsed && <p className="px-3 pt-1 text-sm text-ink-soft [overflow-wrap:anywhere]">{t("nav.signedInAs", { name })}</p>}
         <form action="/auth/signout" method="post">
           <button
             type="submit"
             title={collapsed ? t("nav.signOut") : undefined}
-            className={cn(
-              "flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-ink-soft transition-colors hover:bg-card/70 hover:text-ink",
-              collapsed && "justify-center px-0",
-            )}
+            className={cn(rowClass(collapsed), "w-full text-ink-soft hover:bg-paper-soft hover:text-ink")}
           >
-            <LogOut className="size-[18px] shrink-0" strokeWidth={1.7} />
-            {!collapsed && <span>{t("nav.signOut")}</span>}
+            <LogOut className="size-5 shrink-0" strokeWidth={1.8} aria-hidden="true" />
+            <span className={collapsed ? "sr-only" : undefined}>{t("nav.signOut")}</span>
           </button>
         </form>
       </div>
@@ -195,29 +116,35 @@ export default function SidebarNav({
   );
 }
 
-/** A compact streak ring with the user's initial in the centre; fills over a 7-day week. */
-function StreakRing({ days, initial }: { days: number; initial: string }) {
-  const r = 15;
-  const circ = 2 * Math.PI * r;
-  const frac = days <= 0 ? 0 : Math.min(1, ((days - 1) % 7) / 7 + 1 / 7);
+function NavLink({
+  item,
+  active,
+  collapsed,
+  onNavigate,
+}: {
+  item: NavItem;
+  active: boolean;
+  collapsed: boolean;
+  onNavigate?: () => void;
+}) {
+  const { t } = useTranslation();
+  const Icon = item.icon;
+  const label = t(item.labelKey);
   return (
-    <div className="relative grid size-9 shrink-0 place-items-center">
-      <svg viewBox="0 0 36 36" className="absolute inset-0 -rotate-90">
-        <circle cx="18" cy="18" r={r} fill="none" stroke="#E7E5E4" strokeWidth="3" />
-        <circle
-          cx="18"
-          cy="18"
-          r={r}
-          fill="none"
-          stroke="#16a35b"
-          strokeWidth="3"
-          strokeLinecap="round"
-          strokeDasharray={circ}
-          strokeDashoffset={circ * (1 - frac)}
-          className="transition-[stroke-dashoffset] duration-500 ease-editorial"
-        />
-      </svg>
-      <span className="text-[12px] font-semibold text-ink">{initial}</span>
-    </div>
+    <Link
+      href={item.href}
+      onClick={onNavigate}
+      aria-current={active ? "page" : undefined}
+      title={collapsed ? label : undefined}
+      className={cn(
+        rowClass(collapsed),
+        active
+          ? "bg-signal/10 font-semibold text-signal-deep before:absolute before:inset-y-2 before:left-0 before:w-1 before:rounded-full before:bg-signal"
+          : "text-ink-soft hover:bg-paper-soft hover:text-ink",
+      )}
+    >
+      <Icon className="size-5 shrink-0" strokeWidth={active ? 2.2 : 1.8} aria-hidden="true" />
+      <span className={collapsed ? "sr-only" : "truncate"}>{label}</span>
+    </Link>
   );
 }
