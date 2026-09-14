@@ -14,17 +14,16 @@ export default async function PatientAppLayout({ children }: { children: React.R
   } = await supabase.auth.getUser();
   if (!user) redirect("/signin?next=/app");
 
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("full_name, display_name")
-    .eq("id", user.id)
-    .maybeSingle();
+  const [{ data: profile }, { data: streak }] = await Promise.all([
+    supabase.from("profiles").select("full_name, display_name").eq("id", user.id).maybeSingle(),
+    supabase.from("streaks").select("current_streak").maybeSingle(),
+  ]);
 
   const name =
     profile?.display_name || profile?.full_name || user.email?.split("@")[0] || "Patient";
 
   return (
-    <AppShell name={name} email={user.email ?? ""} userId={user.id}>
+    <AppShell name={name} email={user.email ?? ""} userId={user.id} initialStreak={streak?.current_streak ?? 0}>
       {children}
     </AppShell>
   );
