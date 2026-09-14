@@ -7,10 +7,12 @@
 //    desktop or Android only for this pilot -- no Web Bluetooth on Safari/iOS.
 // Editorial Spatial, lucide icons, no gradients, no charts.
 
-import { Bluetooth, BluetoothOff, Camera, CameraOff, Check, Cpu, Loader2, Radio, ShieldCheck, X } from "lucide-react";
-import { useEffect, useState } from "react";
+import { AlertTriangle, Bluetooth, BluetoothOff, Camera, CameraOff, Check, Cpu, Loader2, Radio, ShieldCheck, X } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 
 import { SENSOR_ROLE_LABEL, SENSOR_ROLE_ORDER, type SensorRole, type Side } from "@/lib/ble/roles";
+import { describeSignalQuality, type SignalQualityReport } from "@/lib/ble/signalQuality";
+import { SignalQualityMonitor } from "@/lib/ble/signalQualityMonitor";
 import { type SensorUiStatus, useSensorConnect } from "@/lib/ble/useSensorConnect";
 import { cn } from "@/lib/utils";
 
@@ -156,13 +158,36 @@ function WearablesPanel({
     shank: false,
     foot: false,
   });
+  const monitorRef = useRef(new SignalQualityMonitor());
+  const [quality, setQuality] = useState<SignalQualityReport | null>(null);
 
   const { statuses, deviceNames, connect, forget, connectedCount, bleSupported } = useSensorConnect(
     patientId,
     side,
     pairedDeviceNames,
-    (role) => setReceivingData((s) => (s[role] ? s : { ...s, [role]: true })),
+    (role, frame) => {
+      setReceivingData((s) => (s[role] ? s : { ...s, [role]: true }));
+      monitorRef.current.push(role, {
+        ax: frame.accelerometerRaw[0],
+        ay: frame.accelerometerRaw[1],
+        az: frame.accelerometerRaw[2],
+        gx: frame.gyroscopeRaw[0],
+        gy: frame.gyroscopeRaw[1],
+        gz: frame.gyroscopeRaw[2],
+      });
+    },
   );
+
+  // Only meaningful once all three roles are connected -- before that, "missing_sensor_roles"
+  // would just restate what the per-row Connect buttons already show.
+  useEffect(() => {
+    if (connectedCount < SENSOR_ROLE_ORDER.length) {
+      setQuality(null);
+      return;
+    }
+    const id = window.setInterval(() => setQuality(monitorRef.current.evaluate()), 1000);
+    return () => window.clearInterval(id);
+  }, [connectedCount]);
 
   if (!bleSupported) {
     return (
@@ -224,9 +249,34 @@ function WearablesPanel({
               />
             );
           })}
+          {quality && <SignalQualityBanner report={quality} />}
         </div>
       )}
     </section>
+  );
+}
+
+function SignalQualityBanner({ report }: { report: SignalQualityReport }) {
+  if (report.scoringPermitted) {
+    return (
+      <div className="flex items-center gap-2 rounded-lg bg-signal/10 px-4 py-3 text-[13px] text-signal-deep">
+        <Check className="size-4 shrink-0" strokeWidth={2} />
+        {report.level === "HIGH"
+          ? "All sensors synced and ready."
+          : "Sensors ready -- sync is a little loose but within range."}
+      </div>
+    );
+  }
+  const messages = describeSignalQuality(report);
+  return (
+    <div className="space-y-1.5 rounded-lg bg-amber-500/10 px-4 py-3 text-[13px] text-amber-700">
+      {messages.map((message, i) => (
+        <div key={i} className="flex items-start gap-2">
+          <AlertTriangle className="mt-0.5 size-4 shrink-0" strokeWidth={2} />
+          {message}
+        </div>
+      ))}
+    </div>
   );
 }
 

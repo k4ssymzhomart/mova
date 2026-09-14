@@ -5,6 +5,8 @@ import { useCallback, useRef, useState } from "react";
 import { type BufferCounters, TelemetryBuffer } from "@/lib/telemetry/buffer";
 
 import type { SensorRole } from "./roles";
+import type { SignalQualityReport } from "./signalQuality";
+import { SignalQualityMonitor } from "./signalQualityMonitor";
 import { toFrameRow } from "./telemetryFrame";
 import type { ParsedWt901Frame } from "./wt901ble68";
 
@@ -18,6 +20,8 @@ export interface UseBleSessionRecorderResult {
   stop: () => Promise<void>;
   /** Feed one raw BLE sample. Non-blocking; TelemetryBuffer batches it under the hood. */
   recordFrame: (role: SensorRole, frame: ParsedWt901Frame) => void;
+  /** The signal-quality report as of the most recent recorded frame, or null before all three roles have reported. */
+  lastQuality: () => SignalQualityReport | null;
 }
 
 /**
@@ -39,10 +43,12 @@ export interface UseBleSessionRecorderResult {
 export function useBleSessionRecorder(): UseBleSessionRecorderResult {
   const bufferRef = useRef<TelemetryBuffer | null>(null);
   const seqRef = useRef(0);
+  const monitorRef = useRef(new SignalQualityMonitor());
   const [counters, setCounters] = useState<BufferCounters>(ZERO_COUNTERS);
 
   const start = useCallback(async (sessionId: string) => {
     seqRef.current = 0;
+    monitorRef.current.reset();
     setCounters(ZERO_COUNTERS);
     const buffer = new TelemetryBuffer(sessionId, setCounters);
     bufferRef.current = buffer;
@@ -56,8 +62,19 @@ export function useBleSessionRecorder(): UseBleSessionRecorderResult {
   }, []);
 
   const recordFrame = useCallback((role: SensorRole, frame: ParsedWt901Frame) => {
-    bufferRef.current?.pushFrame(toFrameRow(role, frame, seqRef.current++));
+    monitorRef.current.push(role, {
+      ax: frame.accelerometerRaw[0],
+      ay: frame.accelerometerRaw[1],
+      az: frame.accelerometerRaw[2],
+      gx: frame.gyroscopeRaw[0],
+      gy: frame.gyroscopeRaw[1],
+      gz: frame.gyroscopeRaw[2],
+    });
+    const quality = monitorRef.current.evaluate();
+    bufferRef.current?.pushFrame(toFrameRow(role, frame, seqRef.current++, { quality }));
   }, []);
 
-  return { counters, start, stop, recordFrame };
+  const lastQuality = useCallback(() => monitorRef.current.evaluate(), []);
+
+  return { counters, start, stop, recordFrame, lastQuality };
 }

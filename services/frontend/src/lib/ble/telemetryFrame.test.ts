@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import type { SignalQualityReport } from "./signalQuality";
 import { toFrameRow } from "./telemetryFrame";
 import type { ParsedWt901Frame } from "./wt901ble68";
 
@@ -11,7 +12,7 @@ const FRAME: ParsedWt901Frame = {
 
 describe("toFrameRow", () => {
   it("tags the row with role and passes raw counts through unconverted", () => {
-    const row = toFrameRow("shank", FRAME, 7, new Date("2026-01-01T00:00:00.000Z"));
+    const row = toFrameRow("shank", FRAME, 7, { recordedAt: new Date("2026-01-01T00:00:00.000Z") });
 
     expect(row.seq).toBe(7);
     expect(row.recorded_at).toBe("2026-01-01T00:00:00.000Z");
@@ -25,7 +26,9 @@ describe("toFrameRow", () => {
       gz: 167,
       euler_deg: [12.5, -3.25, 180],
       validation_status: "unverified_checksum",
+      signal_quality: null,
     });
+    expect(row.quality).toBeNull();
   });
 
   it("defaults recorded_at to now when omitted", () => {
@@ -40,10 +43,26 @@ describe("toFrameRow", () => {
 
   it("keeps distinct roles independently seq-numbered so the same instant never collides", () => {
     const now = new Date("2026-01-01T00:00:00.000Z");
-    const thigh = toFrameRow("thigh", FRAME, 0, now);
-    const shank = toFrameRow("shank", FRAME, 1, now);
+    const thigh = toFrameRow("thigh", FRAME, 0, { recordedAt: now });
+    const shank = toFrameRow("shank", FRAME, 1, { recordedAt: now });
 
     expect(thigh.recorded_at).toBe(shank.recorded_at);
     expect(thigh.seq).not.toBe(shank.seq);
+  });
+
+  it("rolls a signal-quality report into the numeric quality column and embeds the full report", () => {
+    const quality: SignalQualityReport = {
+      level: "MEDIUM",
+      reasons: ["sensor_synchronization_out_of_range"],
+      calibrationDurationSeconds: 5,
+      synchronizationSkewMs: 300,
+      sampleRatesHz: { thigh: 20, shank: 20, foot: 20 },
+      packetCounts: { thigh: 100, shank: 100, foot: 100 },
+      scoringPermitted: true,
+    };
+    const row = toFrameRow("thigh", FRAME, 0, { quality });
+
+    expect(row.quality).toBe(0.6);
+    expect((row.imu as { signal_quality: SignalQualityReport }).signal_quality).toEqual(quality);
   });
 });
