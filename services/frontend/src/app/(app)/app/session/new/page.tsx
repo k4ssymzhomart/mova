@@ -22,9 +22,17 @@ export default async function NewSession() {
     redirect(`/app/session/${open.id}`);
   }
 
+  const { data: patient } = await supabase.from("patients").select("id").maybeSingle();
+  const { data: bleDevices } = patient
+    ? await supabase
+        .from("patient_ble_devices")
+        .select("role, device_id, device_name, last_connected_at")
+        .eq("patient_id", patient.id)
+    : { data: null };
+
   const { data, error } = await supabase.rpc("start_training_session", {
     p_exercise_slug: null,
-    p_device_info: { client: "web", via: "new" },
+    p_device_info: { client: "web", via: "new", ble_devices: bleDevices ?? [] },
   });
   if (error || !data) redirect("/app");
   const s = Array.isArray(data) ? data[0] : data;
