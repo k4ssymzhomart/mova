@@ -50,6 +50,15 @@ export default function IntakePage() {
       data: { user },
     } = await supabase.auth.getUser();
     saveProfile(provisional, user?.id);
+    if (baseline) {
+      try {
+        // Best-effort: the local profile cache above already personalizes the next
+        // session even if this write fails or is slow.
+        await supabase.rpc("save_patient_baseline", { p_baseline: baseline });
+      } catch {
+        /* best-effort */
+      }
+    }
     router.push("/app/session/new");
   };
 

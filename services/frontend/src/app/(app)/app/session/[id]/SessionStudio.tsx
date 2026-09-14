@@ -22,7 +22,6 @@ import { useMediaPipePose } from "@/lib/cv/useMediaPipePose";
 import type { GaitStats } from "@/lib/game/gait";
 import type { ReachingStats } from "@/lib/game/reaching";
 import { computeInsights } from "@/lib/insights/engine";
-import { loadSessions, makeId, saveSession } from "@/lib/insights/store";
 import type { SessionRecord, Side } from "@/lib/insights/types";
 import { type LivePrediction, useLiveInference } from "@/lib/onnx/useLiveInference";
 import { useTranslation } from "@/locales/client";
@@ -40,6 +39,10 @@ const ZERO_GAIT: GaitStats = {
   steps: 0, beats: 0, cadenceSpm: 0, rhythmPct: 0, currentStreak: 0, bestStreak: 0, lastErrMs: null,
 };
 
+function makeId(): string {
+  return `s_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`;
+}
+
 function downsample(values: number[], n: number): number[] {
   if (values.length <= n) return values.map((v) => Math.round(v * 1000) / 1000);
   const out: number[] = [];
@@ -54,7 +57,15 @@ function downsample(values: number[], n: number): number[] {
   return out;
 }
 
-export default function SessionStudio({ sessionId, userId }: { sessionId: string; userId: string }) {
+export default function SessionStudio({
+  sessionId,
+  userId,
+  history,
+}: {
+  sessionId: string;
+  userId: string;
+  history: SessionRecord[];
+}) {
   const { t } = useTranslation();
   const pipeline = useRef(new VirtualImuPipeline());
   const sideRef = useRef<Side>("right");
@@ -241,8 +252,7 @@ export default function SessionStudio({ sessionId, userId }: { sessionId: string
       harTop,
       inferenceCount: inferences,
     };
-    saveSession(record, userId);
-    setSummary({ record, history: loadSessions(userId) });
+    setSummary({ record, history: [...history, record] });
 
     // Close any open FoG episode, flush the buffer, then score + award on the backend.
     const ep = detector.current?.finalize(now);
@@ -261,7 +271,7 @@ export default function SessionStudio({ sessionId, userId }: { sessionId: string
       /* best-effort rewards */
     }
     setFinishing(false);
-  }, [pose, sessionId, supabase, reach.score, reach.attempts, inferences, exitFocus]);
+  }, [pose, sessionId, supabase, reach.score, reach.attempts, inferences, exitFocus, history]);
 
   // Post-session view
   if (summary) {

@@ -90,13 +90,16 @@ insert into auth.identities (provider_id, user_id, identity_data, provider, last
    '{"sub":"44444444-4444-4444-4444-444444444444","email":"admin@mova.dev"}'::jsonb, 'email', now(), now(), now())
 on conflict (provider_id, provider) do nothing;
 
--- Bind profiles to the clinic (trigger already set role + full_name).
-update public.profiles set clinic_id = '11111111-1111-1111-1111-111111111111', timezone = 'Asia/Almaty'
-where id in (
-  '22222222-2222-2222-2222-222222222222',
-  '33333333-3333-3333-3333-333333333333',
-  '44444444-4444-4444-4444-444444444444'
-);
+-- Bind profiles to the clinic (trigger already set full_name; since 0023_tenancy_fix.sql,
+-- handle_new_user() always provisions role='patient' regardless of signup metadata -- these
+-- demo accounts' clinician/clinic_admin roles must be assigned explicitly here, the same way a
+-- real admin would promote an out-of-band account).
+update public.profiles set role = 'clinician', clinic_id = '11111111-1111-1111-1111-111111111111', timezone = 'Asia/Almaty'
+where id = '22222222-2222-2222-2222-222222222222';
+update public.profiles set role = 'patient', clinic_id = '11111111-1111-1111-1111-111111111111', timezone = 'Asia/Almaty'
+where id = '33333333-3333-3333-3333-333333333333';
+update public.profiles set role = 'clinic_admin', clinic_id = '11111111-1111-1111-1111-111111111111', timezone = 'Asia/Almaty'
+where id = '44444444-4444-4444-4444-444444444444';
 
 -- Role records
 insert into public.clinicians (id, profile_id, clinic_id, title, specialties) values

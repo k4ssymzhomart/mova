@@ -1,6 +1,8 @@
 import { notFound } from "next/navigation";
 import { ChevronLeft } from "lucide-react";
 
+import { mapSession, type SessionRow } from "@/lib/insights/fromSupabaseRow";
+import type { SessionRecord } from "@/lib/insights/types";
 import { createClient } from "@/lib/supabase/server";
 
 import SessionStudio from "./SessionStudio";
@@ -16,6 +18,24 @@ type Metrics = {
   fog_risk: number | null;
 } | null;
 
+type OneOrMany<T> = T | T[] | null;
+function one<T>(v: OneOrMany<T>): T | null {
+  return (Array.isArray(v) ? (v[0] ?? null) : v) ?? null;
+}
+interface HistoryMetricsRow {
+  reps: number | null;
+  quality_score: number | null;
+  fog_risk: number | null;
+  rom_mean: number | null;
+}
+interface HistoryRow {
+  id: string;
+  started_at: string;
+  ended_at: string | null;
+  summary: SessionRow["summary"];
+  session_metrics: OneOrMany<HistoryMetricsRow>;
+}
+
 export default async function SessionDetail({ params }: { params: { id: string } }) {
   const supabase = createClient();
   const [{ data: session }, { data: auth }] = await Promise.all([
@@ -30,9 +50,26 @@ export default async function SessionDetail({ params }: { params: { id: string }
   if (!session) notFound();
 
   // In-progress sessions get the full training studio (camera + ONNX + telemetry + rewards).
-  // The user id scopes the on-device profile + history stores so accounts never cross-contaminate.
+  // Prior completed sessions are fetched here (Supabase, the real source of truth) and handed
+  // down as `history` so the post-session coach can compare trends without touching localStorage.
   if (session.status !== "completed") {
-    return <SessionStudio sessionId={session.id} userId={auth.user?.id ?? ""} />;
+    const { data: historyRows } = await supabase
+      .from("sessions")
+      .select("id, started_at, ended_at, summary, session_metrics(reps, quality_score, fog_risk, rom_mean)")
+      .eq("status", "completed")
+      .order("started_at", { ascending: true });
+
+    const history: SessionRecord[] = ((historyRows ?? []) as unknown as HistoryRow[]).map((row) =>
+      mapSession({
+        id: row.id,
+        started_at: row.started_at,
+        ended_at: row.ended_at,
+        summary: row.summary,
+        metrics: one(row.session_metrics),
+      }),
+    );
+
+    return <SessionStudio sessionId={session.id} userId={auth.user?.id ?? ""} history={history} />;
   }
 
   // PostgREST may return a to-one embed as an object or a single-element array.
