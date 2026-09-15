@@ -9,7 +9,8 @@
 // Every value is what the live store measured (lib/ble/liveSensors). "—" means not known yet: a rolling count before
 // its window has fully passed since the first frame, a delivered rate before one window. The battery percent is
 // WitMotion's interpolation table for the voltage and is labelled so; a failed read is shown as unknown, with the
-// last good reading dated rather than passed off as current.
+// last good reading dated rather than passed off as current. The rate readback is dated the same way while the
+// sensor is not streaming: the rate lives in the sensor's RAM, so a past confirmation is shown as the last check.
 
 import { ChevronRight } from "lucide-react";
 import { Fragment, useId, type ReactNode } from "react";
@@ -29,6 +30,7 @@ import {
   formatNumber,
   hexCode,
   linkLabelKey,
+  rateView,
   secondsUntil,
   wholeSeconds,
 } from "./sensorReadout";
@@ -85,10 +87,16 @@ function RoleReadout({
   const outcome = (result: SampleRateResult) => rateOutcome(t, result);
 
   let readback: ReactNode = UNKNOWN;
-  if (state.rate.status === "configuring") {
-    readback = t("flow.readout.readbackConfiguring", { hz: hz(state.rate.requestedHz) });
-  } else if (state.rate.status === "done") {
-    readback = outcome(state.rate.result);
+  const rate = rateView(state);
+  if (rate.kind === "configuring") {
+    readback = t("flow.readout.readbackConfiguring", { hz: hz(rate.requestedHz) });
+  } else if (rate.kind === "current") {
+    readback = outcome(rate.result);
+  } else if (rate.kind === "last") {
+    readback = t("flow.readout.readbackLast", {
+      time: formatClockTime(locale, rate.atMs),
+      result: outcome(rate.result),
+    });
   }
 
   const history: ReactNode =

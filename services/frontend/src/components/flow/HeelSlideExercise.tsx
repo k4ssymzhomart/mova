@@ -10,9 +10,10 @@
 //    ended.
 //  - Start. The patient lies down with the leg straight and presses «Начать»; a three-second countdown lets the leg
 //    settle after the press, and focus moves to the instruction line, which is announced. The zero is taken from the
-//    first half second after that. The span it was taken over, on the latest start, goes into the summary as
-//    baseline_window_ms, so the clinician recount zeroes on the same frames even when an earlier start was abandoned
-//    or frames from before a reload are stored.
+//    first half second after that. The span of every zero that succeeds is kept per session in sessionStorage, which
+//    survives a reload, and the whole list goes into the summary as baseline_windows_ms (baseline_window_ms is its
+//    last entry). The clinician recount counts each span on its own zero, so reps done before a reload are counted
+//    too, and a start abandoned before its zero is not.
 //  - Every frame from all three sensors is recorded to session_frames (lib/ble/useBleSessionRecorder). Thigh and
 //    shank pitch are paired within 100 ms, turned into the relative orientation proxy, zeroed and oriented
 //    (lib/motion/flexion), then counted by the streaming hysteresis counter with the exercise's thresholds
@@ -24,8 +25,10 @@
 //    the same zero. A foot dropout does not pause counting, and a notice says its frames are not being saved.
 //  - A reload drops every Bluetooth connection and the count, which lives in this page. When the screen finds that
 //    the session recorded before it opened (this tab's flag, a stored frame, or rows waiting on the device), it tells
-//    the patient the count starts again from zero and that what was saved stays with the session; the summary
-//    records restarted_after_reload.
+//    the patient the count starts again from zero; the summary records restarted_after_reload. What it asks next
+//    depends on whether this tab kept the zero of an earlier start (exerciseStatus restartNoticeKey): if it did,
+//    those reps are recounted and the patient does only the rest; if not (no storage, or the earlier start was in
+//    another tab), nothing ties them to a zero, and the patient is asked for the whole set.
 //  - Finishing stops the recorder, which keeps trying to deliver for about ten seconds. Rows it could not deliver
 //    stay on the device, and the telemetry outbox (mounted in the app layout) keeps sending them while the app is
 //    open. The session is completed with finish_prescribed_session and the summary (heelSlideRecords.ts), then the
@@ -64,7 +67,17 @@ import { drainTelemetryOutbox, pendingForSession } from "@/lib/telemetry/outbox"
 import { cn } from "@/lib/utils";
 import { useTranslation } from "@/locales/client";
 
-import { exerciseRouteFor, missingCountingRoles, pauseMessageKey, recordedFlagKey } from "./exerciseStatus";
+import {
+  appendBaselineWindow,
+  baselineWindowsKey,
+  exerciseRouteFor,
+  missingCountingRoles,
+  parseBaselineWindows,
+  pauseMessageKey,
+  recordedFlagKey,
+  restartNoticeKey,
+  type BaselineWindowRecord,
+} from "./exerciseStatus";
 import {
   batteryRecord,
   buildHeelSlideSummary,
@@ -161,8 +174,12 @@ export default function HeelSlideExercise({
   const [recorderFailed, setRecorderFailed] = useState(false);
   const [sessionCheck, setSessionCheck] = useState<SessionCheck>("checking");
   const [restarted, setRestarted] = useState(false);
+  /** Zeros this tab kept from starts before the screen opened; null when storage could not be read. */
+  const [earlierStarts, setEarlierStarts] = useState<number | null>(null);
 
   const stageRef = useRef<Stage>("waiting");
+  /** Every successful zero of this session known to this tab, oldest first, this page's included. */
+  const baselineWindowsRef = useRef<BaselineWindowRecord[] | null>(null);
   const armedRef = useRef(false);
   const recordingRef = useRef(false);
   const stoppedRef = useRef(false);
@@ -227,6 +244,31 @@ export default function HeelSlideExercise({
     };
   }, [sessionId, leaveFor]);
 
+  // The zeros of starts made before this screen opened, read before any start can happen here.
+  useEffect(() => {
+    let kept: BaselineWindowRecord[] | null;
+    try {
+      kept = parseBaselineWindows(window.sessionStorage.getItem(baselineWindowsKey(sessionId)));
+    } catch {
+      kept = null;
+    }
+    if (baselineWindowsRef.current === null) baselineWindowsRef.current = kept ?? [];
+    setEarlierStarts(kept === null ? null : kept.length);
+  }, [sessionId]);
+
+  // A zero succeeded: add its span to the list, in memory for the summary and in storage for after a reload.
+  const keepBaselineWindow = useCallback(() => {
+    const zero = pipeline.orienter.baselineWindow;
+    if (!zero) return;
+    const next = appendBaselineWindow(baselineWindowsRef.current ?? [], { start: zero.startMs, end: zero.endMs });
+    baselineWindowsRef.current = next;
+    try {
+      window.sessionStorage.setItem(baselineWindowsKey(sessionId), JSON.stringify(next));
+    } catch {
+      // The summary still carries it; only a later reload of this page would not know about this start.
+    }
+  }, [pipeline, sessionId]);
+
   // After a reload the store starts at 50 Hz; ask for the rate this session was opened with before anything connects.
   useEffect(() => {
     if (openedWithHz !== null) setRequestedRate(openedWithHz);
@@ -257,14 +299,17 @@ export default function HeelSlideExercise({
       if (value === null) return;
       latestProxyRef.current = value;
       const state = pipeline.counter.push(pair.tMs, value);
-      if (stageRef.current === "baseline") moveTo("counting");
+      if (stageRef.current === "baseline") {
+        moveTo("counting");
+        keepBaselineWindow();
+      }
       const shown = shownRef.current;
       if (state.count !== shown.count || state.phase !== shown.phase) {
         shownRef.current = { count: state.count, phase: state.phase };
         setReps(shownRef.current);
       }
     },
-    [pipeline, recordFrame, moveTo],
+    [pipeline, recordFrame, moveTo, keepBaselineWindow],
   );
 
   useEffect(() => subscribeFrames(onFrame), [onFrame]);
@@ -382,7 +427,7 @@ export default function HeelSlideExercise({
     // Read again on every attempt: the outbox may have sent rows since the last one.
     const pending = await pendingAtFinish(finalCounters, () => pendingForSession(sessionId));
 
-    const { counter, orienter, thresholds } = pipeline;
+    const { counter, thresholds } = pipeline;
     const summary = buildHeelSlideSummary({
       repsCounted: counter.count,
       segments: counter.segments,
@@ -390,7 +435,7 @@ export default function HeelSlideExercise({
       proxyDefinition: PROXY_DEFINITION,
       thresholds,
       maxGapMs: MAX_REP_GAP_MS,
-      baselineWindow: orienter.baselineWindow,
+      baselineWindows: baselineWindowsRef.current ?? [],
       restartedAfterReload: restartedRef.current,
       roles: getSnapshot().roles,
       startSensors,
@@ -415,6 +460,7 @@ export default function HeelSlideExercise({
     disconnectAll();
     try {
       window.sessionStorage.removeItem(recordedFlagKey(sessionId));
+      window.sessionStorage.removeItem(baselineWindowsKey(sessionId));
     } catch {
       // Nothing to clean up without storage.
     }
@@ -460,7 +506,7 @@ export default function HeelSlideExercise({
         {restarted && !stopped && (
           <div className={cn(card, "flex items-start gap-3 px-5 py-4")}>
             <Info className="mt-0.5 size-5 shrink-0 text-signal-deep" strokeWidth={2} aria-hidden="true" />
-            <p className="text-base leading-relaxed text-ink">{t("flow.exercise.restarted")}</p>
+            <p className="text-base leading-relaxed text-ink">{t(restartNoticeKey(earlierStarts))}</p>
           </div>
         )}
       </div>

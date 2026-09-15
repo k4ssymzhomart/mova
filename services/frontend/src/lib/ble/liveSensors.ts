@@ -18,8 +18,11 @@
 //
 // A link that drops without disconnectRole/disconnectAll asking for it is reconnected on the same BluetoothDevice,
 // with no chooser, after 1, 2, 4, 8 and then every 10 s, for up to two minutes. After that the role is lost, and a
-// press on its button tries the same device once more before it opens the chooser. Nothing about the session
-// lives here, so frames simply resume when the link is back.
+// press on its button tries the same device once more before it opens the chooser. A press while an automatic
+// attempt is still running takes that attempt over instead of waiting for it (an automatic attempt may take up to
+// the 15 s connect timeout): the old attempt's result is ignored, and the press runs its own same-device try, or
+// opens the chooser when an earlier press was already told the next one would. The role's `press` says which, so
+// the row can show it. Nothing about the session lives here, so frames simply resume when the link is back.
 //
 // Link states: "streaming" needs a frame within the last second; "lost" means the link dropped for good or went
 // silent for more than two seconds after streaming; "connecting" covers pairing and reconnecting. In between, the
@@ -269,7 +272,8 @@ export function bindingsFromDeviceRows(
 
 /**
  * - unsupported: no Web Bluetooth in this browser.
- * - busy: this role is already opening the chooser, connecting or running a reconnect attempt.
+ * - busy: a press on this role is still running, or the role is opening the chooser or connecting a picked device.
+ *   An automatic reconnect attempt in flight is not busy: a press takes it over.
  * - chooser_cancelled: the patient closed the chooser. Not recorded as lastError.
  * - request_failed: the chooser could not open (Bluetooth off, no user gesture, insecure origin; see detail).
  * - device_bound_to_other_role / device_saved_for_other_role: refused; `otherRole` names the holder.
@@ -337,6 +341,12 @@ export interface ReconnectState {
   succeeded: number;
 }
 
+/**
+ * What a press on a role's button is doing: trying the bound sensor again without the chooser ("same_device"), or
+ * the chooser and connecting the sensor picked in it ("choosing"). Null when no press is running.
+ */
+export type PressStage = "same_device" | "choosing" | null;
+
 export type BindingPersistence =
   | { status: "idle" }
   | { status: "saving" }
@@ -376,6 +386,8 @@ export interface LiveRoleState {
   /** Why the most recent battery read failed ("no_reply", "write_failed", "implausible_value"); null after a success. */
   batteryError: string | null;
   reconnect: ReconnectState;
+  /** The press running on this role, if any (connectRole). */
+  press: PressStage;
   persistence: BindingPersistence;
   lastError: LiveSensorErrorInfo | null;
 }
@@ -471,6 +483,7 @@ function idleRoleState(role: SensorRole, link: SensorLink): LiveRoleState {
     battery: null,
     batteryError: null,
     reconnect: IDLE_RECONNECT,
+    press: null,
     persistence: IDLE_PERSISTENCE,
     lastError: null,
   };
@@ -522,6 +535,9 @@ export function createLiveSensorsStore(deps: LiveSensorsDeps): LiveSensorsStore 
     attemptInFlight: boolean;
     /** A pressed same-device attempt failed: the next press goes straight to the chooser. */
     skipSameDevice: boolean;
+    press: PressStage;
+    /** Moves on every press and when a disconnect ends one, so a press that settles late does not clear a newer one. */
+    pressSeq: number;
     persistence: BindingPersistence;
     lastError: LiveSensorErrorInfo | null;
     link: SensorLink;
@@ -557,6 +573,8 @@ export function createLiveSensorsStore(deps: LiveSensorsDeps): LiveSensorsStore 
       outageAttempts: 0,
       attemptInFlight: false,
       skipSameDevice: false,
+      press: null,
+      pressSeq: 0,
       persistence: IDLE_PERSISTENCE,
       lastError: null,
       link: "disconnected",
@@ -626,6 +644,7 @@ export function createLiveSensorsStore(deps: LiveSensorsDeps): LiveSensorsStore 
         battery: entry.battery,
         batteryError: entry.batteryError,
         reconnect: entry.reconnect,
+        press: entry.press,
         persistence: entry.persistence,
         lastError: entry.lastError,
       };
@@ -658,7 +677,14 @@ export function createLiveSensorsStore(deps: LiveSensorsDeps): LiveSensorsStore 
     for (const role of SENSOR_ROLE_ORDER) {
       const entry = entries[role];
       const due = entry.reconnect.nextAttemptAtMs;
-      if (entry.phase === "reconnecting" && !entry.attemptInFlight && !entry.requesting && due !== null && now >= due) {
+      if (
+        entry.phase === "reconnecting" &&
+        !entry.attemptInFlight &&
+        !entry.requesting &&
+        entry.press === null &&
+        due !== null &&
+        now >= due
+      ) {
         void attemptReconnect(entry, false);
       } else if (
         entry.phase === "connected" &&
@@ -692,6 +718,12 @@ export function createLiveSensorsStore(deps: LiveSensorsDeps): LiveSensorsStore 
     if (entry.connectedSince === null) return;
     entry.connectedMsBefore += deps.now() - entry.connectedSince;
     entry.connectedSince = null;
+  }
+
+  /** A disconnect ends any press on the role; that press still settles (as cancelled) but leaves the role alone. */
+  function endPress(entry: Entry): void {
+    entry.press = null;
+    entry.pressSeq += 1;
   }
 
   /** Detach the current connection; its late callbacks are ignored because the generation moved on. */
@@ -906,13 +938,40 @@ export function createLiveSensorsStore(deps: LiveSensorsDeps): LiveSensorsStore 
     await readBattery(entry);
   }
 
+  /** After an attempt that did not bring the link back: plan the next one, or give up once the deadline has passed. */
+  function planNextAttempt(entry: Entry, failure: unknown): void {
+    const now = deps.now();
+    const step = nextReconnectStep(entry.droppedAt ?? now, entry.outageAttempts, now);
+    if (step.kind === "give_up") {
+      entry.phase = "dropped";
+      entry.reconnect = { ...entry.reconnect, state: "gave_up", nextAttemptAtMs: null };
+      entry.lastError = makeError("connection_dropped", { deviceName: entry.deviceName, detail: errorDetail(failure) });
+      stopTickerIfIdle();
+    } else {
+      entry.reconnect = { ...entry.reconnect, nextAttemptAtMs: step.atMs };
+    }
+  }
+
+  /**
+   * A press while an automatic attempt is running takes that attempt over. Its result is ignored from here on: the
+   * link token moves, so a connection it still makes is closed, and connectSensor keeps that close from touching a
+   * newer link on the same device. It counts as one failed attempt of the outage, and the next automatic one is
+   * planned in case the press does not bring the link back either.
+   */
+  function takeOverAttempt(entry: Entry): void {
+    if (!entry.attemptInFlight) return;
+    entry.linkToken += 1;
+    entry.attemptInFlight = false;
+    planNextAttempt(entry, new Error("Automatic attempt taken over by a press"));
+  }
+
   /** One same-device attempt, on a timer or from a press. Resolves true when the link is back. */
   async function attemptReconnect(entry: Entry, pressed: boolean): Promise<boolean> {
     const device = entry.device;
     if (!device || entry.attemptInFlight) return false;
     const generation = entry.generation;
     const linkToken = (entry.linkToken += 1);
-    const droppedAt = (entry.droppedAt ??= deps.now());
+    entry.droppedAt ??= deps.now();
     entry.phase = "reconnecting";
     entry.attemptInFlight = true;
     entry.outageAttempts += 1;
@@ -949,16 +1008,7 @@ export function createLiveSensorsStore(deps: LiveSensorsDeps): LiveSensorsStore 
     }
 
     if (!connection) {
-      const now = deps.now();
-      const step = nextReconnectStep(droppedAt, entry.outageAttempts, now);
-      if (step.kind === "give_up") {
-        entry.phase = "dropped";
-        entry.reconnect = { ...entry.reconnect, state: "gave_up", nextAttemptAtMs: null };
-        entry.lastError = makeError("connection_dropped", { deviceName: entry.deviceName, detail: errorDetail(failure) });
-        stopTickerIfIdle();
-      } else {
-        entry.reconnect = { ...entry.reconnect, nextAttemptAtMs: step.atMs };
-      }
+      planNextAttempt(entry, failure);
       publish();
       return false;
     }
@@ -985,30 +1035,50 @@ export function createLiveSensorsStore(deps: LiveSensorsDeps): LiveSensorsStore 
   async function connectRole(role: SensorRole, options: ConnectRoleOptions): Promise<LiveRoleState> {
     const entry = entries[role];
     if (!isSupported()) throw new LiveSensorError(role, makeError("unsupported"));
-    if (entry.requesting || entry.phase === "connecting" || entry.attemptInFlight) {
+    if (entry.press !== null || entry.requesting || entry.phase === "connecting") {
       throw new LiveSensorError(role, makeError("busy"));
     }
-
-    // A dropped sensor is tried again as the same device first. If that fails, this press goes on to the chooser
-    // only while it still counts as a user gesture; otherwise the next press opens the chooser straight away.
-    if (entry.device && !entry.skipSameDevice && (entry.phase === "dropped" || entry.phase === "reconnecting")) {
-      const sameGeneration = entry.generation;
-      if (await attemptReconnect(entry, true)) return getSnapshot().roles[role];
-      if (entry.generation !== sameGeneration) throw new LiveSensorError(role, makeError("cancelled"));
-      entry.skipSameDevice = true;
-      if (!deps.hasUserActivation()) {
-        entry.lastError = makeError("connect_failed", {
-          deviceName: entry.deviceName,
-          detail: "The sensor did not reconnect; the next press opens the device chooser",
-        });
+    const pressSeq = (entry.pressSeq += 1);
+    try {
+      await press(entry, options);
+    } finally {
+      if (entry.pressSeq === pressSeq && entry.press !== null) {
+        entry.press = null;
         publish();
-        throw new LiveSensorError(role, entry.lastError);
+      }
+    }
+    return getSnapshot().roles[role];
+  }
+
+  /** The body of connectRole. Resolves once the role's link is up; rejects with LiveSensorError. */
+  async function press(entry: Entry, options: ConnectRoleOptions): Promise<void> {
+    const role = entry.role;
+    // A dropped sensor is tried again as the same device first, taking over an automatic attempt that is running.
+    // If that fails, this press goes on to the chooser only while it still counts as a user gesture; otherwise the
+    // next press opens the chooser straight away.
+    if (entry.device && (entry.phase === "dropped" || entry.phase === "reconnecting")) {
+      takeOverAttempt(entry);
+      if (!entry.skipSameDevice) {
+        entry.press = "same_device";
+        const sameGeneration = entry.generation;
+        if (await attemptReconnect(entry, true)) return;
+        if (entry.generation !== sameGeneration) throw new LiveSensorError(role, makeError("cancelled"));
+        entry.skipSameDevice = true;
+        if (!deps.hasUserActivation()) {
+          entry.lastError = makeError("connect_failed", {
+            deviceName: entry.deviceName,
+            detail: "The sensor did not reconnect; the next press opens the device chooser",
+          });
+          publish();
+          throw new LiveSensorError(role, entry.lastError);
+        }
       }
     }
 
     // The chooser opens first, while the click's user activation is still fresh. Any current connection for
     // this role keeps running until a device is actually picked.
     const requestGeneration = entry.generation;
+    entry.press = "choosing";
     entry.requesting = true;
     publish();
     let device: BluetoothDevice;
@@ -1084,13 +1154,13 @@ export function createLiveSensorsStore(deps: LiveSensorsDeps): LiveSensorsStore 
     publish();
     void persistBinding(entry, generation, options, plan.replaces);
     void configureThenReadBattery(entry, generation);
-    return getSnapshot().roles[role];
   }
 
   function disconnectRole(role: SensorRole): void {
     const entry = entries[role];
     release(entry);
     resetEntry(entry);
+    endPress(entry);
     stopTickerIfIdle();
     publish();
   }
@@ -1118,6 +1188,7 @@ export function createLiveSensorsStore(deps: LiveSensorsDeps): LiveSensorsStore 
       for (const role of SENSOR_ROLE_ORDER) {
         release(entries[role]);
         resetEntry(entries[role]);
+        endPress(entries[role]);
       }
       stopTickerIfIdle();
       publish();

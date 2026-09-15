@@ -202,6 +202,23 @@ describe("bindingsFromDeviceRows", () => {
 
 const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
 
+/** A connect that stays pending until the test settles it. */
+interface ConnectGate {
+  promise: Promise<void>;
+  resolve(): void;
+  reject(error: Error): void;
+}
+
+function connectGate(): ConnectGate {
+  let resolve!: () => void;
+  let reject!: (error: Error) => void;
+  const promise = new Promise<void>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  return { promise, resolve, reject };
+}
+
 /** A store wired to fake devices, a manual clock and a manual ticker. */
 function harness({ supported = true }: { supported?: boolean } = {}) {
   let now = 1_000_000;
@@ -214,10 +231,13 @@ function harness({ supported = true }: { supported?: boolean } = {}) {
   const persisted: BindingRow[] = [];
   const replaced: (readonly string[])[] = [];
   const connects: { deviceId: string; at: number; timeoutMs: number | undefined }[] = [];
+  /** 1-based numbers of the connect calls whose connection was closed by the store. */
+  const closedConnects: number[] = [];
+  const latestConnected = new Map<string, number>();
   const rateRequests: (SupportedRateHz | undefined)[] = [];
   const protocol: string[] = [];
-  /** Consumed one per connect call; an empty queue connects. */
-  const outcomes: Error[] = [];
+  /** Consumed one per connect call: an error fails it, a gate holds it until settled; an empty queue connects. */
+  const outcomes: (Error | ConnectGate)[] = [];
   const batteryResults: BatteryReadResult[] = [];
 
   const deps: LiveSensorsDeps = {
@@ -229,9 +249,15 @@ function harness({ supported = true }: { supported?: boolean } = {}) {
     },
     connectDevice: async (device, deviceHandlers, options?: ConnectDeviceOptions): Promise<SensorConnection> => {
       connects.push({ deviceId: device.id, at: now, timeoutMs: options?.timeoutMs });
-      const failure = outcomes.shift();
-      if (failure) throw failure;
-      handlers.set(device.id, deviceHandlers);
+      const call = connects.length;
+      const outcome = outcomes.shift();
+      if (outcome instanceof Error) throw outcome;
+      if (outcome) await outcome.promise;
+      // A connect that settles after a newer one on the same device must not take that device's frames over.
+      if (call > (latestConnected.get(device.id) ?? 0)) {
+        handlers.set(device.id, deviceHandlers);
+        latestConnected.set(device.id, call);
+      }
       return {
         deviceId: device.id,
         deviceName: device.name ?? null,
@@ -244,7 +270,10 @@ function harness({ supported = true }: { supported?: boolean } = {}) {
           protocol.push("battery");
           return batteryResults.shift() ?? BATTERY_OK;
         },
-        disconnect: () => disconnected.push(device.id),
+        disconnect: () => {
+          disconnected.push(device.id);
+          closedConnects.push(call);
+        },
       };
     },
     persistBinding: async (row, replacedRoles) => {
@@ -271,6 +300,7 @@ function harness({ supported = true }: { supported?: boolean } = {}) {
     persisted,
     replaced,
     connects,
+    closedConnects,
     rateRequests,
     protocol,
     outcomes,
@@ -582,6 +612,97 @@ describe("live sensors store", () => {
     await h.store.connectRole("shank", RIGHT);
     expect(h.requests()).toBe(2);
     expect(h.connects.at(-1)?.timeoutMs).toBeUndefined();
+  });
+
+  it("a press during a running automatic attempt takes it over at once, shows the same-device try, and ignores the old attempt", async () => {
+    const h = harness();
+    await h.store.connectRole("shank", RIGHT);
+    await flush();
+    h.stream("dev-1", 50, 500);
+    const hanging = connectGate();
+    h.outcomes.push(hanging);
+    h.drop("dev-1");
+    await h.elapse(1000); // the automatic attempt starts and does not settle
+    expect(h.connects).toHaveLength(2);
+    let shank = h.store.getSnapshot().roles.shank;
+    expect(shank.reconnect).toEqual({ state: "reconnecting", attempts: 1, nextAttemptAtMs: null, succeeded: 0 });
+    expect(shank.press).toBeNull();
+
+    const pressing = h.store.connectRole("shank", RIGHT);
+    expect(h.store.getSnapshot().roles.shank.press).toBe("same_device");
+    expect(h.connects.at(-1)?.timeoutMs).toBe(MANUAL_SAME_DEVICE_TIMEOUT_MS);
+    await expect(h.store.connectRole("shank", RIGHT)).rejects.toMatchObject({ code: "busy" });
+
+    const state = await pressing;
+    expect(h.requests()).toBe(1);
+    expect(state.press).toBeNull();
+    expect(state.reconnect).toEqual({ state: "idle", attempts: 2, nextAttemptAtMs: null, succeeded: 1 });
+
+    hanging.resolve(); // the old attempt answers late: its connection is closed, the pressed link stays
+    await flush();
+    expect(h.closedConnects).toEqual([2]);
+    h.stream("dev-1", 50, 500);
+    shank = h.store.getSnapshot().roles.shank;
+    expect(shank.link).toBe("streaming");
+    expect(shank.reconnect).toEqual({ state: "idle", attempts: 2, nextAttemptAtMs: null, succeeded: 1 });
+  });
+
+  it("when the same-device try of a press that took over fails, the same press opens the chooser; the old attempt failing later changes nothing", async () => {
+    const h = harness();
+    await h.store.connectRole("thigh", RIGHT);
+    await flush();
+    h.stream("dev-1", 50, 500);
+    const hanging = connectGate();
+    h.outcomes.push(hanging, new Error("Bluetooth Device is no longer in range."));
+    h.drop("dev-1");
+    await h.elapse(1000);
+
+    const state = await h.store.connectRole("thigh", RIGHT);
+    expect(h.connects.map((c) => c.timeoutMs)).toEqual([undefined, undefined, MANUAL_SAME_DEVICE_TIMEOUT_MS, undefined]);
+    expect(h.requests()).toBe(2);
+    expect(state.press).toBeNull();
+    expect(state.reconnect.state).toBe("idle");
+
+    hanging.reject(new Error("GATT connection did not complete within 15 s"));
+    await flush();
+    const thigh = h.store.getSnapshot().roles.thigh;
+    expect(thigh.reconnect.state).toBe("idle");
+    expect(thigh.lastError).toBeNull();
+    expect(h.closedConnects).toEqual([]);
+  });
+
+  it("a press owed the chooser takes over a running automatic attempt and opens the chooser at once; a closed chooser leaves the outage schedule running", async () => {
+    const h = harness();
+    await h.store.connectRole("shank", RIGHT);
+    await flush();
+    h.stream("dev-1", 50, 500);
+    h.outcomes.push(new Error("Bluetooth Device is no longer in range."));
+    h.drop("dev-1");
+
+    h.setActivation(false);
+    await expect(h.store.connectRole("shank", RIGHT)).rejects.toMatchObject({ code: "connect_failed" });
+    const hanging = connectGate();
+    h.outcomes.push(hanging);
+    await h.elapse(2000); // the next automatic attempt starts and does not settle
+    expect(h.connects).toHaveLength(3);
+
+    h.setActivation(true);
+    h.pick(Object.assign(new Error("User cancelled the requestDevice() chooser."), { name: "NotFoundError" }));
+    const pressing = h.store.connectRole("shank", RIGHT);
+    expect(h.store.getSnapshot().roles.shank.press).toBe("choosing");
+    await expect(pressing).rejects.toMatchObject({ code: "chooser_cancelled" });
+    expect(h.requests()).toBe(2);
+    expect(h.connects).toHaveLength(3); // no second same-device try: the previous press was told the chooser comes next
+
+    const shank = h.store.getSnapshot().roles.shank;
+    expect(shank.press).toBeNull();
+    expect(shank.reconnect.state).toBe("reconnecting");
+    expect(shank.reconnect.nextAttemptAtMs).not.toBeNull();
+
+    hanging.reject(new Error("GATT connection did not complete within 15 s"));
+    await h.elapse(10_000);
+    expect(h.connects.length).toBeGreaterThan(3); // automatic attempts carry on
+    expect(h.store.getSnapshot().roles.shank.reconnect.state).toBe("idle");
   });
 
   it("reads the battery again every 60 s while streaming; a failed read is recorded, never guessed", async () => {

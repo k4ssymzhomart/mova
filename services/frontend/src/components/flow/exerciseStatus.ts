@@ -53,3 +53,74 @@ export function exerciseRouteFor(status: string): ExerciseRoute {
 export function recordedFlagKey(sessionId: string): string {
   return `mova.heelSlide.recorded.${sessionId}`;
 }
+
+// — the zero of every start ——————————————————————————————————————————————————————————
+
+/**
+ * The span one successful «Начать» took its zero over, on the receive-time clock of session_frames: `start`
+ * inclusive, `end` exclusive. This is the shape summary.baseline_windows_ms stores.
+ */
+export interface BaselineWindowRecord {
+  start: number;
+  end: number;
+}
+
+/** More zeros than this in one session is not an exercise set; the oldest are dropped past it. */
+export const MAX_BASELINE_WINDOWS = 100;
+
+/**
+ * sessionStorage key of the zeros this tab took for a session, oldest first. The list survives a reload, so a page
+ * opened again still writes the zeros of the starts made before it into the summary.
+ */
+export function baselineWindowsKey(sessionId: string): string {
+  return `mova.heelSlide.baselineWindows.${sessionId}`;
+}
+
+function isWindow(value: unknown): value is BaselineWindowRecord {
+  if (typeof value !== "object" || value === null) return false;
+  const { start, end } = value as Record<string, unknown>;
+  return typeof start === "number" && typeof end === "number" && Number.isFinite(start) && Number.isFinite(end) && end > start;
+}
+
+/**
+ * The stored list, oldest first. Nothing stored yet is an empty list. A value that is not a list reads as null, the
+ * same as storage that cannot be read: nothing is known about earlier starts. Entries that are not a valid span are
+ * left out.
+ */
+export function parseBaselineWindows(raw: string | null): BaselineWindowRecord[] | null {
+  if (raw === null) return [];
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return null;
+  }
+  if (!Array.isArray(parsed)) return null;
+  return parsed
+    .filter(isWindow)
+    .map(({ start, end }) => ({ start, end }))
+    .sort((a, b) => a.start - b.start)
+    .slice(-MAX_BASELINE_WINDOWS);
+}
+
+/** The list with `next` added in time order. A repeat of a start already listed replaces it. */
+export function appendBaselineWindow(
+  list: readonly BaselineWindowRecord[],
+  next: BaselineWindowRecord,
+): BaselineWindowRecord[] {
+  if (!isWindow(next)) return [...list];
+  return [...list.filter((entry) => entry.start !== next.start), { start: next.start, end: next.end }]
+    .sort((a, b) => a.start - b.start)
+    .slice(-MAX_BASELINE_WINDOWS);
+}
+
+/**
+ * The notice shown when the session had recorded before this screen opened (a reload, most often).
+ *  - `earlierStarts` > 0: this tab kept the zero of at least one earlier start, and the summary carries it, so the
+ *    clinician recount counts what was done since that start. The patient is told not to repeat those reps.
+ *  - 0 or null (no storage, or no earlier zero kept in this tab): nothing ties the earlier reps to a zero, so they
+ *    cannot be recounted. The patient is asked for the whole set.
+ */
+export function restartNoticeKey(earlierStarts: number | null): string {
+  return earlierStarts !== null && earlierStarts > 0 ? "flow.exercise.restarted" : "flow.exercise.restartedFullSet";
+}

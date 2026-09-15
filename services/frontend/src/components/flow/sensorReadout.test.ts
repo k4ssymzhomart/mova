@@ -8,6 +8,7 @@ import {
   formatNumber,
   hexCode,
   linkLabelKey,
+  rateView,
   secondsUntil,
   shortBatteryPercent,
   wholeSeconds,
@@ -69,4 +70,30 @@ test("battery: a failed latest read is unknown, and the short percent is shown o
   assert.equal(shortBatteryPercent({ battery: reading, batteryError: null }), 77);
   assert.equal(shortBatteryPercent({ battery: reading, batteryError: "write_failed" }), null);
   assert.equal(shortBatteryPercent({ battery: null, batteryError: null }), null);
+});
+
+test("a rate readback is a current confirmation only while the sensor streams; otherwise it is a dated past check", () => {
+  const result = {
+    requestedHz: 50 as const,
+    requestedCode: 0x08,
+    readbackCode: 0x08,
+    confirmed: true,
+    attempts: 1,
+    failure: null,
+    errorMessage: null,
+    finishedAt: 0,
+  };
+  const history = [{ ...result, atMs: 1_000 }, { ...result, atMs: 61_000 }];
+  const done = { status: "done", result } as const;
+
+  assert.deepEqual(rateView({ link: "streaming", rate: done, rateHistory: history }), { kind: "current", result });
+  for (const link of ["connecting", "lost", "disconnected"] as const) {
+    assert.deepEqual(rateView({ link, rate: done, rateHistory: history }), { kind: "last", result, atMs: 61_000 }, link);
+  }
+  assert.deepEqual(rateView({ link: "lost", rate: done, rateHistory: [] }), { kind: "none" });
+  assert.deepEqual(rateView({ link: "connecting", rate: { status: "configuring", requestedHz: 100 }, rateHistory: history }), {
+    kind: "configuring",
+    requestedHz: 100,
+  });
+  assert.deepEqual(rateView({ link: "streaming", rate: { status: "idle" }, rateHistory: [] }), { kind: "none" });
 });

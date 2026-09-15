@@ -9,6 +9,9 @@
 // store before anything connects; the store writes it on every connect and reconnect. The closed «Технические
 // данные» block under the button holds the numbers the hardware test protocol is read from.
 //
+// The page renders this step only for a Heel Slide prescription (page.tsx); every other exercise keeps the
+// placeholder there, so no session is opened for an exercise this path cannot finish.
+//
 // «Далее» opens the session (start_prescribed_session, which creates a row on every call and aborts this patient's
 // earlier unfinished session for the same prescription, so a second press is ignored while the first is under way)
 // with the sensors' descriptors, then goes straight to the exercise. The calibration step keeps its place in the

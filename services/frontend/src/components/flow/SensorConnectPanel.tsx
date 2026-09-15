@@ -12,8 +12,14 @@
 // numbers are in SensorTechnicalReadout. Used on the sensors step and, when a sensor stops streaming, in place on the
 // exercise step.
 //
+// The rate confirmation is current only while the sensor streams. The rate lives in the sensor's RAM, so while the
+// link is down or silent the row shows the last check with its time and says it may have changed (sensorReadout
+// rateView), and the store checks again after a reconnect.
+//
 // A row's errors (a refused device, a failed or dropped connection) appear after the chooser has closed, so each row
-// keeps a live region that announces them, and the row's button is described by the error while it shows.
+// keeps a live region that announces them, and the row's button is described by the error while it shows. A press
+// on a dropped sensor first tries the same sensor again, taking over an automatic attempt that may be running; the
+// row says so in its own status region while that try runs, and the button stays disabled until the press settles.
 //
 // What a session stores about its sensors (device_info, the summary) is in heelSlideRecords.ts.
 
@@ -33,7 +39,7 @@ import { SENSOR_ROLE_ORDER } from "@/lib/ble/roles";
 import { cn } from "@/lib/utils";
 import { useTranslation } from "@/locales/client";
 
-import { formatNumber, linkLabelKey, shortBatteryPercent } from "./sensorReadout";
+import { formatClockTime, formatNumber, linkLabelKey, rateView, shortBatteryPercent } from "./sensorReadout";
 import { SensorLinkIcon } from "./SensorStatusRows";
 
 type Translate = ReturnType<typeof useTranslation>["t"];
@@ -109,6 +115,7 @@ function SensorRow({
   const connectId = useId();
   const retryId = useId();
   const errorId = useId();
+  const pressId = useId();
   // Covers the chooser and the GATT connection (or a pressed same-device reconnect). After that the link state
   // takes over, and the button is open again so a sensor that connected but never sends data can be picked afresh.
   const [pending, setPending] = useState(false);
@@ -129,6 +136,9 @@ function SensorRow({
   const rateUnconfirmed = rate.status === "done" && !rate.result.confirmed;
   const error = state.lastError ? errorText(t, state.lastError, reconnect.state === "reconnecting") : null;
   const batteryPercent = attached ? shortBatteryPercent(state) : null;
+  // The store's press outlives this row when the exercise screen closes and reopens the panel mid-press.
+  const pressing = pending || state.press !== null;
+  const sameDeviceTry = state.press === "same_device";
 
   let device: string | null = null;
   if (state.deviceId !== null) {
@@ -138,15 +148,22 @@ function SensorRow({
   }
 
   let rateLine: string | null = null;
-  if (attached && rate.status === "configuring") {
-    rateLine = t("flow.sensors.rateConfiguring", { hz: hz(rate.requestedHz) });
-  } else if (attached && rate.status === "done") {
-    rateLine = rate.result.confirmed
-      ? t("flow.sensors.rateConfirmed", { hz: hz(rate.result.requestedHz) })
-      : t("flow.sensors.rateNotConfirmed", {
-          hz: hz(rate.result.requestedHz),
-          reason: t(`flow.sensors.rateReason.${rate.result.failure ?? "unknown"}`),
-        });
+  const rateNow = attached ? rateView(state) : null;
+  if (rateNow?.kind === "configuring") {
+    rateLine = t("flow.sensors.rateConfiguring", { hz: hz(rateNow.requestedHz) });
+  } else if (rateNow?.kind === "current" || rateNow?.kind === "last") {
+    const { result } = rateNow;
+    const reason = t(`flow.sensors.rateReason.${result.failure ?? "unknown"}`);
+    if (rateNow.kind === "current") {
+      rateLine = result.confirmed
+        ? t("flow.sensors.rateConfirmed", { hz: hz(result.requestedHz) })
+        : t("flow.sensors.rateNotConfirmed", { hz: hz(result.requestedHz), reason });
+    } else {
+      const time = formatClockTime(locale, rateNow.atMs);
+      rateLine = result.confirmed
+        ? t("flow.sensors.rateLastConfirmed", { time, hz: hz(result.requestedHz) })
+        : t("flow.sensors.rateLastNotConfirmed", { time, hz: hz(result.requestedHz), reason });
+    }
   }
 
   let delivered: string | null = null;
@@ -192,6 +209,10 @@ function SensorRow({
           {rateLine && <Detail>{rateLine}</Detail>}
           {delivered && <Detail>{delivered}</Detail>}
           {persistence && <Detail>{persistence}</Detail>}
+          {/* Always in the DOM, so a press that takes over a running reconnect attempt is announced. */}
+          <div id={pressId} role="status" aria-atomic="true">
+            {sameDeviceTry && <Detail>{t("flow.sensors.pressSameDevice")}</Detail>}
+          </div>
           {/* Always in the DOM, so a message that appears after the chooser closes is announced. */}
           <div id={errorId} role="alert" aria-atomic="true">
             {error && (
@@ -209,16 +230,18 @@ function SensorRow({
           id={connectId}
           type="button"
           onClick={connect}
-          disabled={pending || link === "unsupported"}
+          disabled={pressing || link === "unsupported"}
           aria-labelledby={`${connectId} ${titleId}`}
-          aria-describedby={error ? errorId : undefined}
+          aria-describedby={sameDeviceTry ? pressId : error ? errorId : undefined}
           className={cn(link === "streaming" ? secondaryButton : primaryButton, "w-full sm:w-auto")}
         >
-          {pending
-            ? t("flow.sensors.connectPending")
-            : state.deviceId !== null
-              ? t("flow.sensors.reconnect")
-              : t("flow.sensors.connect")}
+          {sameDeviceTry
+            ? t("flow.sensors.connectPendingSameDevice")
+            : pressing
+              ? t("flow.sensors.connectPending")
+              : state.deviceId !== null
+                ? t("flow.sensors.reconnect")
+                : t("flow.sensors.connect")}
         </button>
         {rateUnconfirmed && link === "streaming" && (
           <button

@@ -10,8 +10,9 @@
 
 import type { BatteryReading, LiveRoleState, LiveSensorsSnapshot, RateState } from "@/lib/ble/liveSensors";
 import type { SensorRole } from "@/lib/ble/roles";
-import type { BaselineWindow } from "@/lib/motion/flexion";
 import type { RepSegment, RepThresholds } from "@/lib/motion/reps";
+
+import type { BaselineWindowRecord } from "./exerciseStatus";
 
 /** lib/ble/roles SENSOR_ROLE_ORDER, repeated so this module stays free of runtime imports. */
 export const SENSOR_ROLES: readonly SensorRole[] = ["thigh", "shank", "foot"];
@@ -195,8 +196,13 @@ export interface SummarySensorRecord {
 /**
  * sessions.summary when Heel Slide finishes.
  *  - Rep segment times are browser receive times (epoch ms), the clock of session_frames.recorded_at.
- *  - baseline_window_ms is the span the live zero was taken over on the latest start, so the clinician recount
- *    zeroes on the same frames; null when no zero was taken.
+ *  - baseline_windows_ms lists the span of every successful «Начать» zero in this session, oldest first: the ones
+ *    this browser tab kept from before a reload (sessionStorage) and the one taken on the finishing page. The
+ *    clinician recount counts each span from its own zero up to the next start. Starts made in another tab, or in a
+ *    tab whose storage could not be written, are missing from it. Empty when no zero was taken.
+ *  - baseline_window_ms is the last entry of that list (the latest start), null when it is empty.
+ *  - reps_counted_on_device and rep_segments come from the finishing page's counter only. With more than one
+ *    start they cover at most the last one, and none of them when the finishing page took no zero itself.
  *  - restarted_after_reload: this session had recorded before the screen opened, so the device count covers only
  *    what was done since.
  *  - sensors describe the device bound to each role at finish; battery_start is that device's first known reading.
@@ -210,7 +216,8 @@ export interface HeelSlideSummary {
   rep_segments: RepSegmentRecord[];
   proxy: { definition: string; calibrated: false; knee_flexion: false };
   thresholds: { enter_deg: number; exit_deg: number; min_rep_ms: number; max_gap_ms: number | null };
-  baseline_window_ms: { start: number; end: number } | null;
+  baseline_windows_ms: BaselineWindowRecord[];
+  baseline_window_ms: BaselineWindowRecord | null;
   restarted_after_reload: boolean;
   sensors: Record<SensorRole, SummarySensorRecord>;
   telemetry: {
@@ -253,7 +260,8 @@ export interface HeelSlideSummaryInput {
   proxyDefinition: string;
   thresholds: RepThresholds;
   maxGapMs: number;
-  baselineWindow: BaselineWindow | null;
+  /** Every successful zero of this session known to this tab, oldest first (exerciseStatus baseline windows). */
+  baselineWindows: readonly BaselineWindowRecord[];
   restartedAfterReload: boolean;
   roles: Record<SensorRole, SummaryRoleState>;
   startSensors: Record<SensorRole, StartSensor>;
@@ -300,13 +308,18 @@ function summarySensor(
 }
 
 export function buildHeelSlideSummary(input: HeelSlideSummaryInput): HeelSlideSummary {
-  const { thresholds, baselineWindow, telemetry } = input;
+  const { thresholds, telemetry } = input;
   const sensors = {} as Record<SensorRole, SummarySensorRecord>;
   for (const role of SENSOR_ROLES) {
     sensors[role] = summarySensor(input.roles[role], input.startSensors[role], input.firstSeenBattery[role]);
   }
-  const windowStart = finiteOrNull(baselineWindow?.startMs);
-  const windowEnd = finiteOrNull(baselineWindow?.endMs);
+  const windows = input.baselineWindows
+    .filter(
+      (window) =>
+        finiteOrNull(window.start) !== null && finiteOrNull(window.end) !== null && window.end > window.start,
+    )
+    .map((window) => ({ start: window.start, end: window.end }))
+    .sort((a, b) => a.start - b.start);
   return {
     kind: HEEL_SLIDE_SUMMARY_KIND,
     reps_counted_on_device: input.repsCounted,
@@ -323,7 +336,8 @@ export function buildHeelSlideSummary(input: HeelSlideSummaryInput): HeelSlideSu
       min_rep_ms: thresholds.minRepMs,
       max_gap_ms: finiteOrNull(input.maxGapMs),
     },
-    baseline_window_ms: windowStart !== null && windowEnd !== null ? { start: windowStart, end: windowEnd } : null,
+    baseline_windows_ms: windows,
+    baseline_window_ms: windows.length > 0 ? { ...windows[windows.length - 1] } : null,
     restarted_after_reload: input.restartedAfterReload,
     sensors,
     telemetry: {

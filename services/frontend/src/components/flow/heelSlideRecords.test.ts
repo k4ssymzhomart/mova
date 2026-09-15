@@ -72,7 +72,7 @@ function summaryInput(overrides: Partial<HeelSlideSummaryInput> = {}): HeelSlide
     proxyDefinition: "wrap(shank.pitch - thigh.pitch), baseline-zeroed, oriented",
     thresholds: { enterDeg: 22.5, exitDeg: 7, minRepMs: 250 },
     maxGapMs: 1000,
-    baselineWindow: { startMs: 9000, endMs: 9500 },
+    baselineWindows: [{ start: 9000, end: 9500 }],
     restartedAfterReload: false,
     roles: live,
     startSensors: startSensorsFromDeviceInfo(sensorDeviceInfo({ roles: live })),
@@ -157,6 +157,7 @@ test("the summary has exactly the heel_slide_path.v1 keys", () => {
     "rep_segments",
     "proxy",
     "thresholds",
+    "baseline_windows_ms",
     "baseline_window_ms",
     "restarted_after_reload",
     "sensors",
@@ -169,6 +170,7 @@ test("the summary has exactly the heel_slide_path.v1 keys", () => {
     knee_flexion: false,
   });
   assert.deepEqual(summary.thresholds, { enter_deg: 22.5, exit_deg: 7, min_rep_ms: 250, max_gap_ms: 1000 });
+  assert.deepEqual(summary.baseline_windows_ms, [{ start: 9000, end: 9500 }]);
   assert.deepEqual(summary.baseline_window_ms, { start: 9000, end: 9500 });
   assert.deepEqual(summary.rep_segments[0], { start_ms: 10_000, end_ms: 12_000, peak_rel_deg: 61.3 });
   assert.deepEqual(Object.keys(summary.sensors.shank), [
@@ -208,6 +210,20 @@ test("sensors in the summary carry the rate history, battery and the reconnects 
   assert.deepEqual(summary.sensors.thigh.battery_end, { volts: 3.8, vendor_percent: 45.1 });
 });
 
+test("every start's zero goes into the summary in time order, and baseline_window_ms is the last one", () => {
+  const beforeReload = { start: 9000, end: 9500 };
+  const afterReload = { start: 250_000, end: 250_500 };
+  const summary = buildHeelSlideSummary(
+    summaryInput({
+      baselineWindows: [afterReload, { start: 5, end: 5 }, beforeReload, { start: Number.NaN, end: 10 }],
+      restartedAfterReload: true,
+    }),
+  );
+  assert.deepEqual(summary.baseline_windows_ms, [beforeReload, afterReload]);
+  assert.deepEqual(summary.baseline_window_ms, afterReload);
+  assert.notEqual(summary.baseline_window_ms, summary.baseline_windows_ms[1], "a copy, not the same object");
+});
+
 test("battery at the start belongs to the device bound at finish", () => {
   const start = { deviceId: "A", battery: { volts: 4, vendor_percent: 100 } };
   const seen = { deviceId: "B", battery: { volts: 3.7, vendor_percent: 15 } };
@@ -226,7 +242,7 @@ test("a failed latest battery read leaves battery_end unknown", () => {
 test("unknowns stay null: no zero, no recorder, unreadable store, unmeasured rate", () => {
   const summary = buildHeelSlideSummary(
     summaryInput({
-      baselineWindow: null,
+      baselineWindows: [],
       restartedAfterReload: true,
       repsCounted: 0,
       segments: [],
@@ -236,6 +252,7 @@ test("unknowns stay null: no zero, no recorder, unreadable store, unmeasured rat
       telemetry: { counters: null, pending: null },
     }),
   );
+  assert.deepEqual(summary.baseline_windows_ms, []);
   assert.equal(summary.baseline_window_ms, null);
   assert.equal(summary.restarted_after_reload, true);
   assert.equal(summary.target_reps, null);

@@ -2,6 +2,7 @@
 // it. Only types come from the BLE store.
 
 import type { BatteryReading, LiveRoleState } from "@/lib/ble/liveSensors";
+import type { SampleRateResult } from "@/lib/ble/sampleRate";
 import type { Locale } from "@/locales";
 
 const INTL_LOCALE: Record<Locale, string> = { ru: "ru-RU", kk: "kk-KZ", en: "en-GB" };
@@ -64,6 +65,30 @@ export function batteryView(state: Pick<LiveRoleState, "battery" | "batteryError
   if (state.batteryError !== null) return { kind: "failed", reason: state.batteryError, lastReading: state.battery };
   if (state.battery) return { kind: "reading", reading: state.battery };
   return { kind: "unread" };
+}
+
+/**
+ * What can be said about a role's sample rate right now.
+ *  - configuring: a write and readback is running.
+ *  - current: the latest readback, while the sensor is streaming on the link it was read on.
+ *  - last: the latest readback while the sensor is not streaming (reconnecting, lost, or not sending yet). The rate
+ *    is held in the sensor's RAM only, so a unit that restarted meanwhile is back on its default rate: the result is
+ *    shown as a past check with its time, never as a current confirmation.
+ *  - none: nothing was read back, or the time of the last check is not known.
+ */
+export type RateView =
+  | { kind: "none" }
+  | { kind: "configuring"; requestedHz: number }
+  | { kind: "current"; result: SampleRateResult }
+  | { kind: "last"; result: SampleRateResult; atMs: number };
+
+export function rateView(state: Pick<LiveRoleState, "link" | "rate" | "rateHistory">): RateView {
+  const { rate } = state;
+  if (rate.status === "configuring") return { kind: "configuring", requestedHz: rate.requestedHz };
+  if (rate.status !== "done") return { kind: "none" };
+  if (state.link === "streaming") return { kind: "current", result: rate.result };
+  const atMs = state.rateHistory[state.rateHistory.length - 1]?.atMs;
+  return typeof atMs === "number" ? { kind: "last", result: rate.result, atMs } : { kind: "none" };
 }
 
 /** The table percent shown next to a role: only while the latest read succeeded, whole percent. */
