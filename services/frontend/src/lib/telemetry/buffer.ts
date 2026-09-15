@@ -22,14 +22,18 @@
 //    price is a loss window: a crash can lose up to about one second of rows pushed since the last write.
 //  - Whatever a stop could not deliver stays in that record, and the outbox (outbox.ts) sends it later: on app
 //    load, when the browser comes back online, and every 30 s while rows remain. A live buffer marks its session
-//    active (outboxRegistry.ts) so the outbox leaves its record alone until stop() has written it.
+//    active in this tab (outboxRegistry.ts) and holds the record in every tab (recordOwnership.ts: a Web Lock, or a
+//    lease stored on the record where the browser has no Web Locks) from start() until stop() has written it, so no
+//    outbox delivers the record meanwhile.
 // Rows resent by any of these paths are harmless thanks to the RPC's idempotency.
 //
 // Counting. `framesConfirmed` counts rows a flush RPC answered for successfully, minus rows it reported as skipped
-// (recorded after the session ended, see 0034): each such row is in session_frames, inserted by that request or
-// already stored by an earlier one whose answer never arrived. A row carried only by a keepalive request is not
-// confirmed, because that response is never read; those rows are counted separately in `framesKeepaliveSent` and
-// stay queued until a flush confirms them. Skipped rows are delivered (no longer pending) but not confirmed.
+// (recorded more than two minutes after the session ended, see 0034): each such row is in session_frames, inserted
+// by that request or already stored by an earlier one whose answer never arrived. A row carried only by a keepalive
+// request is not confirmed, because that response is never read; those rows are counted separately in
+// `framesKeepaliveSent` and stay queued until a flush confirms them. Skipped rows are delivered (no longer pending)
+// but not confirmed; they are counted in `framesSkipped` and, once the durable record no longer holds them, in the
+// session's skipped tally on this device (skippedTally.ts).
 //
 // On page hide or unload a best-effort keepalive request also sends the oldest queued rows. Browsers cap a
 // keepalive body at 64 KiB, so the batch is trimmed to fit; the rows stay queued (hidden is not always gone),
@@ -39,6 +43,8 @@ import { createClient } from "@/lib/supabase/client";
 
 import { DurableQueue } from "./durableQueue";
 import { markSessionActive, notifyOutbox } from "./outboxRegistry";
+import { browserLocks, holdRecording, type LockManagerLike, type RecordingHold } from "./recordOwnership";
+import { SkippedTally, type SkippedCounts } from "./skippedTally";
 
 export interface FrameRow {
   recorded_at: string; // ISO 8601
@@ -70,7 +76,10 @@ export interface BufferCounters {
   framesDropped?: number;
   /** Rows a successful flush RPC acknowledged as stored (see the header). Always set by TelemetryBuffer. */
   framesConfirmed?: number;
-  /** Rows the RPC acknowledged but did not store: recorded after the session ended. Always set by TelemetryBuffer. */
+  /**
+   * Rows the RPC acknowledged but did not store: recorded more than two minutes after the session ended. Always set
+   * by TelemetryBuffer.
+   */
   framesSkipped?: number;
   /** Distinct rows handed to a keepalive request, whose answer is never read. Always set by TelemetryBuffer. */
   framesKeepaliveSent?: number;
@@ -103,17 +112,26 @@ export interface StopOptions {
   budgetMs?: number;
 }
 
-/** Test seams. Production uses the browser Supabase client and IndexedDB. */
+/** The durable store a buffer writes. `stampLease` renews the lease between writes where Web Locks are unavailable. */
+export type BufferDurable = Pick<DurableQueue, "save" | "load" | "clear"> & Partial<Pick<DurableQueue, "stampLease">>;
+
+/** Test seams. Production uses the browser Supabase client, IndexedDB and the browser's Web Locks. */
 export interface TelemetryBufferDeps {
   rpc?: FlushRpc;
   getAuth?: () => Promise<AuthCtx | null>;
-  durable?: Pick<DurableQueue, "save" | "load" | "clear">;
+  durable?: BufferDurable;
+  /** Web Locks to hold the record with, or null for the lease fallback. Defaults to the browser's. */
+  locks?: LockManagerLike | null;
+  /** Where skipped rows are counted; null counts nowhere. Defaults to the device's skipped tally. */
+  tally?: Pick<SkippedTally, "add"> | null;
 }
 
 export class TelemetryBuffer {
   private readonly rpc: FlushRpc;
   private readonly getAuth: () => Promise<AuthCtx | null>;
-  private readonly durable: Pick<DurableQueue, "save" | "load" | "clear">;
+  private readonly durable: BufferDurable;
+  private readonly locks: LockManagerLike | null;
+  private readonly tally: Pick<SkippedTally, "add"> | null;
   private frames: FrameRow[] = [];
   private events: FogEventRow[] = [];
   // Set only for the span of an in-flight flush -- the durable record must count these alongside
@@ -130,6 +148,9 @@ export class TelemetryBuffer {
   private recoveredOwner: string | null = null;
   private stopped = false;
   private releaseActive: (() => void) | null = null;
+  private hold: RecordingHold | null = null;
+  // Skipped rows the durable record may still hold; counted in the tally after the next durable write.
+  private unsettledSkipped: SkippedCounts = { frames: 0, events: 0 };
   private readonly keepaliveRows = new WeakSet<FrameRow>();
   readonly counters: TelemetryCounters = {
     framesSent: 0,
@@ -153,6 +174,8 @@ export class TelemetryBuffer {
     this.rpc = deps.rpc ?? (async (args) => supabase().rpc("flush_session_telemetry_batch", args));
     this.getAuth = deps.getAuth ?? (() => sessionAuth(supabase()));
     this.durable = deps.durable ?? new DurableQueue();
+    this.locks = deps.locks === undefined ? browserLocks() : deps.locks;
+    this.tally = deps.tally === undefined ? new SkippedTally() : deps.tally;
   }
 
   /** Begin the periodic flush loop and arm the unload safety net. Recovers anything a
@@ -160,6 +183,15 @@ export class TelemetryBuffer {
   async start(): Promise<void> {
     this.stopped = false;
     this.releaseActive ??= markSessionActive(this.sessionId);
+    if (!this.hold) {
+      const durable = this.durable;
+      const stampLease = durable.stampLease;
+      this.hold = holdRecording(this.sessionId, {
+        locks: this.locks,
+        leases: stampLease ? { stampLease: (sessionId, lease) => stampLease.call(durable, sessionId, lease) } : null,
+      });
+    }
+    await this.hold.ready; // announced before the record is read, so no other tab starts delivering it after the read
     await this.recoverDurable();
     await this.refreshAuth(); // cache a token so the unload path can flush with auth headers
     if (!this.timer) this.timer = setInterval(() => void this.flush(), FLUSH_MS);
@@ -206,8 +238,8 @@ export class TelemetryBuffer {
   /**
    * Stop the loop and detach the unload net, then try to deliver everything still undelivered for up to
    * `budgetMs` (ten seconds by default), retrying failures with backoff. Whatever is left is written to IndexedDB,
-   * where the outbox picks it up. Resolves once that record is current; `counters.pending` then says how many rows
-   * were left.
+   * where the outbox picks it up. Resolves once that record is current and the record is released to outboxes;
+   * `counters.pending` then says how many rows were left.
    */
   async stop({ budgetMs = STOP_DELIVERY_BUDGET_MS }: StopOptions = {}): Promise<void> {
     this.stopped = true;
@@ -241,7 +273,10 @@ export class TelemetryBuffer {
         await sleep(delay);
       }
     }
-    await this.persistNow();
+    const hold = this.hold;
+    this.hold = null; // the final write carries no lease
+    if (hold) await hold.release(() => this.persistNow());
+    else await this.persistNow();
     this.releaseActive?.();
     this.releaseActive = null;
     if (this.undelivered() > 0) notifyOutbox();
@@ -269,6 +304,10 @@ export class TelemetryBuffer {
       this.counters.framesSent = this.counters.framesConfirmed;
       this.counters.framesSkipped += skipped.frames;
       this.counters.eventsSent += this.inFlightEvents.length - skipped.events;
+      this.unsettledSkipped = {
+        frames: this.unsettledSkipped.frames + skipped.frames,
+        events: this.unsettledSkipped.events + skipped.events,
+      };
       this.inFlightFrames = [];
       this.inFlightEvents = [];
       delivered = true;
@@ -349,12 +388,18 @@ export class TelemetryBuffer {
         this.persistQueued = false;
         const frames = [...this.inFlightFrames, ...this.frames];
         const events = [...this.inFlightEvents, ...this.events];
+        const skipped = this.unsettledSkipped;
+        this.unsettledSkipped = { frames: 0, events: 0 };
         if (frames.length === 0 && events.length === 0) await this.durable.clear(this.sessionId);
         else {
           await this.durable.save(this.sessionId, frames, events, {
             ownerId: this.auth?.userId ?? this.recoveredOwner,
+            lease: this.hold?.lease() ?? null,
           });
         }
+        // Counted only now that the record no longer holds those rows: a crash before this write resends them and
+        // they are counted then, once.
+        if (this.tally && skipped.frames + skipped.events > 0) await this.tally.add(this.sessionId, skipped);
       })
       .catch(() => undefined);
     return this.persistChain;
@@ -393,9 +438,9 @@ export class TelemetryBuffer {
 }
 
 /**
- * How many rows of a batch the flush RPC reported as skipped because they were recorded after the session ended.
- * 0034 answers `{ skipped: <frames>, skipped_events: <events> }`. Also accepts `skipped` alone as one number
- * (frames first) or as `{frames, events}`; anything else counts as none.
+ * How many rows of a batch the flush RPC reported as skipped because they were recorded more than two minutes after
+ * the session ended. 0034 answers `{ skipped: <frames>, skipped_events: <events> }`. Also accepts `skipped` alone as
+ * one number (frames first) or as `{frames, events}`; anything else counts as none.
  */
 export function skippedCounts(data: unknown, frames: number, events: number): { frames: number; events: number } {
   const answer = data && typeof data === "object" ? (data as { skipped?: unknown; skipped_events?: unknown }) : {};

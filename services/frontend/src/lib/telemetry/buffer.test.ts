@@ -304,6 +304,41 @@ describe("TelemetryBuffer", () => {
     expect(buffer.counters).toMatchObject({ pending: 0, errors: 0, framesConfirmed: 25, framesSkipped: 5 });
   });
 
+  it("adds skipped rows to the session's tally only after the durable write that drops them", async () => {
+    const log: string[] = [];
+    const durable = {
+      save: vi.fn(async () => {
+        log.push("save");
+      }),
+      load: vi.fn(async () => null),
+      clear: vi.fn(async () => {
+        log.push("clear");
+      }),
+    };
+    const tally = {
+      add: vi.fn(async (sessionId: string, counts: { frames: number; events: number }) => {
+        log.push(`tally ${sessionId} ${counts.frames}/${counts.events}`);
+      }),
+    };
+    const rpc: FlushRpc = async (args) => ({
+      data: { frames: args.p_frames.length - 5, events: 0, skipped: 5, skipped_events: 0 },
+      error: null,
+    });
+    const buffer = new TelemetryBuffer("skipped-tally", undefined, {
+      rpc,
+      durable,
+      getAuth: async () => null,
+      locks: null,
+      tally,
+    });
+    await buffer.start();
+    for (let seq = 0; seq < 30; seq += 1) buffer.pushFrame(row(seq));
+    await buffer.stop();
+
+    expect(tally.add).toHaveBeenCalledTimes(1);
+    expect(log.slice(-2)).toEqual(["clear", "tally skipped-tally 5/0"]);
+  });
+
   it("recovers rows a previous instance left behind, ahead of new ones", async () => {
     const durable = fakeDurable();
     durable.load.mockResolvedValueOnce({ sessionId: "s1", frames: [row(0), row(1)], events: [], savedAt: "" } as never);

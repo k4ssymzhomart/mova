@@ -5,8 +5,10 @@
 // record is current. When a stop leaves rows undelivered it bumps the version, which makes a drain in progress take
 // one more pass and wakes the outbox scheduler.
 //
-// Another tab can still drain a record this tab's buffer owns. That only costs duplicate requests, which the flush
-// RPC ignores on (session_id, recorded_at, seq).
+// This map covers one tab only. Across tabs recordOwnership.ts decides who holds a record: a Web Lock, or a lease
+// stored on the record where the browser has no Web Locks. The outbox's write-back also removes only the rows it
+// delivered, in the same IndexedDB transaction that re-reads the record, so a second tab can cost duplicate requests
+// (ignored by the flush RPC on (session_id, recorded_at, seq)) but never a row.
 
 const active = new Map<string, number>();
 const listeners = new Set<() => void>();

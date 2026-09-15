@@ -33,7 +33,10 @@ export const QUALITY_EVALUATION_INTERVAL_MS = 1000;
 export interface RecorderCounters extends BufferCounters {
   /** Rows the server acknowledged as stored. Rows only carried by a keepalive request are not included. */
   framesConfirmed: number;
-  /** Rows the server acknowledged but did not store because they were recorded after the session ended. */
+  /**
+   * Rows the server acknowledged but did not store because they were recorded more than two minutes after the
+   * session ended. They are also counted in the session's skipped tally on this device (lib/telemetry/skippedTally).
+   */
   framesSkipped: number;
   /** Distinct rows handed to a keepalive request on page hide, unconfirmed by it. */
   framesKeepaliveSent: number;

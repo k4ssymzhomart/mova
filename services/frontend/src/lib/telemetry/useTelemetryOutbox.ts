@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from "react";
 
+import { createClient, isSupabaseConfigured } from "@/lib/supabase/client";
+
 import { drainTelemetryOutbox } from "./outbox";
 import { subscribeOutbox } from "./outboxRegistry";
 import { startOutboxScheduler } from "./outboxScheduler";
@@ -16,7 +18,8 @@ export interface UseTelemetryOutboxResult {
 
 /**
  * Keeps the telemetry outbox (outbox.ts) moving while the component is mounted: a drain on mount, on the window
- * "online" event, when a recording stops with rows left, and every 30 s while rows remain.
+ * "online" event, when a recording stops with rows left, after a sign-in (so a record refused earlier gets its
+ * retry), and every 30 s while rows remain.
  */
 export function useTelemetryOutbox(): UseTelemetryOutboxResult {
   const [remaining, setRemaining] = useState<number | null>(null);
@@ -27,10 +30,30 @@ export function useTelemetryOutbox(): UseTelemetryOutboxResult {
         drain: drainTelemetryOutbox,
         onRemaining: setRemaining,
         online: window,
-        subscribe: subscribeOutbox,
+        subscribe: (listener) => {
+          const stopRegistry = subscribeOutbox(listener);
+          const stopSignIns = subscribeSignIns(listener);
+          return () => {
+            stopRegistry();
+            stopSignIns();
+          };
+        },
       }),
     [],
   );
 
   return { remaining };
+}
+
+/** Calls `listener` after each sign-in, outside the auth callback, which must not call back into Supabase auth. */
+function subscribeSignIns(listener: () => void): () => void {
+  if (!isSupabaseConfigured()) return () => undefined;
+  try {
+    const { data } = createClient().auth.onAuthStateChange((event) => {
+      if (event === "SIGNED_IN") setTimeout(listener, 0);
+    });
+    return () => data.subscription.unsubscribe();
+  } catch {
+    return () => undefined;
+  }
 }

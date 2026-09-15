@@ -3,7 +3,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { OutboxDrainResult } from "./outbox";
 import { OUTBOX_POLL_MS, startOutboxScheduler } from "./outboxScheduler";
 
-const result = (remaining: number): OutboxDrainResult => ({ sessions: 0, sent: 0, remaining, rejected: 0 });
+const result = (remaining: number): OutboxDrainResult => ({
+  sessions: 0,
+  sent: 0,
+  skipped: 0,
+  skippedBySession: {},
+  remaining,
+  rejected: 0,
+});
 
 beforeEach(() => {
   vi.useFakeTimers();
