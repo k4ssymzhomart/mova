@@ -26,7 +26,16 @@
     "terms": "By continuing you agree to the terms of use and privacy policy.",
     "checkEmail": "Check your email — we sent a sign-in link.",
     "sending": "Sending…",
-    "guest": "Continue as guest"
+    "guest": "Continue as guest",
+    "testLogin": {
+      "title": "Test account sign-in",
+      "hint": "Only for @mova.test addresses on test builds.",
+      "email": "Email",
+      "password": "Password",
+      "submit": "Sign in",
+      "onlyTest": "This sign-in works only for @mova.test test addresses.",
+      "failed": "Could not sign in. Check the address and password."
+    }
   },
   "landing": {
     "nav": {

@@ -11,10 +11,18 @@ import { useTranslation } from "@/locales/client";
 
 type Provider = "google";
 
-export function MinimalAuthPage() {
+// Password sign-in for the seeded test accounts (docs/heel-slide-path.md): a tester on a Vercel preview signs in
+// as the test patient or clinician without a mailbox. Real accounts sign in with Google or an email link and have
+// no password, and the form refuses any address outside the test domain. The sign-in page decides whether to show
+// it (development and previews only); it is never rendered in production.
+const TEST_EMAIL_DOMAIN = "@mova.test";
+
+export function MinimalAuthPage({ testPasswordLogin = false }: { testPasswordLogin?: boolean }) {
   const { t } = useTranslation();
   const [supabase] = React.useState(() => createClient());
   const [email, setEmail] = React.useState("");
+  const [testEmail, setTestEmail] = React.useState("");
+  const [testPassword, setTestPassword] = React.useState("");
   const [busy, setBusy] = React.useState<string | null>(null);
   const [msg, setMsg] = React.useState<
     { kind: "error" | "info"; text: string } | null
@@ -29,6 +37,12 @@ export function MinimalAuthPage() {
 
   const nextParam = () =>
     new URLSearchParams(window.location.search).get("next") ?? "/app";
+
+  // Only same-site paths: `next` comes from the URL, and a full URL there would send the tester off-site.
+  const safeNext = () => {
+    const next = nextParam();
+    return next.startsWith("/") && !next.startsWith("//") ? next : "/app";
+  };
 
   const callbackUrl = () => authCallbackUrl(nextParam());
 
@@ -78,6 +92,27 @@ export function MinimalAuthPage() {
       return;
     }
     window.location.assign(nextParam());
+  }
+
+  async function testAccountLogin(e: React.FormEvent) {
+    e.preventDefault();
+    const address = testEmail.trim().toLowerCase();
+    if (!address.endsWith(TEST_EMAIL_DOMAIN)) {
+      setMsg({ kind: "error", text: t("auth.testLogin.onlyTest") });
+      return;
+    }
+    setBusy("test");
+    setMsg(null);
+    const { error } = await supabase.auth.signInWithPassword({
+      email: address,
+      password: testPassword,
+    });
+    if (error) {
+      setBusy(null);
+      setMsg({ kind: "error", text: t("auth.testLogin.failed") });
+      return;
+    }
+    window.location.assign(safeNext());
   }
 
   return (
@@ -174,6 +209,61 @@ export function MinimalAuthPage() {
             >
               {busy === "dev" ? "Signing in…" : "Dev auto-login · dev@mova.local"}
             </button>
+          )}
+
+          {testPasswordLogin && (
+            <form
+              className="space-y-2.5 rounded-md border border-dashed border-input p-3"
+              onSubmit={testAccountLogin}
+              aria-labelledby="test-login-title"
+            >
+              <div>
+                <p id="test-login-title" className="text-base font-medium">
+                  {t("auth.testLogin.title")}
+                </p>
+                <p className="text-muted-foreground text-sm">{t("auth.testLogin.hint")}</p>
+              </div>
+              <div className="space-y-1">
+                <label htmlFor="test-login-email" className="block text-sm font-medium">
+                  {t("auth.testLogin.email")}
+                </label>
+                <input
+                  id="test-login-email"
+                  type="email"
+                  required
+                  value={testEmail}
+                  onChange={(e) => setTestEmail(e.target.value)}
+                  autoComplete="username"
+                  className="bg-background focus-visible:ring-ring h-12 w-full rounded-md border border-input px-3 text-base outline-none transition focus-visible:ring-2"
+                />
+              </div>
+              <div className="space-y-1">
+                <label htmlFor="test-login-password" className="block text-sm font-medium">
+                  {t("auth.testLogin.password")}
+                </label>
+                <input
+                  id="test-login-password"
+                  type="password"
+                  required
+                  value={testPassword}
+                  onChange={(e) => setTestPassword(e.target.value)}
+                  autoComplete="current-password"
+                  className="bg-background focus-visible:ring-ring h-12 w-full rounded-md border border-input px-3 text-base outline-none transition focus-visible:ring-2"
+                />
+              </div>
+              <Button
+                type="submit"
+                variant="secondary"
+                size="lg"
+                className="w-full"
+                disabled={busy !== null}
+              >
+                {busy === "test" ? (
+                  <Loader2 className="me-2 size-4 animate-spin" />
+                ) : null}
+                {t("auth.testLogin.submit")}
+              </Button>
+            </form>
           )}
 
           <p className="text-muted-foreground mt-8 text-sm">{t("auth.terms")}</p>
