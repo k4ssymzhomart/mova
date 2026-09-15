@@ -10,12 +10,19 @@
 // question must be answered before anything is sent.
 //
 // Answers go to submit_session_check_in in the language the form is shown in. The RPC validates every field again
-// and is idempotent on the session, so sending again after a dropped response returns the row already stored. On
-// an error the answers stay on screen with the reason and can be sent again. No safety triage happens here.
+// and is idempotent on the session: when the session already has a check-in it returns that row, unchanged and
+// without an error. So a resend after a dropped response simply returns what was saved, and a check-in is never
+// edited. Two guards keep that from passing silently:
+//  - Back from the summary restores this page from the router cache without the server's redirect for an answered
+//    check-in, and the form mounts empty. A fresh read on mount sends the patient on to the summary instead.
+//  - If a submit still comes back with a stored row whose answers differ from the ones sent, the form is replaced by
+//    a notice that the earlier answers were kept, listing them, with the way on to the summary.
+// On an error the answers stay on screen with the reason and can be sent again. No safety triage happens here.
 
 import { ArrowRight, CircleAlert, Loader2 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { type FormEvent, type ReactNode, useId, useRef, useState } from "react";
+import { type FormEvent, type ReactNode, type RefObject, useEffect, useId, useRef, useState } from "react";
+import { flushSync } from "react-dom";
 
 import { card, focusRing, primaryButton } from "@/components/app/recipes";
 import { stepHref } from "@/components/flow/steps";
@@ -32,9 +39,12 @@ import {
   type MissingAnswers,
   missingAnswers,
   OTHER_NOTE_MAX,
+  parseStoredCheckIn,
   SCALE_MAX,
   SCALE_MIN,
   SCALE_VALUES,
+  type StoredCheckIn,
+  storedMatchesSent,
   type SubmitError,
   submitErrorFor,
   SYMPTOM_OPTIONS,
@@ -58,6 +68,7 @@ export default function CheckInForm({ sessionId }: { sessionId: string }) {
   const { t, locale } = useTranslation();
   const router = useRouter();
   const [supabase] = useState(() => createClient());
+  const summaryHref = stepHref(sessionId, "summary");
 
   const [painBefore, setPainBefore] = useState<number | null>(INITIAL_ANSWERS.painBefore);
   const [painAfter, setPainAfter] = useState<number | null>(INITIAL_ANSWERS.painAfter);
@@ -70,8 +81,11 @@ export default function CheckInForm({ sessionId }: { sessionId: string }) {
   const [shownMissing, setShownMissing] = useState<MissingAnswers>(NOTHING_MISSING);
   const [busy, setBusy] = useState(false);
   const [submitError, setSubmitError] = useState<SubmitError | null>(null);
+  // The check-in stored earlier, when a submit found one with other answers. Replaces the form.
+  const [kept, setKept] = useState<StoredCheckIn | null>(null);
   // State lands after the click that set it; the ref is what stops a quick second click from sending again.
   const sending = useRef(false);
+  const keptContinue = useRef<HTMLButtonElement>(null);
 
   const kneeName = useId();
   const kneeErrorId = useId();
@@ -84,6 +98,32 @@ export default function CheckInForm({ sessionId }: { sessionId: string }) {
     firstInputs.current[question] = element;
   };
 
+  // A fresh read on every mount, Back included (see the header). A failed read changes nothing: the RPC still keeps
+  // a stored check-in, and submit() says so.
+  useEffect(() => {
+    let active = true;
+    void (async () => {
+      try {
+        const { data, error } = await supabase
+          .from("session_check_ins")
+          .select("id")
+          .eq("session_id", sessionId)
+          .maybeSingle();
+        if (active && !error && data) router.replace(summaryHref);
+      } catch {
+        // Offline or blocked: stay on the form.
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, [supabase, router, sessionId, summaryHref]);
+
+  // The notice replaces the focused submit button; focus moves to its way on instead of falling to the page.
+  useEffect(() => {
+    if (kept) keptContinue.current?.focus();
+  }, [kept]);
+
   function answered(question: Question) {
     setShownMissing((current) => (current[question] ? { ...current, [question]: false } : current));
   }
@@ -94,36 +134,51 @@ export default function CheckInForm({ sessionId }: { sessionId: string }) {
 
     const answers = { painBefore, painAfter, difficulty, kneeFeels, symptoms, otherNote };
     const missing = missingAnswers(answers);
-    setShownMissing(missing);
     const args = checkInRpcArgs(sessionId, answers, locale);
     if (!args) {
-      // Focus lands in the first unanswered question, whose inputs are described by its error.
+      // The error lines and the inputs' aria-describedby are committed before focus moves, so the unanswered
+      // question's input is already described by its error when a screen reader announces it. Without flushSync,
+      // React would apply the update only after this handler returns, after the focus.
+      flushSync(() => setShownMissing(missing));
       const first = firstMissing(missing);
       if (first) firstInputs.current[first]?.focus();
       return;
     }
+    setShownMissing(missing);
 
     sending.current = true;
     setBusy(true);
     setSubmitError(null);
+    let stored: StoredCheckIn | null;
     try {
-      const { error } = await supabase.rpc("submit_session_check_in", args);
+      const { data, error } = await supabase.rpc("submit_session_check_in", args);
       if (error) {
         fail(submitErrorFor(error.code));
         return;
       }
+      stored = parseStoredCheckIn(data);
     } catch {
       fail("failed");
       return;
     }
+    if (stored && !storedMatchesSent(args, stored)) {
+      // An earlier check-in was kept. sending stays set: the form is gone and nothing is sent again.
+      setBusy(false);
+      setKept(stored);
+      return;
+    }
     // busy stays on while the summary loads, so the answers cannot be sent a second time on the way out.
-    router.push(stepHref(sessionId, "summary"));
+    router.push(summaryHref);
   }
 
   function fail(reason: SubmitError) {
     sending.current = false;
     setBusy(false);
     setSubmitError(reason);
+  }
+
+  if (kept) {
+    return <KeptAnswers stored={kept} continueRef={keptContinue} onContinue={() => router.replace(summaryHref)} />;
   }
 
   const required = t("flow.checkIn.required");
@@ -268,9 +323,16 @@ export default function CheckInForm({ sessionId }: { sessionId: string }) {
 }
 
 /**
- * A 0–10 answer as eleven radio buttons in one group, none selected until the patient picks one. Each option is a
- * 48px target showing its number next to the native radio, so the choice never shows by colour alone; the ends of
- * the scale are described in words. Two rows of six and five on a phone, one row from sm up.
+ * A 0–10 answer as eleven radio buttons in one group, none selected until the patient picks one. Each option shows
+ * its number next to the native radio, so the choice never shows by colour alone; the ends of the scale are described
+ * in words.
+ *
+ * Every option is at least 48 × 48 px. The columns follow the width the question actually has (a container query),
+ * so the sidebar, the paddings and a desktop scrollbar are all accounted for: four columns in three rows below 328 px,
+ * six in two rows from 328 px (6 × 48 + 5 × 8 gap), and one row of eleven from 588 px (11 × 48 + 10 × 6 gap). The
+ * ranges do not overlap, so no rule depends on the order Tailwind emits them in. Worked widths (px of viewport,
+ * question width, option width): 320 → 238 → 53.5; 360 → 278 → 63.5; 390 → 308 → 71; 412 → 330 → 48.3;
+ * 768 → 638 → 52.5; 1024 with the 260 px sidebar → 602 → 49.3; 1280 → 702 → 58.4.
  */
 function ScaleQuestion({
   label,
@@ -301,32 +363,34 @@ function ScaleQuestion({
   return (
     <fieldset>
       <Legend required={required}>{label}</Legend>
-      <div className="mt-3 grid grid-cols-6 gap-1.5 sm:grid-cols-11 sm:gap-2">
-        {SCALE_VALUES.map((option, i) => {
-          const checked = value === option;
-          return (
-            <label
-              key={option}
-              className={cn(
-                "flex min-h-12 min-w-0 cursor-pointer flex-col items-center justify-center gap-1 rounded-card border bg-card px-1 py-2 text-lg font-semibold text-ink transition-colors",
-                checked ? "border-signal-deep bg-signal/5 ring-1 ring-inset ring-signal-deep" : "border-line hover:border-ink-faint",
-              )}
-            >
-              <input
-                ref={i === 0 ? firstInputRef : undefined}
-                type="radio"
-                name={name}
-                value={option}
-                required
-                checked={checked}
-                onChange={() => onChange(option)}
-                aria-describedby={describedBy}
-                className={cn("size-5 shrink-0 cursor-pointer accent-signal-deep", focusRing)}
-              />
-              <span className="tnum leading-none">{option}</span>
-            </label>
-          );
-        })}
+      <div className="mt-3 [container-type:inline-size]">
+        <div className="grid grid-cols-4 gap-2 [@container(min-width:328px)_and_(max-width:587.98px)]:grid-cols-6 [@container(min-width:588px)]:grid-cols-11 [@container(min-width:588px)]:gap-1.5">
+          {SCALE_VALUES.map((option, i) => {
+            const checked = value === option;
+            return (
+              <label
+                key={option}
+                className={cn(
+                  "flex min-h-12 min-w-12 cursor-pointer flex-col items-center justify-center gap-1 rounded-card border bg-card px-1 py-2 text-lg font-semibold text-ink transition-colors",
+                  checked ? "border-signal-deep bg-signal/5 ring-1 ring-inset ring-signal-deep" : "border-line hover:border-ink-faint",
+                )}
+              >
+                <input
+                  ref={i === 0 ? firstInputRef : undefined}
+                  type="radio"
+                  name={name}
+                  value={option}
+                  required
+                  checked={checked}
+                  onChange={() => onChange(option)}
+                  aria-describedby={describedBy}
+                  className={cn("size-5 shrink-0 cursor-pointer accent-signal-deep", focusRing)}
+                />
+                <span className="tnum leading-none">{option}</span>
+              </label>
+            );
+          })}
+        </div>
       </div>
       <p id={endsId} className="mt-2 flex justify-between gap-4 text-base text-ink-soft">
         <span>
@@ -338,6 +402,63 @@ function ScaleQuestion({
       </p>
       {missing && <Problem id={errorId}>{missingText}</Problem>}
     </fieldset>
+  );
+}
+
+/** What is saved when a submit found an earlier check-in with other answers, and the way on. */
+function KeptAnswers({
+  stored,
+  continueRef,
+  onContinue,
+}: {
+  stored: StoredCheckIn;
+  continueRef: RefObject<HTMLButtonElement>;
+  onContinue: () => void;
+}) {
+  const { t } = useTranslation();
+  const scale = (n: number) => t("flow.checkIn.kept.scale", { n });
+  const symptoms = stored.symptoms.length
+    ? stored.symptoms.map((symptom) => t(`flow.checkIn.symptomOpt.${symptom}`)).join(", ")
+    : t("flow.checkIn.symptomOpt.none");
+
+  return (
+    <div className={cn(card, "max-w-3xl space-y-6 p-5 sm:p-8")}>
+      <div role="alert" className="space-y-2">
+        <p className="flex items-start gap-2 text-lg font-semibold leading-snug text-ink">
+          <CircleAlert className="mt-1 size-5 shrink-0 text-red-700" strokeWidth={2} aria-hidden="true" />
+          <span>{t("flow.checkIn.kept.title")}</span>
+        </p>
+        <p className="text-base leading-relaxed text-ink">{t("flow.checkIn.kept.body")}</p>
+      </div>
+      <dl className="grid gap-x-8 gap-y-4 sm:grid-cols-2">
+        <KeptFact label={t("flow.checkIn.painBefore")} value={scale(stored.painBefore)} />
+        <KeptFact label={t("flow.checkIn.painAfter")} value={scale(stored.painAfter)} />
+        <KeptFact label={t("flow.checkIn.difficulty")} value={scale(stored.difficulty)} />
+        <KeptFact label={t("flow.checkIn.knee")} value={t(`flow.checkIn.kneeOpt.${stored.kneeFeels}`)} />
+        <KeptFact label={t("flow.checkIn.symptoms")} value={symptoms} />
+        {stored.otherNote && (
+          <KeptFact
+            label={t("flow.checkIn.kept.note")}
+            value={<span className="whitespace-pre-line [overflow-wrap:anywhere]">{stored.otherNote}</span>}
+          />
+        )}
+      </dl>
+      <div className="border-t border-line pt-6">
+        <button ref={continueRef} type="button" onClick={onContinue} className={primaryButton}>
+          {t("flow.checkIn.kept.continue")}
+          <ArrowRight className="size-5" strokeWidth={2} aria-hidden="true" />
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function KeptFact({ label, value }: { label: string; value: ReactNode }) {
+  return (
+    <div>
+      <dt className="text-base text-ink-soft">{label}</dt>
+      <dd className="tnum mt-0.5 text-lg font-semibold text-ink">{value}</dd>
+    </div>
   );
 }
 

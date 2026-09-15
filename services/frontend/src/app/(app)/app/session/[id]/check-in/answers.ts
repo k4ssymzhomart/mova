@@ -115,6 +115,64 @@ export function checkInRpcArgs(sessionId: string, answers: CheckInAnswers, langu
   };
 }
 
+/** A check-in as submit_session_check_in returns it: the row stored for the session. */
+export interface StoredCheckIn {
+  painBefore: number;
+  painAfter: number;
+  difficulty: number;
+  kneeFeels: KneeFeels;
+  /** Empty: "none". */
+  symptoms: ReportedSymptom[];
+  otherNote: string | null;
+}
+
+const REPORTED_SYMPTOMS: readonly ReportedSymptom[] = ["swelling", "redness", "calf_pain", "other"];
+
+/**
+ * The row the RPC answered with, or null when the answer is not a readable check-in row. The RPC returns the row
+ * already stored when the session has one, unchanged, so this is what the clinician sees.
+ */
+export function parseStoredCheckIn(raw: unknown): StoredCheckIn | null {
+  const row = Array.isArray(raw) && raw.length === 1 ? raw[0] : raw;
+  if (row === null || typeof row !== "object" || Array.isArray(row)) return null;
+  const r = row as Record<string, unknown>;
+  const scale = (value: unknown) => (typeof value === "number" && isScaleAnswer(value) ? value : null);
+  const painBefore = scale(r.pain_before);
+  const painAfter = scale(r.pain_after);
+  const difficulty = scale(r.difficulty);
+  const kneeFeels = (KNEE_OPTIONS as readonly unknown[]).includes(r.knee_feels) ? (r.knee_feels as KneeFeels) : null;
+  if (painBefore === null || painAfter === null || difficulty === null || kneeFeels === null) return null;
+  if (!Array.isArray(r.symptoms) || !r.symptoms.every((s) => (REPORTED_SYMPTOMS as readonly unknown[]).includes(s))) {
+    return null;
+  }
+  if (r.other_note !== null && r.other_note !== undefined && typeof r.other_note !== "string") return null;
+  return {
+    painBefore,
+    painAfter,
+    difficulty,
+    kneeFeels,
+    symptoms: REPORTED_SYMPTOMS.filter((s) => (r.symptoms as unknown[]).includes(s)),
+    otherNote: typeof r.other_note === "string" && r.other_note.length > 0 ? r.other_note : null,
+  };
+}
+
+/**
+ * Whether the stored row holds exactly the answers just sent. False means an earlier check-in for this session was
+ * kept and the new answers were not saved. Symptoms compare as a set; the language is not an answer.
+ */
+export function storedMatchesSent(args: CheckInRpcArgs, stored: StoredCheckIn): boolean {
+  const sent = new Set(args.p_symptoms);
+  return (
+    stored.painBefore === args.p_pain_before &&
+    stored.painAfter === args.p_pain_after &&
+    stored.difficulty === args.p_difficulty &&
+    stored.kneeFeels === args.p_knee_feels &&
+    stored.symptoms.length === sent.size &&
+    stored.symptoms.every((s) => sent.has(s)) &&
+    (stored.otherNote ?? null) === (args.p_other_note ?? null)
+  );
+}
+
 /** The RPC's error codes in patient terms. Anything else (a dropped connection included) is "failed". */
 export function submitErrorFor(code: string | undefined): SubmitError {
   if (code === "55000") return "notCompleted";

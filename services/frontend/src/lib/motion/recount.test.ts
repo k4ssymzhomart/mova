@@ -45,6 +45,8 @@ interface Plan {
   silent?: Array<{ role: Role; fromMs: number; toMs: number }>;
   /** Spans in which the screen is armed. Each one is a start: pairer and orienter are reset. */
   armed: Array<{ fromMs: number; toMs: number }>;
+  /** Every start after the first is on a reloaded page, so the rep counter starts over too. */
+  reloads?: boolean;
 }
 
 /** Ten slides from `firstMs`: 1 s bending to `peak`, `holdMs` at the top, 1 s back, rest until the next. */
@@ -65,7 +67,11 @@ function play(plan: Plan, options: RepCounterOptions = HEEL_SLIDE, seed = 5) {
   const jitter = () => (rand() * 2 - 1) * 0.4;
   const pairer = createPairer();
   const orienter = createProxyOrienter();
-  const counter = createRepCounter(options);
+  let counter = createRepCounter(options);
+  const counters = [counter];
+  // Each start's zero window, as the screen saves it once the zero is taken.
+  const windows: BaselineWindow[] = [];
+  let windowSaved = false;
   const stored: Record<Role, Array<[number, number]>> = { thigh: [], shank: [] };
   const live: ProxySample[] = [];
   let start = -1;
@@ -75,15 +81,24 @@ function play(plan: Plan, options: RepCounterOptions = HEEL_SLIDE, seed = 5) {
     const armed = plan.armed.findIndex((span) => tMs >= span.fromMs && tMs < span.toMs);
     if (armed < 0) return;
     if (armed !== start) {
+      if (plan.reloads && start >= 0) {
+        counter = createRepCounter(options);
+        counters.push(counter);
+      }
       start = armed;
       pairer.reset();
       orienter.reset();
+      windowSaved = false;
     }
     stored[role].push([tMs, pitch]);
     const pair = pairer.push(role, tMs, pitch);
     if (!pair) return;
     const value = orienter.push(pair.tMs, pair.relativeDeg);
     if (value === null) return;
+    if (!windowSaved && orienter.baselineWindow) {
+      windows.push(orienter.baselineWindow);
+      windowSaved = true;
+    }
     live.push({ tMs: pair.tMs, value });
     counter.push(pair.tMs, value);
   };
@@ -93,7 +108,7 @@ function play(plan: Plan, options: RepCounterOptions = HEEL_SLIDE, seed = 5) {
     const shankMs = tMs + SHANK_LAG_MS;
     deliver("shank", shankMs, THIGH_PITCH + plan.relative(shankMs) + jitter());
   }
-  return { counter, orienter, stored, live };
+  return { counter, counters, orienter, stored, live, windows };
 }
 
 function recount(
@@ -158,6 +173,48 @@ test("after a start abandoned by a dropout, the recount zeroes on the live basel
   assert.ok(before.every((sample) => sample.tMs < window.startMs && Math.abs(sample.value + 12) < 1.5));
   assert.ok(windowed.series.samples[0].tMs >= window.startMs);
   assert.equal(before.length + windowed.series.samples.length, windowed.series.pairing.pairs);
+});
+
+test("after a reload each start is recounted on its own zero and the counts add up; the device counts the last", () => {
+  // Seven slides, a reload, the strap settled 10 degrees differently, and the three slides that were left.
+  const relative = (tMs: number) =>
+    tMs < 38_000 ? slides(2_000, 60, { reps: 7 })(tMs) : 10 + slides(43_000, 60, { reps: 3 })(tMs);
+  const live = play({
+    durationMs: 60_000,
+    relative,
+    armed: [
+      { fromMs: 0, toMs: 37_000 },
+      { fromMs: 40_000, toMs: 60_000 },
+    ],
+    reloads: true,
+  });
+  assert.deepEqual(
+    live.counters.map((counter) => counter.count),
+    [7, 3],
+  );
+  assert.equal(live.windows.length, 2);
+
+  const series = buildStoredProxySeries(live.stored, { baselineWindows: live.windows });
+  const perStart = series.starts.map((start) => countOrientedRepetitions(start.samples, HEEL_SLIDE));
+  assert.deepEqual(
+    perStart.map((report) => report.count),
+    [7, 3],
+  );
+  assertSameReps(
+    perStart.flatMap((report) => report.segments),
+    [...live.counters[0].segments, ...live.counters[1].segments],
+  );
+  assert.deepEqual(series.beforeBaselineWindow, []);
+
+  // With only the latest window, as sessions saved before the list existed, the seven slides before the reload are
+  // drawn and not counted.
+  const latestOnly = recount(live.stored, live.windows[1]);
+  assert.equal(latestOnly.report.count, 3);
+  assert.ok(latestOnly.series.beforeBaselineWindow.length > 1_500);
+
+  // And the first start's zero carried across the reload would leave the last three resting 10 degrees up.
+  const firstZeroOnly = recount(live.stored, live.windows[0]);
+  assert.notEqual(firstZeroOnly.report.count, 10);
 });
 
 test("a pause in the data in the middle of a rep discards that rep, live and in the recount", () => {

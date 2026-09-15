@@ -1,9 +1,10 @@
 // One Heel Slide session for the clinician, inside the patient page after its header. Server-rendered from the
 // view the loader built (lib/clinic/heelSlideResult.ts): reps recounted from the stored frames against the
-// prescribed target, the device's own count only as a labelled aside, the proxy chart, the technical facts a
-// hardware check needs (per-sensor frames and rates, the rate checks, battery at start and finish, reconnects,
-// what the device confirmed sending), and the patient's check-in answers. No score and no knee angle: the proxy is
-// shown only on the chart, under its honest label.
+// prescribed target (with several presses of «Начать», the sum and each start's own count), the device's own count
+// only as a labelled aside, the proxy chart, the technical facts a hardware check needs (per-sensor frames and rates,
+// the rate checks, battery at start and finish, reconnects, the skew between sensors kept apart from the recount's
+// pairing tolerance, what the device confirmed sending), and the patient's check-in answers. No score and no knee
+// angle: the proxy is shown only on the chart, under its honest label.
 
 import Link from "next/link";
 
@@ -16,12 +17,14 @@ import {
   type CheckInAnswers,
   clockDuration,
   type DeviceIdentity,
+  deviceCountNote,
   formatDecimal,
   hexCode,
   type HeelSlideView,
   type RateReadout,
   type ReviewSessionItem,
   type SessionStatus,
+  type StartRecount,
 } from "@/lib/clinic/heelSlideView";
 import { cn } from "@/lib/utils";
 import { getTranslation } from "@/locales/server";
@@ -125,18 +128,42 @@ function Reps({ view, t }: { view: HeelSlideView; t: T }) {
         ? String(counted)
         : t("clinician.heelSlide.reps.ofTarget", { n: counted, target: targetReps });
 
-  let deviceNote: string;
-  if (deviceCount === null) deviceNote = t("clinician.heelSlide.reps.deviceMissing");
-  else if (counted !== null && deviceCount === counted) deviceNote = t("clinician.heelSlide.reps.deviceSame");
-  else deviceNote = t("clinician.heelSlide.reps.deviceDiffers", { n: deviceCount });
+  const note = deviceCountNote(view);
+  const deviceNote =
+    note === "missing"
+      ? t("clinician.heelSlide.reps.deviceMissing")
+      : note === "last_start_only"
+        ? t("clinician.heelSlide.reps.deviceLastStartOnly", { n: deviceCount ?? 0 })
+        : note === "same"
+          ? t("clinician.heelSlide.reps.deviceSame")
+          : t("clinician.heelSlide.reps.deviceDiffers", { n: deviceCount ?? 0 });
 
   const windowEmpty = recount.baseline.source === "window" && !recount.baseline.zeroFound;
+  const sessionStartMs = view.session.startedAt ? Date.parse(view.session.startedAt) : NaN;
+  const startLine = (start: StartRecount) => {
+    const vars = { i: start.number, time: sinceSessionStart(start.windowStartMs, sessionStartMs, t) };
+    if (!start.zeroFound) return t("clinician.heelSlide.reps.perStartNoZero", vars);
+    if (start.count === null) return t("clinician.heelSlide.reps.perStartTooFew", { ...vars, pairs: start.pairs });
+    return t("clinician.heelSlide.reps.perStart", { ...vars, n: start.count });
+  };
 
   return (
     <div>
       <h3 className={cardTitle}>{t("clinician.heelSlide.reps.title")}</h3>
       <p className={cn(bodyText, "mt-1")}>{t("clinician.heelSlide.reps.basis")}</p>
       <p className={cn(metricValue, "mt-3")}>{value}</p>
+      {recount.starts.length > 1 && (
+        <div className="mt-3">
+          <p className="text-base font-medium leading-relaxed text-ink">{t("clinician.heelSlide.reps.perStartTitle")}</p>
+          <ol className="mt-1 space-y-1 text-base leading-relaxed text-ink">
+            {recount.starts.map((start) => (
+              <li key={start.number} className="tnum">
+                {startLine(start)}
+              </li>
+            ))}
+          </ol>
+        </div>
+      )}
       <ul className="mt-3 space-y-1 text-base leading-relaxed text-ink-soft">
         {windowEmpty && <li>{t("clinician.heelSlide.reps.windowEmpty")}</li>}
         {counted === null && !windowEmpty && (
@@ -152,7 +179,7 @@ function Reps({ view, t }: { view: HeelSlideView; t: T }) {
           </li>
         )}
         {recount.baseline.pairsBeforeWindow > 0 && (
-          <li>{t("clinician.heelSlide.reps.sinceLastStart", { n: recount.baseline.pairsBeforeWindow })}</li>
+          <li>{t("clinician.heelSlide.reps.beforeFirstStart", { n: recount.baseline.pairsBeforeWindow })}</li>
         )}
         {recount.baseline.source === "first_samples" && counted !== null && (
           <li>{t("clinician.heelSlide.reps.zeroFromFirstFrames")}</li>
@@ -184,13 +211,9 @@ function Technical({ view, t }: { view: HeelSlideView; t: T }) {
       .join(" · ");
 
   const sessionStartMs = view.session.startedAt ? Date.parse(view.session.startedAt) : NaN;
-  const checkTime = (atMs: number | null) => {
-    if (atMs === null || !Number.isFinite(sessionStartMs)) return unknown;
-    return atMs < sessionStartMs
-      ? t("clinician.heelSlide.tech.checkBeforeStart", { time: clockDuration(sessionStartMs - atMs) })
-      : t("clinician.heelSlide.tech.checkAfterStart", { time: clockDuration(atMs - sessionStartMs) });
-  };
+  const checkTime = (atMs: number | null) => sinceSessionStart(atMs, sessionStartMs, t);
   const { thresholds } = view.recount;
+  const skew = view.interSensorSkew.thighShank;
   const th = cn(tileLabel, "py-2 pr-4");
 
   return (
@@ -295,11 +318,27 @@ function Technical({ view, t }: { view: HeelSlideView; t: T }) {
         <li>{t("clinician.heelSlide.tech.reconnectsBasis")}</li>
       </ul>
 
-      <dl className="mt-6 grid gap-x-8 gap-y-3 sm:grid-cols-2">
+      <h4 className="mt-6 text-lg font-semibold text-ink">{t("clinician.heelSlide.tech.skewTitle")}</h4>
+      <dl className="mt-2 grid gap-x-8 gap-y-3 sm:grid-cols-2 xl:grid-cols-4">
+        <Fact label={t("clinician.heelSlide.tech.skewMedian")} value={ms(skew ? skew.medianMs : null)} />
+        <Fact label={t("clinician.heelSlide.tech.skewP95")} value={ms(skew ? skew.p95Ms : null)} />
+        <Fact label={t("clinician.heelSlide.tech.skewMax")} value={ms(skew ? skew.maxMs : null)} />
+        <Fact label={t("clinician.heelSlide.tech.skewFrames")} value={whole(skew ? skew.frames : null)} />
+      </dl>
+      <p className="mt-3 text-sm leading-relaxed text-ink-soft">{t("clinician.heelSlide.tech.skewBasis")}</p>
+
+      <h4 className="mt-6 text-lg font-semibold text-ink">{t("clinician.heelSlide.tech.pairingTitle")}</h4>
+      <dl className="mt-2 grid gap-x-8 gap-y-3 sm:grid-cols-2 xl:grid-cols-4">
         <Fact label={t("clinician.heelSlide.tech.pairs")} value={whole(view.pairing.pairs)} />
         <Fact label={t("clinician.heelSlide.tech.unpairedShank")} value={whole(view.pairing.unpairedShank)} />
         <Fact label={t("clinician.heelSlide.tech.medianSkew")} value={ms(view.pairing.medianSkewMs)} />
         <Fact label={t("clinician.heelSlide.tech.maxSkew")} value={ms(view.pairing.maxSkewMs)} />
+      </dl>
+      <p className="mt-3 text-sm leading-relaxed text-ink-soft">
+        {t("clinician.heelSlide.tech.pairingBasis", { ms: formatDecimal(view.pairingToleranceMs, locale, 0) })}
+      </p>
+
+      <dl className="mt-6 grid gap-x-8 gap-y-3 sm:grid-cols-2">
         <Fact label={t("clinician.heelSlide.tech.framesConfirmed")} value={whole(view.telemetry.framesConfirmed)} />
         <Fact label={t("clinician.heelSlide.tech.pendingAtFinish")} value={whole(view.telemetry.pendingAtFinish)} />
         <Fact label={t("clinician.heelSlide.tech.sendErrors")} value={whole(view.telemetry.errors)} />
@@ -437,6 +476,14 @@ function Fact({ label, value }: { label: string; value: React.ReactNode }) {
       <dd className="tnum mt-0.5 text-base text-ink">{value}</dd>
     </div>
   );
+}
+
+/** A device-clock time against the session's start, e.g. «через 1:05 после начала». */
+function sinceSessionStart(atMs: number | null, sessionStartMs: number, t: T): string {
+  if (atMs === null || !Number.isFinite(sessionStartMs)) return t("clinician.heelSlide.unknown");
+  return atMs < sessionStartMs
+    ? t("clinician.heelSlide.tech.checkBeforeStart", { time: clockDuration(sessionStartMs - atMs) })
+    : t("clinician.heelSlide.tech.checkAfterStart", { time: clockDuration(atMs - sessionStartMs) });
 }
 
 function statusLabel(status: SessionStatus | null, t: T): string {

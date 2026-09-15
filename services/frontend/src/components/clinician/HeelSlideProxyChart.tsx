@@ -1,9 +1,11 @@
-// The stored Heel Slide proxy over time, as a plain server-rendered SVG: hairline axes, one line, and the reps the
-// recount accepted shaded behind it. The value is the change in a relative orientation difference between two
-// uncalibrated sensors from the resting pose the count was zeroed on, bend direction positive, so the y axis says
-// exactly that and the caption says what it is not. Pairs from before the zero (an abandoned start, or reps done
-// before a reload) are drawn as a grey dashed line on the same zero and are not recounted. The figure is already
-// capped at MAX_CHART_POINTS by the view; this component only maps it to pixels.
+// The stored Heel Slide proxy over time, as a plain server-rendered SVG: hairline axes, the recounted lines, and the
+// reps the recount accepted shaded behind them. The value is the change in a relative orientation difference between
+// two uncalibrated sensors from the resting pose the count was zeroed on, bend direction positive, so the y axis says
+// exactly that and the caption says what it is not. Every stored pair is drawn. Pairs the recount did not count are a
+// grey dashed line: those before the first press of «Начать» (on that start's zero), and those of a start whose zero
+// window holds no stored frame (on their own first half second, since there is no zero to use). With more than one
+// start, a vertical dashed line marks where each start's zero was taken. The figure is already capped at
+// MAX_CHART_POINTS by the view; this component only maps it to pixels.
 
 import { formatDecimal, niceTicks, type HeelSlideView } from "@/lib/clinic/heelSlideView";
 import { getTranslation } from "@/locales/server";
@@ -14,11 +16,15 @@ const MARGIN = { top: 14, right: 18, bottom: 46, left: 54 };
 const PLOT_W = WIDTH - MARGIN.left - MARGIN.right;
 const PLOT_H = HEIGHT - MARGIN.top - MARGIN.bottom;
 
+type Line = HeelSlideView["chart"]["counted"][number];
+
 export default function HeelSlideProxyChart({ chart }: { chart: HeelSlideView["chart"] }) {
   const { t, locale } = getTranslation();
-  const { points, beforeStart, segments, startMs, endMs, totalPoints } = chart;
+  const { counted, uncounted, segments, startMarksMs, startMs, endMs, totalPoints } = chart;
+  const lines = [...counted, ...uncounted];
 
-  if (!points.length || startMs === null || endMs === null) {
+  // Only when nothing was paired at all; stored pairs that could not be recounted are still drawn below.
+  if (!lines.length || startMs === null || endMs === null) {
     return <p className="text-base leading-relaxed text-ink-soft">{t("clinician.heelSlide.chart.empty")}</p>;
   }
 
@@ -28,9 +34,11 @@ export default function HeelSlideProxyChart({ chart }: { chart: HeelSlideView["c
 
   let lo = 0;
   let hi = 0;
-  for (const { value } of [...beforeStart, ...points]) {
-    if (value < lo) lo = value;
-    if (value > hi) hi = value;
+  for (const line of lines) {
+    for (const { value } of line) {
+      if (value < lo) lo = value;
+      if (value > hi) hi = value;
+    }
   }
   const yTicks = niceTicks(lo, hi, 5);
   const yMin = yTicks[0];
@@ -38,11 +46,10 @@ export default function HeelSlideProxyChart({ chart }: { chart: HeelSlideView["c
 
   const x = (tMs: number) => MARGIN.left + ((tMs - startMs) / 1000 / xMax) * PLOT_W;
   const y = (value: number) => MARGIN.top + (1 - (value - yMin) / (yMax - yMin)) * PLOT_H;
-  const polyline = (samples: typeof points) =>
-    samples.map((p) => `${x(p.tMs).toFixed(1)},${y(p.value).toFixed(1)}`).join(" ");
-  const line = polyline(points);
-  const drawnPoints = points.length + beforeStart.length;
+  const polyline = (samples: Line) => samples.map((p) => `${x(p.tMs).toFixed(1)},${y(p.value).toFixed(1)}`).join(" ");
+  const drawnPoints = lines.reduce((sum, line) => sum + line.length, 0);
   const bottom = MARGIN.top + PLOT_H;
+  const plotRight = MARGIN.left + PLOT_W;
 
   return (
     <figure className="space-y-3">
@@ -94,7 +101,7 @@ export default function HeelSlideProxyChart({ chart }: { chart: HeelSlideView["c
           {yMin < 0 && yMax > 0 && (
             <line
               x1={MARGIN.left}
-              x2={MARGIN.left + PLOT_W}
+              x2={plotRight}
               y1={y(0)}
               y2={y(0)}
               className="stroke-ink-faint"
@@ -126,18 +133,28 @@ export default function HeelSlideProxyChart({ chart }: { chart: HeelSlideView["c
           ))}
 
           <line x1={MARGIN.left} x2={MARGIN.left} y1={MARGIN.top} y2={bottom} className="stroke-ink-faint" strokeWidth={1} />
-          <line
-            x1={MARGIN.left}
-            x2={MARGIN.left + PLOT_W}
-            y1={bottom}
-            y2={bottom}
-            className="stroke-ink-faint"
-            strokeWidth={1}
-          />
+          <line x1={MARGIN.left} x2={plotRight} y1={bottom} y2={bottom} className="stroke-ink-faint" strokeWidth={1} />
 
-          {beforeStart.length > 0 && (
+          {startMarksMs.map((markMs) => {
+            const markX = Math.min(plotRight, Math.max(MARGIN.left, x(markMs)));
+            return (
+              <line
+                key={`start${markMs}`}
+                x1={markX}
+                x2={markX}
+                y1={MARGIN.top}
+                y2={bottom}
+                className="stroke-ink-soft"
+                strokeWidth={1}
+                strokeDasharray="2 3"
+              />
+            );
+          })}
+
+          {uncounted.map((line) => (
             <polyline
-              points={polyline(beforeStart)}
+              key={`uncounted${line[0].tMs}`}
+              points={polyline(line)}
               fill="none"
               className="stroke-ink-faint"
               strokeWidth={1.5}
@@ -145,32 +162,49 @@ export default function HeelSlideProxyChart({ chart }: { chart: HeelSlideView["c
               strokeLinejoin="round"
               strokeLinecap="round"
             />
-          )}
-          <polyline
-            points={line}
-            fill="none"
-            className="stroke-signal-deep"
-            strokeWidth={1.5}
-            strokeLinejoin="round"
-            strokeLinecap="round"
-          />
+          ))}
+          {counted.map((line) => (
+            <polyline
+              key={`counted${line[0].tMs}`}
+              points={polyline(line)}
+              fill="none"
+              className="stroke-signal-deep"
+              strokeWidth={1.5}
+              strokeLinejoin="round"
+              strokeLinecap="round"
+            />
+          ))}
 
-          <text x={MARGIN.left + PLOT_W} y={HEIGHT - 4} textAnchor="end" fontSize={13} className="fill-ink-soft">
+          <text x={plotRight} y={HEIGHT - 4} textAnchor="end" fontSize={13} className="fill-ink-soft">
             {t("clinician.heelSlide.chart.xAxis")}
           </text>
         </svg>
       </div>
       <figcaption className="space-y-2">
-        <p className="flex items-center gap-2 text-sm text-ink-soft">
-          <span aria-hidden="true" className="inline-block h-3.5 w-5 rounded-sm border border-signal/40 bg-signal/15" />
-          {t("clinician.heelSlide.chart.legendReps")}
-        </p>
-        {beforeStart.length > 0 && (
+        {counted.length > 0 && (
+          <p className="flex items-center gap-2 text-sm text-ink-soft">
+            <span aria-hidden="true" className="inline-block h-3.5 w-5 shrink-0 rounded-sm border border-signal/40 bg-signal/15" />
+            {t("clinician.heelSlide.chart.legendReps")}
+          </p>
+        )}
+        {chart.beforeStart && (
+          <p className="flex items-center gap-2 text-sm text-ink-soft">
+            <DashSwatch />
+            {t("clinician.heelSlide.chart.legendBeforeStart")}
+          </p>
+        )}
+        {chart.ownZero && (
+          <p className="flex items-center gap-2 text-sm text-ink-soft">
+            <DashSwatch />
+            {t("clinician.heelSlide.chart.legendNoZero")}
+          </p>
+        )}
+        {startMarksMs.length > 0 && (
           <p className="flex items-center gap-2 text-sm text-ink-soft">
             <svg aria-hidden="true" width="20" height="14" className="shrink-0">
-              <line x1="0" x2="20" y1="7" y2="7" className="stroke-ink-faint" strokeWidth={1.5} strokeDasharray="4 3" />
+              <line x1="10" x2="10" y1="0" y2="14" className="stroke-ink-soft" strokeWidth={1} strokeDasharray="2 3" />
             </svg>
-            {t("clinician.heelSlide.chart.legendBeforeStart")}
+            {t("clinician.heelSlide.chart.legendStarts")}
           </p>
         )}
         <p className="text-base font-medium leading-relaxed text-ink">{t("clinician.heelSlide.chart.caption")}</p>
@@ -181,5 +215,13 @@ export default function HeelSlideProxyChart({ chart }: { chart: HeelSlideView["c
         )}
       </figcaption>
     </figure>
+  );
+}
+
+function DashSwatch() {
+  return (
+    <svg aria-hidden="true" width="20" height="14" className="shrink-0">
+      <line x1="0" x2="20" y1="7" y2="7" className="stroke-ink-faint" strokeWidth={1.5} strokeDasharray="4 3" />
+    </svg>
   );
 }

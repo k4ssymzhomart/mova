@@ -247,7 +247,9 @@ test("empty stored series produce no samples and unknown skew", () => {
   assert.equal(series.pairing.medianSkewMs, null);
   assert.equal(series.pairing.maxSkewMs, null);
   assert.equal(series.baselineSource, "first_samples");
+  assert.deepEqual(series.starts, []);
   assert.deepEqual(series.beforeBaselineWindow, []);
+  assert.equal(series.beforeBaselineOwnZero, false);
 });
 
 /** Stored thigh and shank read at the same instants, so the stored pairs are exactly the given samples. */
@@ -288,7 +290,14 @@ test("a stored recount given the live baseline window zeroes and orients exactly
   // The abandoned start is kept apart, on the same zero, for drawing.
   assert.equal(series.beforeBaselineWindow.length, 20);
   for (const sample of series.beforeBaselineWindow) close(sample.value, -8);
+  assert.equal(series.beforeBaselineOwnZero, false);
   assert.equal(series.pairing.pairs, 170);
+  // One start, the same one as the top level; a list of one window gives the same series.
+  assert.equal(series.starts.length, 1);
+  assert.equal(series.starts[0].pairs, 150);
+  assert.deepEqual(series.starts[0].samples, series.samples);
+  assert.deepEqual(series.starts[0].uncounted, []);
+  assert.deepEqual(buildStoredProxySeries(simultaneous(relative), { baselineWindows: [orienter.baselineWindow] }), series);
 
   // Without the window the zero would be the abandoned start's.
   assert.equal(buildStoredProxySeries(simultaneous(relative)).baselineDeg, 0);
@@ -301,14 +310,22 @@ test("a baseline window with no stored pairs inside gives no zero rather than on
   assert.equal(missing.baselineDeg, null);
   assert.equal(missing.baselineSampleCount, 0);
   assert.deepEqual(missing.samples, []);
-  assert.deepEqual(missing.beforeBaselineWindow, []);
   assert.equal(missing.pairing.pairs, 40);
+  assert.deepEqual(
+    missing.starts.map((start) => [start.pairs, start.samples.length, start.uncounted.length]),
+    [[0, 0, 0]],
+  );
+  // Nothing to zero on, but the stored pairs are still there to draw, on their own first 500 ms.
+  assert.equal(missing.beforeBaselineWindow.length, 40);
+  assert.equal(missing.beforeBaselineOwnZero, true);
+  for (const sample of missing.beforeBaselineWindow) assert.equal(sample.value, 0);
 
   // A window that opens before the first stored pair uses the pairs it does cover.
   const early = buildStoredProxySeries(simultaneous(relative), { baselineWindow: { startMs: -1000, endMs: 100 } });
   assert.equal(early.baselineSampleCount, 5);
   assert.equal(early.samples.length, 40);
   assert.deepEqual(early.beforeBaselineWindow, []);
+  assert.equal(early.beforeBaselineOwnZero, false);
 });
 
 test("an unusable baseline window falls back to the first 500 ms of pairs", () => {
@@ -327,6 +344,76 @@ test("an unusable baseline window falls back to the first 500 ms of pairs", () =
     const series = buildStoredProxySeries(simultaneous(relative), { baselineWindow });
     assert.equal(series.baselineSource, "first_samples");
     assert.deepEqual(series.samples, fallback.samples);
+    assert.deepEqual(series.starts, []);
     assert.deepEqual(series.beforeBaselineWindow, []);
   }
+  // A list with nothing usable falls back to the single window, and then to the first 500 ms.
+  const listed = buildStoredProxySeries(simultaneous(relative), { baselineWindows: unusable, baselineWindow: null });
+  assert.equal(listed.baselineSource, "first_samples");
+  assert.deepEqual(listed.samples, fallback.samples);
+  const single = buildStoredProxySeries(simultaneous(relative), {
+    baselineWindows: [],
+    baselineWindow: { startMs: 600, endMs: 1100 },
+  });
+  assert.equal(single.baselineSource, "window");
+  assert.equal(single.baselineDeg, 40);
+});
+
+test("each start is zeroed on its own window and oriented over its own pairs; the latest is the top level", () => {
+  // Start 1 rests at 0 and bends the raw difference up by 40. Start 2, after a reload, rests at 8 and bends it down
+  // by 50 (the strap settled differently).
+  const relative: Array<[number, number]> = [];
+  for (let i = 0; i < 100; i += 1) {
+    const bend = i >= 30 && i < 70 ? 40 * Math.sin((Math.PI * (i - 30)) / 40) : 0;
+    relative.push([i * 20, bend]);
+  }
+  for (let i = 0; i < 100; i += 1) {
+    const bend = i >= 30 && i < 70 ? 50 * Math.sin((Math.PI * (i - 30)) / 40) : 0;
+    relative.push([5000 + i * 20, 8 - bend]);
+  }
+  // Out of order on purpose: the windows are sorted, and a repeated start time is one start.
+  const windows = [
+    { startMs: 5000, endMs: 5500 },
+    { startMs: 0, endMs: 500 },
+    { startMs: 5000, endMs: 5500 },
+  ];
+  const series = buildStoredProxySeries(simultaneous(relative), { baselineWindows: windows });
+  assert.equal(series.baselineSource, "window");
+  assert.deepEqual(
+    series.starts.map((start) => [start.window.startMs, start.pairs, start.baselineDeg, start.orientation]),
+    [
+      [0, 100, 0, 1],
+      [5000, 100, 8, -1],
+    ],
+  );
+  close(Math.max(...series.starts[0].samples.map((sample) => sample.value)), 40, 0.1);
+  close(Math.max(...series.starts[1].samples.map((sample) => sample.value)), 50, 0.1);
+  assert.deepEqual(series.beforeBaselineWindow, []);
+  assert.deepEqual(series.samples, series.starts[1].samples);
+  assert.equal(series.baselineDeg, 8);
+  assert.equal(series.orientation, -1);
+});
+
+test("a start whose window holds no stored pair is kept for drawing on its own zero, never counted", () => {
+  // Two starts; the second one's zero window (3000-3500 ms) was dropped before it was stored.
+  const relative: Array<[number, number]> = [];
+  for (let tMs = 0; tMs < 2000; tMs += 20) relative.push([tMs, 0]);
+  for (let tMs = 3500; tMs < 5000; tMs += 20) relative.push([tMs, 12]);
+  const series = buildStoredProxySeries(simultaneous(relative), {
+    baselineWindows: [
+      { startMs: 0, endMs: 500 },
+      { startMs: 3000, endMs: 3500 },
+    ],
+  });
+  const [first, second] = series.starts;
+  assert.equal(first.pairs, 100);
+  assert.equal(first.samples.length, 100);
+  assert.deepEqual(first.uncounted, []);
+  assert.equal(second.pairs, 75);
+  assert.equal(second.baselineDeg, null);
+  assert.deepEqual(second.samples, []);
+  assert.equal(second.uncounted.length, 75);
+  for (const sample of second.uncounted) assert.equal(sample.value, 0);
+  // The top level is the latest start, which has nothing to count.
+  assert.deepEqual(series.samples, []);
 });

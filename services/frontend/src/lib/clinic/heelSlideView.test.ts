@@ -1,19 +1,22 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { buildStoredProxySeries } from "../motion/flexion.ts";
+import { buildStoredProxySeries, DEFAULT_MAX_PAIR_SKEW_MS } from "../motion/flexion.ts";
 import { countOrientedRepetitions, heelSlideThresholds, MAX_REP_GAP_MS } from "../motion/reps.ts";
 import {
   buildHeelSlideView,
   clockDuration,
   deliveredHz,
+  deviceCountNote,
   downsampleMinMax,
   formatDecimal,
   hexCode,
   isUuid,
   type MotionDeps,
+  nearestOffsetStats,
   niceTicks,
   parseBaselineWindow,
+  parseBaselineWindows,
   parseBattery,
   parseCheckIn,
   parseRateHistory,
@@ -29,6 +32,7 @@ const MOTION: MotionDeps = {
   countOrientedRepetitions,
   heelSlideThresholds,
   maxRepGapMs: MAX_REP_GAP_MS,
+  maxPairSkewMs: DEFAULT_MAX_PAIR_SKEW_MS,
 };
 
 const PATIENT = "11111111-1111-4111-8111-111111111111";
@@ -273,10 +277,27 @@ test("battery readings are read as stored; a failed or implausible read stays un
   assert.equal(parseBattery(null), null);
 });
 
-test("the saved zero window is read only when both bounds are numbers", () => {
+test("the saved zero windows are read only when both bounds are numbers", () => {
   assert.deepEqual(parseBaselineWindow({ start: 10, end: 510 }), { startMs: 10, endMs: 510 });
   assert.equal(parseBaselineWindow({ start: "10", end: 510 }), null);
   assert.equal(parseBaselineWindow(undefined), null);
+  assert.deepEqual(parseBaselineWindows([{ start: 10, end: 510 }, { start: "x", end: 1 }, null, { start: 900, end: 1400 }]), [
+    { startMs: 10, endMs: 510 },
+    { startMs: 900, endMs: 1400 },
+  ]);
+  assert.deepEqual(parseBaselineWindows([]), []);
+  assert.equal(parseBaselineWindows(undefined), null);
+  assert.equal(parseBaselineWindows({ start: 10, end: 510 }), null);
+});
+
+test("skew between sensors measures every shank frame against its nearest thigh frame, with no cap", () => {
+  const thigh = [0, 20, 40, 60, 1_000].map((tMs) => [tMs, 0] as const);
+  const shank = [6, 26, 46, 400, 1_003].map((tMs) => [tMs, null] as const);
+  // 6, 6, 6, 340 (400 is 340 from 60 and 600 from 1000), 3: the 340 is exactly what pairing would leave out.
+  assert.deepEqual(nearestOffsetStats(thigh, shank), { frames: 5, medianMs: 6, p95Ms: 340, maxMs: 340 });
+  assert.deepEqual(nearestOffsetStats(thigh, [[10, 1], [50, 1]]), { frames: 2, medianMs: 10, p95Ms: 10, maxMs: 10 });
+  assert.equal(nearestOffsetStats([], shank), null);
+  assert.equal(nearestOffsetStats(thigh, []), null);
 });
 
 test("numbers, codes and durations format for display", () => {
@@ -313,8 +334,10 @@ test("the view recounts reps from stored frames across the seam, apart from the 
   assert.equal(view.recount.cancelled, 0);
   assert.equal(view.recount.maxGapMs, MAX_REP_GAP_MS);
   assert.deepEqual(view.recount.baseline, { source: "first_samples", zeroFound: true, pairsBeforeWindow: 0 });
+  assert.deepEqual(view.recount.starts, []);
   assert.deepEqual(view.recount.thresholds, { enterDeg: 22.5, exitDeg: 7, minRepMs: 250 });
   assert.equal(view.deviceCount, 9);
+  assert.equal(deviceCountNote(view), "differs");
   assert.equal(view.targetReps, 10);
   assert.equal(view.chart.segments.length, 10);
   for (const segment of view.chart.segments) assert.ok(segment.endMs > segment.startMs);
@@ -330,11 +353,15 @@ test("the chart is capped, and its peaks survive the cap", () => {
   const view = buildHeelSlideView(resultPayload(), MOTION);
   assert.ok(view);
   assert.ok(view.chart.totalPoints > 1500, `series has ${view.chart.totalPoints} samples`);
-  assert.ok(view.chart.points.length <= 1500);
-  assert.deepEqual(view.chart.beforeStart, []);
-  const drawnPeak = Math.max(...view.chart.points.map((p) => p.value));
+  assert.equal(view.chart.counted.length, 1);
+  assert.ok(view.chart.counted[0].length <= 1500);
+  assert.deepEqual(view.chart.uncounted, []);
+  assert.equal(view.chart.beforeStart, false);
+  assert.equal(view.chart.ownZero, false);
+  assert.deepEqual(view.chart.startMarksMs, []);
+  const drawnPeak = Math.max(...view.chart.counted[0].map((p) => p.value));
   assert.ok(drawnPeak > 59 && drawnPeak <= 60.5, `peak ${drawnPeak}`);
-  assert.equal(view.chart.startMs, view.chart.points[0].tMs);
+  assert.equal(view.chart.startMs, view.chart.counted[0][0].tMs);
 });
 
 test("without a finish record, the technical block reports stored counts and the start record, marked as such", () => {
@@ -363,6 +390,8 @@ test("without a finish record, the technical block reports stored counts and the
   assert.equal(view.pairing.medianSkewMs, 6);
   assert.equal(view.pairing.maxSkewMs, 6);
   assert.equal(view.pairing.unpairedShank, 0);
+  assert.equal(view.pairingToleranceMs, 100);
+  assert.deepEqual(view.interSensorSkew.thighShank, { frames: payload.frames.shank.length, medianMs: 6, p95Ms: 6, maxMs: 6 });
   assert.deepEqual(view.checkIn?.symptoms, ["redness", "other"]);
   assert.equal(view.checkIn?.otherNote, "stiff in the morning");
   assert.equal(view.checkIn?.kneeFeels, "same");
@@ -486,15 +515,22 @@ test("the recount zeroes on the saved window, so an abandoned start before it is
     zeroFound: true,
     pairsBeforeWindow: abandoned.shank.length,
   });
+  assert.deepEqual(withWindow.recount.starts, [
+    { number: 1, windowStartMs: T0 + 5_000, zeroFound: true, count: 10, pairs: started.shank.length },
+  ]);
   assert.equal(withWindow.restartedAfterReload, true);
+  assert.equal(deviceCountNote(withWindow), "same");
   // Drawn, within the shared cap (the pre-start line gets its share of the points), from the first stored pair.
-  assert.ok(withWindow.chart.beforeStart.length > 0);
-  assert.ok(withWindow.chart.beforeStart.length <= abandoned.shank.length);
-  assert.ok(withWindow.chart.beforeStart.every((sample) => sample.tMs < window.start));
+  assert.equal(withWindow.chart.beforeStart, true);
+  assert.equal(withWindow.chart.ownZero, false);
+  assert.equal(withWindow.chart.uncounted.length, 1);
+  const beforeLine = withWindow.chart.uncounted[0];
+  assert.ok(beforeLine.length > 0 && beforeLine.length <= abandoned.shank.length);
+  assert.ok(beforeLine.every((sample) => sample.tMs < window.start));
   assert.equal(withWindow.chart.startMs, T0 + 6);
   assert.equal(withWindow.chart.totalPoints, withWindow.pairing.pairs);
   // The abandoned pose reads about 12 degrees below the zero it is drawn on.
-  const abandonedLevel = withWindow.chart.beforeStart[0].value;
+  const abandonedLevel = beforeLine[0].value;
   assert.ok(Math.abs(Math.abs(abandonedLevel) - 12) < 1.5, `abandoned start drawn at ${abandonedLevel}`);
 
   // Without the window the zero is the abandoned pose, and the shifted rest never falls back below the exit.
@@ -512,9 +548,57 @@ test("a saved window with no stored pair inside it gives no zero and no count, r
   assert.ok(view);
   assert.equal(view.recount.count, null);
   assert.equal(view.recount.reason, "insufficient_samples");
-  assert.deepEqual(view.recount.baseline, { source: "window", zeroFound: false, pairsBeforeWindow: 0 });
-  assert.equal(view.chart.points.length, 0);
   assert.ok(view.pairing.pairs > 0);
+  assert.deepEqual(view.recount.baseline, { source: "window", zeroFound: false, pairsBeforeWindow: view.pairing.pairs });
+  // Every stored pair is still drawn, grey, on its own first half second.
+  assert.deepEqual(view.chart.counted, []);
+  assert.equal(view.chart.uncounted.length, 1);
+  assert.equal(view.chart.totalPoints, view.pairing.pairs);
+  assert.equal(view.chart.beforeStart, true);
+  assert.equal(view.chart.ownZero, true);
+});
+
+test("when the zero window's frames were lost but later frames landed, the stored series is drawn, not hidden", () => {
+  // The device dropped the oldest rows, the zero window among them; everything after it was stored.
+  const zeroWindow = { start: T0 - 10_000, end: T0 - 9_500 };
+  const view = buildHeelSlideView(resultPayload({}, { baseline_window_ms: zeroWindow }), MOTION);
+  assert.ok(view);
+  assert.equal(view.recount.count, null);
+  assert.deepEqual(view.recount.baseline, { source: "window", zeroFound: false, pairsBeforeWindow: 0 });
+  assert.deepEqual(view.recount.starts, [
+    { number: 1, windowStartMs: T0 - 10_000, zeroFound: false, count: null, pairs: view.pairing.pairs },
+  ]);
+  assert.deepEqual(view.chart.counted, []);
+  assert.equal(view.chart.uncounted.length, 1);
+  assert.ok(view.chart.uncounted[0].length > 2);
+  assert.equal(view.chart.totalPoints, view.pairing.pairs);
+  assert.equal(view.chart.beforeStart, false);
+  assert.equal(view.chart.ownZero, true);
+  assert.equal(view.chart.startMs, T0 + 6);
+  const drawnPeak = Math.max(...view.chart.uncounted[0].map((p) => p.value));
+  assert.ok(drawnPeak > 55, `peak ${drawnPeak}`);
+
+  // A later start with its own lost window does not take the earlier start's count away.
+  const twoStarts = buildHeelSlideView(
+    resultPayload({}, {
+      reps_counted_on_device: 0,
+      baseline_windows_ms: [
+        { start: T0, end: T0 + 500 },
+        { start: T0 + 3_600_000, end: T0 + 3_600_500 },
+      ],
+    }),
+    MOTION,
+  );
+  assert.ok(twoStarts);
+  assert.equal(twoStarts.recount.count, 10);
+  assert.deepEqual(
+    twoStarts.recount.starts.map((start) => [start.zeroFound, start.count, start.pairs]),
+    [
+      [true, 10, twoStarts.pairing.pairs],
+      [false, null, 0],
+    ],
+  );
+  assert.equal(deviceCountNote(twoStarts), "last_start_only");
 });
 
 test("a rep open when the data paused for more than the gap is not recounted", () => {
@@ -527,25 +611,100 @@ test("a rep open when the data paused for more than the gap is not recounted", (
   assert.ok(view);
   assert.equal(view.recount.count, 9);
   assert.equal(view.recount.cancelled, 1);
+  // The pause is a gap in both sensors, so pairing never sees it; the skew between sensors stays small too.
+  assert.ok((view.pairing.maxSkewMs ?? Infinity) <= 100);
   for (const segment of view.chart.segments) {
     assert.ok(segment.endMs <= T0 + 12_500 || segment.startMs >= T0 + 14_700, "no counted rep spans the pause");
   }
 });
 
-test("both chart lines together stay within the cap", () => {
+test("every saved start is recounted on its own zero and the counts are added: 2 before a reload and 10 after is 12", () => {
+  // Two slides, a reload, the strap settled 12 degrees differently, then ten slides. Each start saved its window.
+  const before = storedSession({ reps: 2 });
+  const after = storedSession({ t0: T0 + 60_000, offsetDeg: 12 });
+  const frames = { thigh: [...before.thigh, ...after.thigh], shank: [...before.shank, ...after.shank], foot_count: 0 };
+  const windows = [
+    { start: T0, end: T0 + 500 },
+    { start: T0 + 60_000, end: T0 + 60_500 },
+  ];
+  const summary = { reps_counted_on_device: 10, baseline_window_ms: windows[1], restarted_after_reload: true };
+
+  const view = buildHeelSlideView(resultPayload({ frames }, { ...summary, baseline_windows_ms: windows }), MOTION);
+  assert.ok(view);
+  assert.equal(view.recount.count, 12);
+  assert.equal(view.recount.reason, null);
+  assert.deepEqual(view.recount.starts, [
+    { number: 1, windowStartMs: T0, zeroFound: true, count: 2, pairs: before.shank.length },
+    { number: 2, windowStartMs: T0 + 60_000, zeroFound: true, count: 10, pairs: after.shank.length },
+  ]);
+  assert.deepEqual(view.recount.baseline, { source: "window", zeroFound: true, pairsBeforeWindow: 0 });
+  assert.equal(view.chart.segments.length, 12);
+  assert.equal(view.chart.counted.length, 2);
+  assert.deepEqual(view.chart.uncounted, []);
+  assert.deepEqual(view.chart.startMarksMs, [T0, T0 + 60_000]);
+  // The device's 10 covers only the last start: never "matches", even though it equals that start's recount.
+  assert.equal(deviceCountNote(view), "last_start_only");
+
+  // A summary from before the list existed has only the latest window: that start is recounted, the rest drawn.
+  const latestOnly = buildHeelSlideView(resultPayload({ frames }, summary), MOTION);
+  assert.ok(latestOnly);
+  assert.equal(latestOnly.recount.count, 10);
+  assert.equal(latestOnly.recount.starts.length, 1);
+  assert.equal(latestOnly.recount.baseline.pairsBeforeWindow, before.shank.length);
+  assert.equal(deviceCountNote(latestOnly), "same");
+});
+
+test("all chart lines together stay within the cap", () => {
   const abandoned = storedSession({ reps: 2 });
   const started = storedSession({ t0: T0 + 60_000 });
   const frames = { thigh: [...abandoned.thigh, ...started.thigh], shank: [...abandoned.shank, ...started.shank], foot_count: 0 };
-  const view = buildHeelSlideView(
+  const drawn = (lines: { length: number }[]) => lines.reduce((sum, line) => sum + line.length, 0);
+
+  const oneStart = buildHeelSlideView(
     resultPayload({ frames }, { baseline_window_ms: { start: T0 + 60_000, end: T0 + 60_500 } }),
     MOTION,
     { maxChartPoints: 300 },
   );
+  assert.ok(oneStart);
+  assert.ok(oneStart.chart.uncounted[0].length >= 2);
+  assert.ok(drawn(oneStart.chart.counted) + drawn(oneStart.chart.uncounted) <= 300);
+  assert.equal(oneStart.chart.totalPoints, abandoned.shank.length + started.shank.length);
+  assert.equal(oneStart.recount.count, 10);
+
+  const threeLines = buildHeelSlideView(
+    resultPayload(
+      { frames },
+      {
+        baseline_windows_ms: [
+          { start: T0 + 1_000, end: T0 + 1_500 },
+          { start: T0 + 60_000, end: T0 + 60_500 },
+        ],
+      },
+    ),
+    MOTION,
+    { maxChartPoints: 300 },
+  );
+  assert.ok(threeLines);
+  assert.equal(threeLines.chart.counted.length, 2);
+  assert.equal(threeLines.chart.uncounted.length, 1);
+  assert.ok(drawn(threeLines.chart.counted) + drawn(threeLines.chart.uncounted) <= 300);
+  assert.ok([...threeLines.chart.counted, ...threeLines.chart.uncounted].every((line) => line.length >= 2));
+});
+
+test("frames that reach one sensor late show in the skew between sensors, not in the pairing skew", () => {
+  // The thigh's frames from 10.0 s to 10.6 s never arrived; the shank kept sending.
+  const payload = resultPayload();
+  const frames = payload.frames;
+  const thigh = frames.thigh.filter(([tMs]) => tMs < T0 + 10_000 || tMs >= T0 + 10_600);
+  const view = buildHeelSlideView(resultPayload({ frames: { ...frames, thigh } }), MOTION);
   assert.ok(view);
-  assert.ok(view.chart.beforeStart.length >= 2);
-  assert.ok(view.chart.points.length + view.chart.beforeStart.length <= 300);
-  assert.equal(view.chart.totalPoints, abandoned.shank.length + started.shank.length);
-  assert.equal(view.recount.count, 10);
+  assert.ok(view.pairing.unpairedShank > 0);
+  assert.ok((view.pairing.maxSkewMs ?? Infinity) <= view.pairingToleranceMs);
+  const skew = view.interSensorSkew.thighShank;
+  assert.ok(skew);
+  assert.ok(skew.maxMs > 250, `largest skew ${skew.maxMs}`);
+  assert.equal(skew.medianMs, 6);
+  assert.equal(skew.frames, frames.shank.length);
 });
 
 test("a session with too few frames is not countable rather than zero", () => {
@@ -553,10 +712,12 @@ test("a session with too few frames is not countable rather than zero", () => {
   assert.ok(view);
   assert.equal(view.recount.count, null);
   assert.equal(view.recount.reason, "insufficient_samples");
-  assert.equal(view.chart.points.length, 0);
+  assert.deepEqual(view.chart.counted, []);
+  assert.deepEqual(view.chart.uncounted, []);
   assert.equal(view.chart.startMs, null);
   assert.equal(view.roles[0].deliveredHz, null);
   assert.equal(view.pairing.medianSkewMs, null);
+  assert.equal(view.interSensorSkew.thighShank, null);
   assert.equal(view.checkIn, null);
 });
 
@@ -567,6 +728,7 @@ test("missing dose and summary stay unknown; the default dose is the fallback ta
   assert.ok(view);
   assert.equal(view.targetReps, 12);
   assert.equal(view.deviceCount, null);
+  assert.equal(deviceCountNote(view), "missing");
   assert.deepEqual(view.telemetry, { framesConfirmed: null, pendingAtFinish: null, errors: null, dropped: null });
   assert.equal(view.session.durationMs, null);
   assert.deepEqual(view.roles.map((r) => r.rate.status), ["unknown", "unknown", "unknown"]);

@@ -5,10 +5,12 @@
 //
 // What the clinician sees is recounted here, never read back from the patient's device: the stored thigh and
 // shank pitch series are paired and oriented by lib/motion's batch rules and counted with the same state machine
-// the exercise screen runs, pause rule included. The zero is taken on the span the device took it on
-// (summary.baseline_window_ms, the latest «Начать»), so frames from an abandoned start or from before a reload are
-// not counted and are only drawn. The device's own count is carried separately so the view can say when the two
-// differ.
+// the exercise screen runs, pause rule included. Every press of «Начать» took its own zero, and a reload started the
+// device's count over, so the recount is split the same way: summary.baseline_windows_ms lists each start's zero
+// window, each start is counted from its window up to the next start on its own zero, and the counts are added.
+// Frames before the first start are drawn and not counted. Older summaries carry only baseline_window_ms, the latest
+// start's window, and are recounted from it alone. The device's own count covers only the latest start, so the view
+// compares it with the recount only when the session had a single start.
 //
 // Sensor facts come from two records the patient's app writes: device_info when the session starts, and
 // summary.sensors when it finishes. The finish record wins, because a sensor can reconnect, be swapped or be
@@ -201,6 +203,54 @@ export function deliveredHz(points: readonly StoredPitchPoint[]): number | null 
   }
   if (n < 2 || !(last > first)) return null;
   return (n - 1) / ((last - first) / 1000);
+}
+
+/** Receive-time offsets between two sensors' stored frames. */
+export interface SkewStats {
+  /** Frames of the measured sensor. */
+  frames: number;
+  medianMs: number;
+  /** Nearest-rank 95th percentile. */
+  p95Ms: number;
+  maxMs: number;
+}
+
+function sortedTimes(points: readonly StoredPitchPoint[]): number[] {
+  const times: number[] = [];
+  for (const [tMs] of points) if (Number.isFinite(tMs)) times.push(tMs);
+  return times.sort((a, b) => a - b);
+}
+
+/**
+ * For every `measured` frame, the time to the `reference` frame received nearest to it, with no cap: how far apart
+ * two sensors' frames arrive. This is not the recount's pairing skew, which leaves out anything past the pairing
+ * tolerance and so can never show a gap. Receive times, so Bluetooth delays and dropouts are included. null when
+ * either side has no frame.
+ */
+export function nearestOffsetStats(
+  reference: readonly StoredPitchPoint[],
+  measured: readonly StoredPitchPoint[],
+): SkewStats | null {
+  const ref = sortedTimes(reference);
+  const times = sortedTimes(measured);
+  if (!ref.length || !times.length) return null;
+  const offsets: number[] = [];
+  let latestNotAfter = 0;
+  for (const tMs of times) {
+    while (latestNotAfter + 1 < ref.length && ref[latestNotAfter + 1] <= tMs) latestNotAfter += 1;
+    let offset = Math.abs(ref[latestNotAfter] - tMs);
+    if (latestNotAfter + 1 < ref.length) offset = Math.min(offset, Math.abs(ref[latestNotAfter + 1] - tMs));
+    offsets.push(offset);
+  }
+  offsets.sort((a, b) => a - b);
+  const n = offsets.length;
+  const middle = Math.floor(n / 2);
+  return {
+    frames: n,
+    medianMs: n % 2 ? offsets[middle] : (offsets[middle - 1] + offsets[middle]) / 2,
+    p95Ms: offsets[Math.ceil(0.95 * n) - 1],
+    maxMs: offsets[n - 1],
+  };
 }
 
 /**
@@ -398,12 +448,18 @@ export function parseCheckIn(raw: unknown): CheckInAnswers | null {
 export interface MotionDeps {
   buildStoredProxySeries(
     series: { thigh: readonly StoredPitchPoint[]; shank: readonly StoredPitchPoint[] },
-    options?: { baselineWindow?: BaselineWindow | null },
+    options?: {
+      maxSkewMs?: number;
+      baselineWindow?: BaselineWindow | null;
+      baselineWindows?: readonly BaselineWindow[] | null;
+    },
   ): StoredProxySeries;
   countOrientedRepetitions(samples: readonly ProxySample[], options?: RepCounterOptions): RepReport;
   heelSlideThresholds(rubric: unknown): RepThresholds;
   /** reps.ts MAX_REP_GAP_MS: a pause in the samples longer than this discards an open rep, live and here. */
   maxRepGapMs: number;
+  /** flexion.ts DEFAULT_MAX_PAIR_SKEW_MS: thigh and shank frames further apart are not paired for the recount. */
+  maxPairSkewMs: number;
 }
 
 export interface RoleTechnical {
@@ -429,6 +485,20 @@ export interface RoleTechnical {
   reconnects: number | null;
 }
 
+/** One press of «Начать» that took a zero, recounted on that zero. */
+export interface StartRecount {
+  /** 1 for the first start, in time order. */
+  number: number;
+  /** Where its zero window begins: epoch ms, the receive-time clock of the patient's device. */
+  windowStartMs: number;
+  /** false when the saved window holds no stored pair, so this start could not be recounted. */
+  zeroFound: boolean;
+  /** null when not recounted: no zero, or too few paired samples to count. */
+  count: number | null;
+  /** Stored pairs from this start's window up to the next start. */
+  pairs: number;
+}
+
 export interface HeelSlideView {
   patientName: string | null;
   session: {
@@ -442,7 +512,7 @@ export interface HeelSlideView {
   /** Prescribed reps, else the exercise's default dose. */
   targetReps: number | null;
   recount: {
-    /** null when there were too few paired samples to count at all. */
+    /** The sum over every start. null when no start had enough paired samples to count at all. */
     count: number | null;
     reason: RepReason | null;
     thresholds: RepThresholds;
@@ -450,31 +520,43 @@ export interface HeelSlideView {
     /** Reps discarded because the data paused while they were open. */
     cancelled: number;
     baseline: {
-      /** "window": zeroed on summary.baseline_window_ms; "first_samples": on the first stored half second. */
+      /** "window": zeroed on the saved start windows; "first_samples": on the first stored half second. */
       source: "window" | "first_samples";
-      /** false when the saved window holds no stored pair, so nothing could be zeroed or counted. */
+      /** false when no saved window holds a stored pair, so nothing could be zeroed or counted. */
       zeroFound: boolean;
-      /** Paired samples before the window: drawn, not counted. */
+      /** Paired samples before the first start's window: drawn, not counted. */
       pairsBeforeWindow: number;
     };
+    /** One per saved start, in time order, with "window". Empty with "first_samples". */
+    starts: StartRecount[];
   };
-  /** summary.reps_counted_on_device, as the patient's screen counted it. */
+  /** summary.reps_counted_on_device, as the patient's screen counted it: the latest start only. */
   deviceCount: number | null;
   /** summary.restarted_after_reload; null when not recorded. */
   restartedAfterReload: boolean | null;
   chart: {
-    /** The recounted samples, capped for drawing. */
-    points: ProxySample[];
-    /** Pairs before the zero window, on the same zero, capped for drawing. Not counted. */
-    beforeStart: ProxySample[];
-    /** Samples behind both lines before capping. */
+    /** The recounted samples, one line per start with a zero (one line for "first_samples"), capped for drawing. */
+    counted: ProxySample[][];
+    /** Stored pairs drawn but not recounted: before the first start, and each start without a zero. Capped. */
+    uncounted: ProxySample[][];
+    /** Some pairs are drawn from before the first start. */
+    beforeStart: boolean;
+    /** Some uncounted line is zeroed on its own first half second, because a start's zero window held no stored pair. */
+    ownZero: boolean;
+    /** Where each start's zero window begins, when the session had more than one start. */
+    startMarksMs: number[];
+    /** Samples behind all lines before capping: every stored pair. */
     totalPoints: number;
     segments: { startMs: number; endMs: number }[];
     startMs: number | null;
     endMs: number | null;
   };
   roles: RoleTechnical[];
+  /** The recount's pairing: its skew figures never exceed `pairingToleranceMs`. */
   pairing: PairingStats;
+  pairingToleranceMs: number;
+  /** Receive-time skew between sensors with no cap. Thigh and shank only: the result carries no foot frame times. */
+  interSensorSkew: { thighShank: SkewStats | null };
   /** summary.telemetry: the device's own counters when the patient finished. */
   telemetry: {
     /** Rows the server reported receiving. Older summaries without this field are unknown, not zero. */
@@ -501,12 +583,52 @@ export function parseBaselineWindow(raw: unknown): BaselineWindow | null {
   return startMs === null || endMs === null ? null : { startMs, endMs };
 }
 
-/** How many of the chart's points go to the pre-window line and to the counted line, within `maxPoints`. */
-function chartBudget(before: number, counted: number, maxPoints: number): [number, number] {
-  if (before === 0 || maxPoints < 4) return [0, maxPoints];
-  if (before + counted <= maxPoints) return [before, counted];
-  const forBefore = Math.min(maxPoints - 2, Math.max(2, Math.round((maxPoints * before) / (before + counted))));
-  return [forBefore, maxPoints - forBefore];
+/**
+ * summary.baseline_windows_ms: one { start, end } per start that took a zero, in order. null when the summary has no
+ * list (sessions saved before it existed); malformed entries are dropped.
+ */
+export function parseBaselineWindows(raw: unknown): BaselineWindow[] | null {
+  if (!Array.isArray(raw)) return null;
+  const windows: BaselineWindow[] = [];
+  for (const entry of raw) {
+    const window = parseBaselineWindow(entry);
+    if (window) windows.push(window);
+  }
+  return windows;
+}
+
+export type DeviceCountNote = "missing" | "last_start_only" | "same" | "differs";
+
+/**
+ * How the patient device's own count relates to the recount. The device count covers only the latest start (a
+ * reload starts it over), so with more than one start it is never compared with the sum.
+ */
+export function deviceCountNote(view: Pick<HeelSlideView, "deviceCount" | "recount">): DeviceCountNote {
+  if (view.deviceCount === null) return "missing";
+  if (view.recount.starts.length > 1) return "last_start_only";
+  return view.recount.count !== null && view.deviceCount === view.recount.count ? "same" : "differs";
+}
+
+/**
+ * How many of the chart's points each line gets, within `maxPoints`: in proportion to its samples, at least two
+ * each. The total stays within the cap while it allows two points per line.
+ */
+function lineBudgets(lengths: readonly number[], maxPoints: number): number[] {
+  const total = lengths.reduce((sum, n) => sum + n, 0);
+  if (total <= maxPoints) return lengths.slice();
+  const budgets = lengths.map((n) => Math.min(n, Math.max(2, Math.floor((maxPoints * n) / total))));
+  let over = budgets.reduce((sum, n) => sum + n, 0) - maxPoints;
+  while (over > 0) {
+    let largest = -1;
+    budgets.forEach((n, i) => {
+      if (n > 2 && (largest < 0 || n > budgets[largest])) largest = i;
+    });
+    if (largest < 0) break;
+    const take = Math.min(over, budgets[largest] - 2);
+    budgets[largest] -= take;
+    over -= take;
+  }
+  return budgets;
 }
 
 function roleTechnical(
@@ -575,23 +697,63 @@ export function buildHeelSlideView(
 
   const thigh = parsePitchSeries(frames.thigh);
   const shank = parsePitchSeries(frames.shank);
-  const baselineWindow = parseBaselineWindow(summary.baseline_window_ms);
-  const series = motion.buildStoredProxySeries({ thigh, shank }, { baselineWindow });
+  const series = motion.buildStoredProxySeries(
+    { thigh, shank },
+    {
+      maxSkewMs: motion.maxPairSkewMs,
+      baselineWindow: parseBaselineWindow(summary.baseline_window_ms),
+      baselineWindows: parseBaselineWindows(summary.baseline_windows_ms),
+    },
+  );
   const thresholds = motion.heelSlideThresholds(exercise?.scoring_rubric);
-  const reps = motion.countOrientedRepetitions(series.samples, { ...thresholds, maxGapMs: motion.maxRepGapMs });
+  const counting = { ...thresholds, maxGapMs: motion.maxRepGapMs };
+
+  // One count per start, each on its own zero; a start without a zero is not counted. "first_samples" is one span.
+  const byWindow = series.baselineSource === "window";
+  const reports: Array<RepReport | null> = byWindow
+    ? series.starts.map((start) =>
+        start.baselineDeg === null ? null : motion.countOrientedRepetitions(start.samples, counting),
+      )
+    : [motion.countOrientedRepetitions(series.samples, counting)];
+  const isCountable = (report: RepReport | null): report is RepReport =>
+    report !== null && report.reason !== "insufficient_samples";
+  const countable = reports.filter(isCountable);
+  const counted = countable.length ? countable.reduce((sum, report) => sum + report.count, 0) : null;
+  const reason: RepReason | null =
+    counted === null
+      ? "insufficient_samples"
+      : countable.every((report) => report.reason === "no_excursion_detected")
+        ? "no_excursion_detected"
+        : null;
+
+  const starts: StartRecount[] = series.starts.map((start, i) => {
+    const report = reports[i];
+    return {
+      number: i + 1,
+      windowStartMs: start.window.startMs,
+      zeroFound: start.baselineDeg !== null,
+      count: isCountable(report) ? report.count : null,
+      pairs: start.pairs,
+    };
+  });
 
   const dose = record(prescription?.dose);
   const defaultDose = record(exercise?.default_dose);
   const startedAt = str(session.started_at);
   const endedAt = str(session.ended_at);
-  const samples = series.samples;
-  const before = series.beforeBaselineWindow;
 
-  const [beforeBudget, countedBudget] = chartBudget(before.length, samples.length, maxChartPoints);
-  const firstMs = [before[0]?.tMs, samples[0]?.tMs].filter((ms): ms is number => ms !== undefined);
-  const lastMs = [before[before.length - 1]?.tMs, samples[samples.length - 1]?.tMs].filter(
-    (ms): ms is number => ms !== undefined,
+  const countedLines = (byWindow ? series.starts.map((start) => start.samples) : [series.samples]).filter(
+    (line) => line.length > 0,
   );
+  const uncountedLines = [series.beforeBaselineWindow, ...series.starts.map((start) => start.uncounted)].filter(
+    (line) => line.length > 0,
+  );
+  const lines = [...countedLines, ...uncountedLines];
+  const budgets = lineBudgets(
+    lines.map((line) => line.length),
+    maxChartPoints,
+  );
+  const drawn = lines.map((line, i) => downsampleMinMax(line, Math.max(2, budgets[i])));
 
   const roles = ROLES.map((role) =>
     roleTechnical(
@@ -615,29 +777,37 @@ export function buildHeelSlideView(
     exerciseName: exercise ? str(exercise.name) : null,
     targetReps: positiveInt(dose.reps) ?? positiveInt(defaultDose.reps),
     recount: {
-      count: reps.reason === "insufficient_samples" ? null : reps.count,
-      reason: reps.reason,
+      count: counted,
+      reason,
       thresholds,
       maxGapMs: motion.maxRepGapMs,
-      cancelled: reps.cancelled,
+      cancelled: reports.reduce((sum, report) => sum + (report ? report.cancelled : 0), 0),
       baseline: {
         source: series.baselineSource,
-        zeroFound: series.baselineDeg !== null,
-        pairsBeforeWindow: before.length,
+        zeroFound: byWindow ? starts.some((start) => start.zeroFound) : series.baselineDeg !== null,
+        pairsBeforeWindow: series.beforeBaselineWindow.length,
       },
+      starts,
     },
     deviceCount: count(summary.reps_counted_on_device),
     restartedAfterReload: typeof summary.restarted_after_reload === "boolean" ? summary.restarted_after_reload : null,
     chart: {
-      points: downsampleMinMax(samples, Math.max(2, countedBudget)),
-      beforeStart: beforeBudget > 0 ? downsampleMinMax(before, beforeBudget) : [],
-      totalPoints: samples.length + (beforeBudget > 0 ? before.length : 0),
-      segments: reps.segments.map(({ startMs, endMs }) => ({ startMs, endMs })),
-      startMs: firstMs.length ? Math.min(...firstMs) : null,
-      endMs: lastMs.length ? Math.max(...lastMs) : null,
+      counted: drawn.slice(0, countedLines.length),
+      uncounted: drawn.slice(countedLines.length),
+      beforeStart: series.beforeBaselineWindow.length > 0,
+      ownZero: series.beforeBaselineOwnZero || series.starts.some((start) => start.uncounted.length > 0),
+      startMarksMs: series.starts.length > 1 ? series.starts.map((start) => start.window.startMs) : [],
+      totalPoints: lines.reduce((sum, line) => sum + line.length, 0),
+      segments: reports.flatMap((report) =>
+        report ? report.segments.map(({ startMs, endMs }) => ({ startMs, endMs })) : [],
+      ),
+      startMs: lines.length ? Math.min(...lines.map((line) => line[0].tMs)) : null,
+      endMs: lines.length ? Math.max(...lines.map((line) => line[line.length - 1].tMs)) : null,
     },
     roles,
     pairing: series.pairing,
+    pairingToleranceMs: motion.maxPairSkewMs,
+    interSensorSkew: { thighShank: nearestOffsetStats(thigh, shank) },
     telemetry: {
       framesConfirmed: count(telemetry.frames_confirmed),
       pendingAtFinish: count(telemetry.pending_at_finish),

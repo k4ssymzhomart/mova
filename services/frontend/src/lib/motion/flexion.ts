@@ -22,11 +22,12 @@ import type { SensorRole } from "@/lib/ble/roles";
  *    the only clamp is legGuide.ts's, and that one is for drawing.
  *
  * Where the zero is taken. The live orienter zeroes on the first PROXY_BASELINE_MS of pairs after each
- * reset and reports that span as `baselineWindow`. The exercise screen resets it on every start, so after
- * a start abandoned because a sensor dropped, or after a reload, the zero is not at the beginning of the
- * stored frames. Given that window, buildStoredProxySeries zeroes the recount on the same span and leaves
- * the pairs before it out of the count; without it, the recount zeroes on the first PROXY_BASELINE_MS of
- * stored pairs, which is only the live zero when the session had a single uninterrupted start.
+ * reset and reports that span as `baselineWindow`. The exercise screen resets it on every start, and a
+ * reload starts a new count, so a session can hold several starts, each on its own zero, and the zero is
+ * not at the beginning of the stored frames. Given the saved windows, buildStoredProxySeries splits the
+ * stored pairs at each start, zeroes each part on its own window and leaves the pairs before the first
+ * start out of the count; without any, the recount zeroes on the first PROXY_BASELINE_MS of stored pairs,
+ * which is only the live zero when the session had a single uninterrupted start.
  *
  * Known limitation: a session that starts bent (pinned by recount.test.ts, so that changing it is a
  * deliberate decision and not a side effect). The zero is whatever pose the leg holds during the baseline
@@ -308,26 +309,56 @@ export interface PairingStats {
   pairs: number;
   /** Shank readings with no thigh reading within the allowed skew; they are left out of the series. */
   unpairedShank: number;
+  /**
+   * Skew over the pairs only, so never more than the pairing tolerance (`maxSkewMs`): a shank reading further from
+   * every thigh reading is unpaired and not in these. This is the recount's tolerance at work, not the skew between
+   * the sensors; that needs every shank reading measured against its nearest thigh reading, without a cap.
+   */
   medianSkewMs: number | null;
   maxSkewMs: number | null;
 }
 
-export interface StoredProxySeries extends OrientedProxySeries {
+/** One start: the stored pairs from its saved zero window up to the next start. */
+export interface StoredStart {
+  /** The saved window this start's zero was taken over. */
+  window: BaselineWindow;
+  /** Stored pairs from this window's start up to the next start's window start, or to the last pair. */
+  pairs: number;
   /**
-   * Covers every pair. With a baseline window, `samples` holds only the pairs from the window's start on,
-   * so `pairing.pairs` can be larger than `samples.length`.
+   * Those pairs zeroed on this start's window and oriented over this start alone, as the live orienter did after
+   * that reset. Empty when no stored pair falls inside the window, since there is no zero to count on. Count these.
    */
+  samples: ProxySample[];
+  baselineDeg: number | null;
+  orientation: 1 | -1;
+  baselineSampleCount: number;
+  /**
+   * Only when the window held no stored pair: the same pairs zeroed on their own first `baselineMs` and oriented by
+   * the larger excursion, so they can still be drawn. Never count these.
+   */
+  uncounted: ProxySample[];
+}
+
+export interface StoredProxySeries extends OrientedProxySeries {
+  /** Covers every stored pair, counted or not. */
   pairing: PairingStats;
   /**
-   * "window": the zero came from the pairs inside the given baseline window (and is null when none fell
-   * inside it). "first_samples": no usable window was given, so the zero is the first `baselineMs` of pairs.
+   * "window": zeroed on the saved windows, one start each (`starts`). "first_samples": no usable window was given, so
+   * there is one span, zeroed on the first `baselineMs` of pairs, and `starts` is empty.
+   *
+   * The top-level samples, zero and orientation are every pair's with "first_samples" and the latest start's with
+   * "window" (the start a device count after a reload covers). A session with several starts is counted per start,
+   * on each `starts[i].samples`, and the counts added.
    */
   baselineSource: "window" | "first_samples";
+  starts: StoredStart[];
   /**
-   * Pairs earlier than the baseline window, on the same zero and orientation, for drawing only: they are
-   * not in `samples` and must not be counted. Empty without a window, or when the window had no zero.
+   * Pairs earlier than the first start's window, for drawing only: they belong to no start and must not be counted.
+   * On the first start's zero and orientation, or, when that window held no stored pair, on their own first
+   * `baselineMs` (then `beforeBaselineOwnZero` is true). Empty without a window.
    */
   beforeBaselineWindow: ProxySample[];
+  beforeBaselineOwnZero: boolean;
 }
 
 function finitePoints(points: readonly StoredPitchPoint[]): Array<[number, number]> {
@@ -343,6 +374,15 @@ function usableWindow(window: BaselineWindow | null | undefined): BaselineWindow
   return window.endMs > window.startMs ? { startMs: window.startMs, endMs: window.endMs } : null;
 }
 
+/** The usable windows in time order, one per start time. */
+function usableWindows(windows: readonly (BaselineWindow | null | undefined)[]): BaselineWindow[] {
+  const usable = windows
+    .map(usableWindow)
+    .filter((window): window is BaselineWindow => window !== null)
+    .sort((a, b) => a.startMs - b.startMs);
+  return usable.filter((window, i) => i === 0 || window.startMs !== usable[i - 1].startMs);
+}
+
 /**
  * Stored per-role pitch series to the oriented proxy, for recounting a finished session.
  *
@@ -353,14 +393,16 @@ function usableWindow(window: BaselineWindow | null | undefined): BaselineWindow
  * rather than identical, and a pause within about `maxSkewMs` of reps.ts MAX_REP_GAP_MS can be judged
  * differently by the two.
  *
- * The zero. With `baselineWindow` (the live orienter's, saved with the session) it is the median of the
- * pairs inside the window. Pairs before the window's start are left out of `samples`, so they are not
- * counted, and come back in `beforeBaselineWindow`. If no pair falls inside the window there is nothing to
- * zero on: `baselineDeg` is null and `samples` is empty, while `pairing.pairs` still says what was stored.
- * Without a usable window (none, a non-finite bound, or an end not after the start) the zero is the first
- * `baselineMs` of pairs, as orientProxySeries takes it. Either way the orientation is orientProxySeries'
- * rule over `samples`. Count reps on `samples` with reps.ts countOrientedRepetitions, not countRepetitions,
- * which would zero it a second time.
+ * The zero. `baselineWindows` are the live orienter's windows, one per start, saved with the session. A single
+ * `baselineWindow` (what older sessions saved: the latest start's) is used only when `baselineWindows` holds no
+ * usable window. The pairs are split where each window starts: a start runs from its window's start up to the next
+ * window's start. Each start is zeroed on the median of its pairs inside its own window and oriented by
+ * orientProxySeries' rule over its own pairs, as the live orienter is after each reset. A start whose window holds no
+ * stored pair has nothing to zero on: its `samples` are empty and `uncounted` carries its pairs for drawing. Pairs
+ * before the first window come back in `beforeBaselineWindow`, not counted. Without a usable window (none, a
+ * non-finite bound, or an end not after the start) the zero is the first `baselineMs` of pairs, as orientProxySeries
+ * takes it. Count reps with reps.ts countOrientedRepetitions, per start, not countRepetitions, which would zero the
+ * samples a second time.
  */
 export function buildStoredProxySeries(
   series: { thigh: readonly StoredPitchPoint[]; shank: readonly StoredPitchPoint[] },
@@ -368,7 +410,13 @@ export function buildStoredProxySeries(
     maxSkewMs = DEFAULT_MAX_PAIR_SKEW_MS,
     baselineMs = PROXY_BASELINE_MS,
     baselineWindow,
-  }: { maxSkewMs?: number; baselineMs?: number; baselineWindow?: BaselineWindow | null } = {},
+    baselineWindows,
+  }: {
+    maxSkewMs?: number;
+    baselineMs?: number;
+    baselineWindow?: BaselineWindow | null;
+    baselineWindows?: readonly (BaselineWindow | null | undefined)[] | null;
+  } = {},
 ): StoredProxySeries {
   const thigh = finitePoints(series.thigh);
   const shank = finitePoints(series.shank);
@@ -408,29 +456,57 @@ export function buildStoredProxySeries(
     maxSkewMs: skews.length ? skews[skews.length - 1] : null,
   };
 
-  const window = usableWindow(baselineWindow);
-  if (window === null) {
+  let windows = usableWindows(baselineWindows ?? []);
+  if (!windows.length) windows = usableWindows([baselineWindow]);
+  if (!windows.length) {
     return {
       ...orientProxySeries(paired, { baselineMs }),
       pairing,
       baselineSource: "first_samples",
+      starts: [],
       beforeBaselineWindow: [],
+      beforeBaselineOwnZero: false,
     };
   }
 
-  let firstFromWindow = 0;
-  while (firstFromWindow < paired.length && paired[firstFromWindow].tMs < window.startMs) firstFromWindow += 1;
-  const fromWindow = paired.slice(firstFromWindow);
-  let windowCount = 0;
-  while (windowCount < fromWindow.length && fromWindow[windowCount].tMs < window.endMs) windowCount += 1;
-  const zeroed = orientOnLeadingWindow(fromWindow, windowCount);
-  const zero = zeroed.baselineDeg;
+  // The index of each start's first pair; the extra last entry closes the latest start.
+  const bounds: number[] = [];
+  let cursor = 0;
+  for (const window of windows) {
+    while (cursor < paired.length && paired[cursor].tMs < window.startMs) cursor += 1;
+    bounds.push(cursor);
+  }
+  bounds.push(paired.length);
+
+  const starts = windows.map((window, i): StoredStart => {
+    const span = paired.slice(bounds[i], bounds[i + 1]);
+    let windowCount = 0;
+    while (windowCount < span.length && span[windowCount].tMs < window.endMs) windowCount += 1;
+    const zeroed = orientOnLeadingWindow(span, windowCount);
+    const uncounted = zeroed.baselineDeg === null ? orientProxySeries(span, { baselineMs }).samples : [];
+    return { window, pairs: span.length, ...zeroed, uncounted };
+  });
+
+  const before = paired.slice(0, bounds[0]);
+  const first = starts[0];
+  const firstZero = first.baselineDeg;
   const beforeBaselineWindow =
-    zero === null
-      ? []
-      : paired.slice(0, firstFromWindow).map((sample) => ({
+    firstZero === null
+      ? orientProxySeries(before, { baselineMs }).samples
+      : before.map((sample) => ({
           tMs: sample.tMs,
-          value: oriented(zeroed.orientation, wrapDeg(sample.value - zero)),
+          value: oriented(first.orientation, wrapDeg(sample.value - firstZero)),
         }));
-  return { ...zeroed, pairing, baselineSource: "window", beforeBaselineWindow };
+  const latest = starts[starts.length - 1];
+  return {
+    samples: latest.samples,
+    baselineDeg: latest.baselineDeg,
+    orientation: latest.orientation,
+    baselineSampleCount: latest.baselineSampleCount,
+    pairing,
+    baselineSource: "window",
+    starts,
+    beforeBaselineWindow,
+    beforeBaselineOwnZero: before.length > 0 && firstZero === null,
+  };
 }

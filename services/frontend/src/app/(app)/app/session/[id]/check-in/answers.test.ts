@@ -8,7 +8,9 @@ import {
   INITIAL_ANSWERS,
   isScaleAnswer,
   missingAnswers,
+  parseStoredCheckIn,
   SCALE_VALUES,
+  storedMatchesSent,
   submitErrorFor,
   toggleSymptom,
 } from "./answers.ts";
@@ -138,4 +140,61 @@ test("RPC error codes map to patient reasons, anything else is a failed send", (
   assert.equal(submitErrorFor("PGRST202"), "failed");
   assert.equal(submitErrorFor(""), "failed");
   assert.equal(submitErrorFor(undefined), "failed");
+});
+
+test("the row the RPC answers with is read as a stored check-in; anything else is not one", () => {
+  const row = {
+    id: "row",
+    session_id: "s",
+    pain_before: 2,
+    pain_after: 5,
+    difficulty: 6,
+    knee_feels: "same",
+    symptoms: ["other", "redness"],
+    other_note: "stiff",
+    language: "ru",
+  };
+  assert.deepEqual(parseStoredCheckIn(row), {
+    painBefore: 2,
+    painAfter: 5,
+    difficulty: 6,
+    kneeFeels: "same",
+    symptoms: ["redness", "other"],
+    otherNote: "stiff",
+  });
+  assert.equal(parseStoredCheckIn([row])?.painAfter, 5);
+  assert.equal(parseStoredCheckIn({ ...row, other_note: "" })?.otherNote, null);
+  assert.equal(parseStoredCheckIn(null), null);
+  assert.equal(parseStoredCheckIn([]), null);
+  assert.equal(parseStoredCheckIn({ ...row, pain_after: null }), null);
+  assert.equal(parseStoredCheckIn({ ...row, difficulty: 11 }), null);
+  assert.equal(parseStoredCheckIn({ ...row, knee_feels: "worse" }), null);
+  assert.equal(parseStoredCheckIn({ ...row, symptoms: ["none"] }), null);
+  assert.equal(parseStoredCheckIn({ ...row, other_note: 3 }), null);
+});
+
+test("a stored row that differs from the answers sent means an earlier check-in was kept", () => {
+  const args = checkInRpcArgs("s", { ...answered, symptoms: ["other", "redness"], otherNote: " stiff " }, "ru");
+  assert.ok(args);
+  const stored = parseStoredCheckIn({
+    pain_before: 2,
+    pain_after: 5,
+    difficulty: 6,
+    knee_feels: "same",
+    symptoms: ["redness", "other"],
+    other_note: "stiff",
+  });
+  assert.ok(stored);
+  assert.equal(storedMatchesSent(args, stored), true, "same answers, symptoms in another order");
+  assert.equal(storedMatchesSent(args, { ...stored, painBefore: 3 }), false);
+  assert.equal(storedMatchesSent(args, { ...stored, painAfter: 7 }), false);
+  assert.equal(storedMatchesSent(args, { ...stored, difficulty: 0 }), false);
+  assert.equal(storedMatchesSent(args, { ...stored, kneeFeels: "better" }), false);
+  assert.equal(storedMatchesSent(args, { ...stored, symptoms: ["redness"] }), false);
+  assert.equal(storedMatchesSent(args, { ...stored, otherNote: null }), false);
+
+  const none = checkInRpcArgs("s", answered, "en");
+  assert.ok(none);
+  assert.equal(storedMatchesSent(none, { ...stored, symptoms: [], otherNote: null }), true, "none is stored as an empty list");
+  assert.equal(storedMatchesSent(none, stored), false);
 });

@@ -11,7 +11,7 @@
 
 import "server-only";
 
-import { buildStoredProxySeries } from "@/lib/motion/flexion";
+import { buildStoredProxySeries, DEFAULT_MAX_PAIR_SKEW_MS } from "@/lib/motion/flexion";
 import { countOrientedRepetitions, heelSlideThresholds, MAX_REP_GAP_MS } from "@/lib/motion/reps";
 import { createClient } from "@/lib/supabase/server";
 
@@ -30,6 +30,7 @@ const MOTION: MotionDeps = {
   countOrientedRepetitions,
   heelSlideThresholds,
   maxRepGapMs: MAX_REP_GAP_MS,
+  maxPairSkewMs: DEFAULT_MAX_PAIR_SKEW_MS,
 };
 
 export type HeelSlideSection =
