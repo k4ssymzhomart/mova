@@ -259,10 +259,11 @@ comment on function public.finish_prescribed_session(uuid, jsonb) is
 -- New here: an ended session keeps accepting what was recorded while it was open, because rows are delivered
 -- late on purpose (unsent rows wait in IndexedDB and a later page load sends them after the session finished).
 -- What it no longer accepts is anything recorded after it ended, such as a stale screen recording again on a
--- finished session. For a session that is not in progress, frames with recorded_at after ended_at and events that
--- started after ended_at are skipped: not inserted, not an error, and counted in the result. A session that is not
--- in progress and has no end time accepts nothing. recorded_at is the client's receive time and ended_at the
--- server's clock, so a client clock that is off moves this cut-off by the same amount.
+-- finished session. For a session that is not in progress, frames with recorded_at more than two minutes after
+-- ended_at and events that started more than two minutes after it are skipped: not inserted, not an error, and
+-- counted in the result. A session that is not in progress and has no end time accepts nothing. recorded_at is the
+-- client's receive time and ended_at the server's clock; the two minutes absorb a device clock that runs a little
+-- fast, and a clock off by more than that moves the cut-off by the same amount.
 --
 -- Returns {"frames": inserted, "events": inserted, "skipped": frames skipped, "skipped_events": events skipped}.
 -- A duplicate frame counts as neither inserted nor skipped.
@@ -280,6 +281,7 @@ declare
   v_clinic         uuid;
   v_status         public.session_status;
   v_ended_at       timestamptz;
+  v_cutoff         timestamptz;
   v_open           boolean;
   v_month          date;
   v_frames         integer := 0;
@@ -305,6 +307,10 @@ begin
     raise exception 'session not found for caller' using errcode = '42501';
   end if;
   v_open := v_status = 'in_progress';
+  -- Two minutes of grace: recorded_at is the device clock and ended_at the server's, so a device running a little
+  -- fast must not lose rows it recorded before the finish. A screen that keeps recording after the finish is stopped
+  -- by the client's status check first; this rule is the second line.
+  v_cutoff := v_ended_at + interval '2 minutes';
 
   -- ── Frames ────────────────────────────────────────────────────────────────
   -- p_frames: [{recorded_at, seq, joint_angles, keypoints, imu, quality}, …]
@@ -312,14 +318,14 @@ begin
     if not v_open then
       select count(*) into v_frames_skipped
       from jsonb_array_elements(p_frames) as f
-      where not coalesce((f->>'recorded_at')::timestamptz <= v_ended_at, false);
+      where not coalesce((f->>'recorded_at')::timestamptz <= v_cutoff, false);
     end if;
 
     -- Ensure a monthly partition exists for every month among the frames that will be stored.
     for v_month in
       select distinct date_trunc('month', (f->>'recorded_at')::timestamptz)::date
       from jsonb_array_elements(p_frames) as f
-      where v_open or coalesce((f->>'recorded_at')::timestamptz <= v_ended_at, false)
+      where v_open or coalesce((f->>'recorded_at')::timestamptz <= v_cutoff, false)
     loop
       perform app.ensure_session_frames_partition(v_month);
     end loop;
@@ -336,7 +342,7 @@ begin
       nullif(f->'imu',          'null'::jsonb),
       (f->>'quality')::numeric
     from jsonb_array_elements(p_frames) as f
-    where v_open or coalesce((f->>'recorded_at')::timestamptz <= v_ended_at, false)
+    where v_open or coalesce((f->>'recorded_at')::timestamptz <= v_cutoff, false)
     on conflict (session_id, recorded_at, seq) do nothing; -- idempotent on retry
 
     get diagnostics v_frames = row_count;
@@ -348,7 +354,7 @@ begin
     if not v_open then
       select count(*) into v_events_skipped
       from jsonb_array_elements(p_events) as e
-      where not coalesce((e->>'started_at')::timestamptz <= v_ended_at, false);
+      where not coalesce((e->>'started_at')::timestamptz <= v_cutoff, false);
     end if;
 
     insert into public.fog_events (
@@ -363,7 +369,7 @@ begin
       (e->>'freeze_index')::numeric,
       coalesce(e->>'source', 'fog.onnx')
     from jsonb_array_elements(p_events) as e
-    where v_open or coalesce((e->>'started_at')::timestamptz <= v_ended_at, false);
+    where v_open or coalesce((e->>'started_at')::timestamptz <= v_cutoff, false);
 
     get diagnostics v_events = row_count;
   end if;
@@ -378,7 +384,7 @@ end;
 $$;
 
 comment on function public.flush_session_telemetry_batch(uuid, jsonb, jsonb) is
-  'Single-roundtrip batched telemetry flush into the caller''s own session (frames + FoG episodes, monthly partitions created on demand). Idempotent on (session_id, recorded_at, seq). Once the session is no longer in progress, rows recorded after ended_at are skipped and counted. Used by the heel slide recorder and the camera SessionStudio flow.';
+  'Single-roundtrip batched telemetry flush into the caller''s own session (frames + FoG episodes, monthly partitions created on demand). Idempotent on (session_id, recorded_at, seq). Once the session is no longer in progress, rows recorded more than two minutes after ended_at are skipped and counted. Used by the heel slide recorder and the camera SessionStudio flow.';
 
 -- Submit the check-in ------------------------------------------------------------------------------------------
 -- Every field is validated here, not only in the form. "none" is exclusive: sent alone it means no symptoms and

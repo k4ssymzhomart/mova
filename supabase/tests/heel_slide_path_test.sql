@@ -452,7 +452,8 @@ select pg_temp.hs_expect_error(
 
 -- ── Patient 1: rows that arrive after the session ended ────────────────────────────────────────────────────
 -- Every now() in this transaction is the same instant, so a session finished here has ended_at = now(): rows at
--- now() - n s were recorded while it was open, rows at now() + n s after it ended.
+-- now() - n s were recorded while it was open; rows up to two minutes after it are still accepted (device clock
+-- grace), later ones are skipped.
 select pg_temp.hs_assert(
   (select (r ->> 'frames')::int = 1 and (r ->> 'skipped')::int = 0
    from (select public.flush_session_telemetry_batch(current_setting('heel_slide_test.sb')::uuid,
@@ -469,14 +470,14 @@ select set_config('heel_slide_test.late', jsonb_build_array(
     'imu', jsonb_build_object('role', 'thigh', 'euler_deg', jsonb_build_array(0, 6, 0))),
   jsonb_build_object('recorded_at', now() - interval '1 second', 'seq', 11, 'quality', null,
     'imu', jsonb_build_object('role', 'thigh', 'euler_deg', jsonb_build_array(0, 7, 0))),
-  jsonb_build_object('recorded_at', now() + interval '3 seconds', 'seq', 12, 'quality', null,
+  jsonb_build_object('recorded_at', now() + interval '90 seconds', 'seq', 12, 'quality', null,
     'imu', jsonb_build_object('role', 'thigh', 'euler_deg', jsonb_build_array(0, 8, 0))),
-  jsonb_build_object('recorded_at', now() + interval '60 seconds', 'seq', 13, 'quality', null,
+  jsonb_build_object('recorded_at', now() + interval '3 minutes', 'seq', 13, 'quality', null,
     'imu', jsonb_build_object('role', 'thigh', 'euler_deg', jsonb_build_array(0, 9, 0)))
 )::text, true);
 
 select pg_temp.hs_assert(
-  (select (r ->> 'frames')::int = 2 and (r ->> 'skipped')::int = 2
+  (select (r ->> 'frames')::int = 3 and (r ->> 'skipped')::int = 1
       and (r ->> 'events')::int = 1 and (r ->> 'skipped_events')::int = 1
    from (select public.flush_session_telemetry_batch(current_setting('heel_slide_test.sb')::uuid,
            current_setting('heel_slide_test.late')::jsonb,
@@ -484,25 +485,25 @@ select pg_temp.hs_assert(
              jsonb_build_object('kind', 'episode', 'source', 'hs-test',
                'started_at', now() - interval '2 seconds', 'ended_at', now() - interval '1 second'),
              jsonb_build_object('kind', 'episode', 'source', 'hs-test',
-               'started_at', now() + interval '2 seconds', 'ended_at', now() + interval '3 seconds'))) as r) x),
-  'after a session ended, frames and events recorded before the end are stored and later ones are skipped without an error');
+               'started_at', now() + interval '3 minutes', 'ended_at', now() + interval '4 minutes'))) as r) x),
+  'after a session ended, rows recorded before the end or within the two-minute grace are stored and later ones are skipped without an error');
 select pg_temp.hs_assert(
-  (select (r ->> 'frames')::int = 0 and (r ->> 'skipped')::int = 2
+  (select (r ->> 'frames')::int = 0 and (r ->> 'skipped')::int = 1
    from (select public.flush_session_telemetry_batch(current_setting('heel_slide_test.sb')::uuid,
            current_setting('heel_slide_test.late')::jsonb, '[]'::jsonb) as r) x),
   'late delivery stays idempotent: the resent batch stores nothing and skips the same rows');
 select pg_temp.hs_assert(
-  (select array_agg(seq order by seq) = array[1, 10, 11]
+  (select array_agg(seq order by seq) = array[1, 10, 11, 12]
    from public.session_frames where session_id = current_setting('heel_slide_test.sb')::uuid)
   and (select count(*) from public.fog_events where session_id = current_setting('heel_slide_test.sb')::uuid) = 1,
-  'the ended session holds only the rows recorded while it was open');
+  'the ended session holds only the rows recorded while it was open or within the grace');
 select pg_temp.hs_assert(
   (select (r ->> 'frames')::int = 1 and (r ->> 'skipped')::int = 1
    from (select public.flush_session_telemetry_batch(current_setting('heel_slide_test.sa')::uuid,
            jsonb_build_array(
              jsonb_build_object('recorded_at', now() - interval '1 second', 'seq', 20, 'quality', null,
                'imu', jsonb_build_object('role', 'foot')),
-             jsonb_build_object('recorded_at', now() + interval '1 second', 'seq', 21, 'quality', null,
+             jsonb_build_object('recorded_at', now() + interval '3 minutes', 'seq', 21, 'quality', null,
                'imu', jsonb_build_object('role', 'foot'))),
            '[]'::jsonb) as r) x),
   'the same cut-off applies to an aborted session');
@@ -669,7 +670,7 @@ select pg_temp.hs_assert(
   'the result shows no prescription when the session points at another patient''s');
 
 select pg_temp.hs_assert(
-  (select (r -> 'frame_counts' ->> 'thigh')::int = 3 and r -> 'session' ->> 'status' = 'completed'
+  (select (r -> 'frame_counts' ->> 'thigh')::int = 4 and r -> 'session' ->> 'status' = 'completed'
    from public.clinician_session_result(current_setting('heel_slide_test.sb')::uuid) as r),
   'the result for a session with late deliveries counts only the frames it stored');
 
