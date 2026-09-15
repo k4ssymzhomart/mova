@@ -108,6 +108,20 @@ test("reset starts a new baseline window", () => {
   close(orienter.push(10_000 + PROXY_BASELINE_MS, 50), 30);
 });
 
+test("the orienter reports the span its zero was taken over", () => {
+  const orienter = createProxyOrienter();
+  orienter.push(1000, 5);
+  orienter.push(1499, 5);
+  assert.equal(orienter.baselineWindow, null);
+  orienter.push(1500, 5);
+  assert.deepEqual(orienter.baselineWindow, { startMs: 1000, endMs: 1000 + PROXY_BASELINE_MS });
+  orienter.reset();
+  assert.equal(orienter.baselineWindow, null);
+  orienter.push(9000, 5);
+  orienter.push(9600, 5);
+  assert.deepEqual(orienter.baselineWindow, { startMs: 9000, endMs: 9500 });
+});
+
 test("the orienter skips non-finite samples", () => {
   const orienter = createProxyOrienter();
   assert.equal(orienter.push(0, Number.NaN), null);
@@ -232,4 +246,87 @@ test("empty stored series produce no samples and unknown skew", () => {
   assert.equal(series.baselineDeg, null);
   assert.equal(series.pairing.medianSkewMs, null);
   assert.equal(series.pairing.maxSkewMs, null);
+  assert.equal(series.baselineSource, "first_samples");
+  assert.deepEqual(series.beforeBaselineWindow, []);
+});
+
+/** Stored thigh and shank read at the same instants, so the stored pairs are exactly the given samples. */
+function simultaneous(relative: ReadonlyArray<readonly [number, number]>) {
+  return {
+    thigh: relative.map(([tMs]) => [tMs, 20] as const),
+    shank: relative.map(([tMs, value]) => [tMs, 20 + value] as const),
+  };
+}
+
+test("a stored recount given the live baseline window zeroes and orients exactly as the live orienter did", () => {
+  // An abandoned start resting at 0, then, from 3 s, a new start resting at 8, a bend to 60 and back.
+  const relative: Array<[number, number]> = [];
+  for (let tMs = 0; tMs < 400; tMs += 20) relative.push([tMs, 0]);
+  const restartMs = 3000;
+  for (let i = 0; i < 150; i += 1) {
+    const bend = i >= 40 && i < 120 ? 52 * Math.sin((Math.PI * (i - 40)) / 80) : 0;
+    relative.push([restartMs + i * 20, 8 + bend]);
+  }
+
+  // The screen resets the orienter on the new start, so its zero comes from the pairs after 3 s.
+  const orienter = createProxyOrienter();
+  const live = relative
+    .filter(([tMs]) => tMs >= restartMs)
+    .map(([tMs, value]) => orienter.push(tMs, relativePitchDeg(20, 20 + value)));
+  assert.deepEqual(orienter.baselineWindow, { startMs: restartMs, endMs: restartMs + PROXY_BASELINE_MS });
+
+  const series = buildStoredProxySeries(simultaneous(relative), { baselineWindow: orienter.baselineWindow });
+  assert.equal(series.baselineSource, "window");
+  assert.equal(series.baselineDeg, orienter.baselineDeg);
+  // The window is [start, end): 3000 to 3480 ms, not the sample at 3500.
+  assert.equal(series.baselineSampleCount, 25);
+  assert.equal(series.orientation, orienter.orientation);
+  assert.equal(series.samples.length, live.length);
+  live.forEach((value, i) => {
+    if (value !== null) assert.equal(series.samples[i].value, value, `sample ${i}`);
+  });
+  // The abandoned start is kept apart, on the same zero, for drawing.
+  assert.equal(series.beforeBaselineWindow.length, 20);
+  for (const sample of series.beforeBaselineWindow) close(sample.value, -8);
+  assert.equal(series.pairing.pairs, 170);
+
+  // Without the window the zero would be the abandoned start's.
+  assert.equal(buildStoredProxySeries(simultaneous(relative)).baselineDeg, 0);
+});
+
+test("a baseline window with no stored pairs inside gives no zero rather than one taken elsewhere", () => {
+  const relative = Array.from({ length: 40 }, (_, i) => [i * 20, 5] as const);
+  const missing = buildStoredProxySeries(simultaneous(relative), { baselineWindow: { startMs: 5000, endMs: 5500 } });
+  assert.equal(missing.baselineSource, "window");
+  assert.equal(missing.baselineDeg, null);
+  assert.equal(missing.baselineSampleCount, 0);
+  assert.deepEqual(missing.samples, []);
+  assert.deepEqual(missing.beforeBaselineWindow, []);
+  assert.equal(missing.pairing.pairs, 40);
+
+  // A window that opens before the first stored pair uses the pairs it does cover.
+  const early = buildStoredProxySeries(simultaneous(relative), { baselineWindow: { startMs: -1000, endMs: 100 } });
+  assert.equal(early.baselineSampleCount, 5);
+  assert.equal(early.samples.length, 40);
+  assert.deepEqual(early.beforeBaselineWindow, []);
+});
+
+test("an unusable baseline window falls back to the first 500 ms of pairs", () => {
+  const relative = Array.from({ length: 60 }, (_, i) => [i * 20, i < 30 ? 3 : 40] as const);
+  const fallback = buildStoredProxySeries(simultaneous(relative));
+  assert.equal(fallback.baselineDeg, 3);
+  const unusable = [
+    null,
+    undefined,
+    { startMs: Number.NaN, endMs: 500 },
+    { startMs: 600, endMs: Number.POSITIVE_INFINITY },
+    { startMs: 600, endMs: 600 },
+    { startMs: 700, endMs: 600 },
+  ];
+  for (const baselineWindow of unusable) {
+    const series = buildStoredProxySeries(simultaneous(relative), { baselineWindow });
+    assert.equal(series.baselineSource, "first_samples");
+    assert.deepEqual(series.samples, fallback.samples);
+    assert.deepEqual(series.beforeBaselineWindow, []);
+  }
 });

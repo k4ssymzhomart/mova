@@ -1,6 +1,12 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
-import type { BufferCounters, FrameRow } from "@/lib/telemetry/buffer";
+import {
+  STOP_DELIVERY_BUDGET_MS,
+  TelemetryBuffer,
+  type BufferCounters,
+  type FlushRpc,
+  type FrameRow,
+} from "@/lib/telemetry/buffer";
 
 import { BleSessionRecorder, type RecorderBuffer } from "./sessionRecorder";
 import type { ParsedWt901Frame } from "./wt901ble68";
@@ -90,7 +96,59 @@ describe("BleSessionRecorder", () => {
 
     expect(created).toHaveLength(1);
     expect(created[0].rows).toHaveLength(1);
-    expect(counters?.framesSent).toBe(1);
+    // A buffer that only reports the older framesSent name still yields every field.
+    expect(counters).toEqual({
+      framesSent: 1,
+      framesConfirmed: 1,
+      framesSkipped: 0,
+      framesKeepaliveSent: 0,
+      framesDropped: 0,
+      eventsSent: 0,
+      pending: 0,
+      errors: 0,
+      lastError: null,
+    });
+  });
+
+  it("stop keeps trying for its time budget, then returns the counters and leaves the rows for the outbox", async () => {
+    vi.useFakeTimers();
+    try {
+      const saved: number[][] = [];
+      const durable = {
+        save: async (_session: string, frames: FrameRow[]) => {
+          saved.push(frames.map((f) => f.seq));
+        },
+        load: async () => null,
+        clear: async () => undefined,
+      };
+      let calls = 0;
+      const rpc: FlushRpc = async () => {
+        calls += 1;
+        return { data: null, error: { message: "Failed to fetch" } };
+      };
+      const recorder = new BleSessionRecorder({
+        createBuffer: (sessionId, onUpdate) =>
+          new TelemetryBuffer(sessionId, onUpdate, { rpc, durable, getAuth: async () => null }),
+      });
+      await recorder.start("session-offline");
+      for (let i = 0; i < 3; i += 1) recorder.recordFrame("thigh", FRAME, 1_000 + i * 20);
+
+      let counters: Awaited<ReturnType<BleSessionRecorder["stop"]>> | undefined;
+      const stopping = recorder.stop().then((result) => {
+        counters = result;
+      });
+      await vi.advanceTimersByTimeAsync(STOP_DELIVERY_BUDGET_MS - 1_000);
+      expect(counters).toBeUndefined();
+      await vi.advanceTimersByTimeAsync(1_500);
+      await stopping;
+
+      expect(calls).toBeGreaterThan(1);
+      expect(counters).toMatchObject({ pending: 3, framesConfirmed: 0, framesSent: 0 });
+      expect(counters?.errors).toBe(calls);
+      expect(saved.at(-1)).toEqual([0, 1, 2]);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("serializes start/stop/start so buffers never overlap", async () => {

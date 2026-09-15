@@ -3,11 +3,14 @@ import { describe, expect, it } from "vitest";
 import {
   RATE_CODE_BY_HZ,
   RegisterReplyParseError,
+  WIT_BATTERY_REGISTER,
   WitRegisterReplyBuffer,
+  batteryVoltsFromRaw,
   parseRegisterReply,
   readRegisterCommand,
   setReturnRateCommand,
   unlockCommand,
+  vendorBatteryPercent,
 } from "./witRegister";
 import { WitMotion61FrameBuffer, parseWt901Frame } from "./wt901ble68";
 
@@ -94,5 +97,47 @@ describe("WitRegisterReplyBuffer", () => {
     const buffer = new WitRegisterReplyBuffer();
     expect(buffer.feed(frame)).toHaveLength(0);
     expect(buffer.feed(RATE_REPLY)).toHaveLength(1);
+  });
+});
+
+describe("battery register", () => {
+  it("reads 0x64 and converts the reply's first value from volts x 100", () => {
+    expect([...readRegisterCommand(WIT_BATTERY_REGISTER)]).toEqual([0xff, 0xaa, 0x27, 0x64, 0x00]);
+    const frame = new Uint8Array(20);
+    frame.set([0x55, 0x71, 0x64, 0x00, 0x88, 0x01]);
+    const reply = parseRegisterReply(frame);
+    expect(reply).toEqual({ register: WIT_BATTERY_REGISTER, values: [392, 0, 0, 0] });
+    expect(batteryVoltsFromRaw(reply.values[0])).toBe(3.92);
+  });
+
+  it("refuses values that cannot be a supply voltage instead of clamping them", () => {
+    expect(batteryVoltsFromRaw(0)).toBeNull();
+    expect(batteryVoltsFromRaw(-12)).toBeNull();
+    expect(batteryVoltsFromRaw(1001)).toBeNull();
+    expect(batteryVoltsFromRaw(3.5)).toBeNull();
+    expect(batteryVoltsFromRaw(1000)).toBe(10);
+  });
+});
+
+describe("vendorBatteryPercent", () => {
+  it("interpolates the single-cell table linearly and clamps outside it", () => {
+    expect(vendorBatteryPercent(3.1)).toBe(0);
+    expect(vendorBatteryPercent(3.4)).toBe(0);
+    expect(vendorBatteryPercent(3.7)).toBe(15);
+    expect(vendorBatteryPercent(3.8)).toBe(43.3);
+    expect(vendorBatteryPercent(3.92)).toBe(72.5);
+    expect(vendorBatteryPercent(3.99)).toBe(100);
+    expect(vendorBatteryPercent(4.2)).toBe(100);
+    // Exactly 5.5 V is not above the two-cell threshold.
+    expect(vendorBatteryPercent(5.5)).toBe(100);
+  });
+
+  it("switches to the two-cell table above 5.5 V", () => {
+    expect(vendorBatteryPercent(5.51)).toBe(0);
+    expect(vendorBatteryPercent(6.8)).toBe(10);
+    expect(vendorBatteryPercent(7.0)).toBe(17.3);
+    expect(vendorBatteryPercent(8.1)).toBe(74);
+    expect(vendorBatteryPercent(8.8)).toBe(100);
+    expect(vendorBatteryPercent(9.2)).toBe(100);
   });
 });

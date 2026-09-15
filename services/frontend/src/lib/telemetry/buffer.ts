@@ -3,23 +3,33 @@
 // TelemetryBuffer — a resilient, non-blocking edge-telemetry buffer.
 //
 // The capture loop pushes frame rows (and rare FoG episodes) into memory; the buffer flushes them to Supabase in
-// the background through the single batched flush_session_telemetry_batch RPC (migration 0021), idempotent on
-// (session_id, recorded_at, seq). pushFrame returns instantly and never waits on the network.
+// the background through the single batched flush_session_telemetry_batch RPC (migration 0021, redefined in 0034),
+// idempotent on (session_id, recorded_at, seq). pushFrame returns instantly and never waits on the network.
 //
 // Sized for three BLE sensors at 50 Hz, i.e. about 150 rows a second: a flush starts once 150 rows are queued or
 // every second, whichever comes first, and one RPC carries at most 600 rows, so a backlog drains in bounded
 // requests instead of one oversized call. Memory holds 45 000 rows, five minutes of outage at that rate; beyond
 // it the oldest rows are dropped and counted in `framesDropped`, never silently.
 //
-// Durability, in three layers:
-//  - A clean stop() drains the queue (several RPCs if a backlog built up) and awaits the result.
+// Durability, in four layers:
+//  - stop() drains the queue (several RPCs if a backlog built up) and retries failed requests with backoff for up
+//    to ten seconds, including the wait on a request that has not answered.
 //  - Transient RPC failures re-queue the batch instead of dropping it.
-//  - A reload or crash mid-outage: DurableQueue mirrors everything still unacknowledged (queued + in flight) into
-//    IndexedDB, and start() recovers it. The mirror is a whole-array rewrite, so it is throttled to at most about
-//    once a second (plus a forced write on stop and on page hide) rather than on every push, which at 150 pushes
-//    a second would rewrite a growing array quadratically. The price is a loss window: a crash can lose up to
-//    about one second of rows pushed since the last write. Rows resent after recovery are harmless thanks to the
-//    RPC's idempotency.
+//  - DurableQueue mirrors everything still unacknowledged (queued + in flight) into IndexedDB. start() recovers a
+//    record a previous instance left for the same session (crash, unclean reload). The mirror is a whole-array
+//    rewrite, so it is throttled to at most about once a second (plus a forced write on stop and on page hide)
+//    rather than on every push, which at 150 pushes a second would rewrite a growing array quadratically. The
+//    price is a loss window: a crash can lose up to about one second of rows pushed since the last write.
+//  - Whatever a stop could not deliver stays in that record, and the outbox (outbox.ts) sends it later: on app
+//    load, when the browser comes back online, and every 30 s while rows remain. A live buffer marks its session
+//    active (outboxRegistry.ts) so the outbox leaves its record alone until stop() has written it.
+// Rows resent by any of these paths are harmless thanks to the RPC's idempotency.
+//
+// Counting. `framesConfirmed` counts rows a flush RPC answered for successfully, minus rows it reported as skipped
+// (recorded after the session ended, see 0034): each such row is in session_frames, inserted by that request or
+// already stored by an earlier one whose answer never arrived. A row carried only by a keepalive request is not
+// confirmed, because that response is never read; those rows are counted separately in `framesKeepaliveSent` and
+// stay queued until a flush confirms them. Skipped rows are delivered (no longer pending) but not confirmed.
 //
 // On page hide or unload a best-effort keepalive request also sends the oldest queued rows. Browsers cap a
 // keepalive body at 64 KiB, so the batch is trimmed to fit; the rows stay queued (hidden is not always gone),
@@ -28,6 +38,7 @@
 import { createClient } from "@/lib/supabase/client";
 
 import { DurableQueue } from "./durableQueue";
+import { markSessionActive, notifyOutbox } from "./outboxRegistry";
 
 export interface FrameRow {
   recorded_at: string; // ISO 8601
@@ -48,6 +59,7 @@ export interface FogEventRow {
 }
 
 export interface BufferCounters {
+  /** The older name of `framesConfirmed`, kept for the camera session screen. Always equal to it. */
   framesSent: number;
   eventsSent: number;
   /** Rows not yet acknowledged by Postgres: queued plus in flight. */
@@ -56,7 +68,15 @@ export interface BufferCounters {
   lastError: string | null;
   /** Oldest rows discarded after the in-memory cap was hit. Always set by TelemetryBuffer. */
   framesDropped?: number;
+  /** Rows a successful flush RPC acknowledged as stored (see the header). Always set by TelemetryBuffer. */
+  framesConfirmed?: number;
+  /** Rows the RPC acknowledged but did not store: recorded after the session ended. Always set by TelemetryBuffer. */
+  framesSkipped?: number;
+  /** Distinct rows handed to a keepalive request, whose answer is never read. Always set by TelemetryBuffer. */
+  framesKeepaliveSent?: number;
 }
+
+export type TelemetryCounters = Required<BufferCounters>;
 
 export const FLUSH_FRAMES = 150; // flush once this many rows are queued…
 export const FLUSH_MS = 1000; // …or this often, whichever comes first
@@ -65,14 +85,23 @@ export const MAX_BUFFER = 45_000; // five minutes at 150 rows/s before the oldes
 export const PERSIST_MS = 1000; // at most one durable rewrite per interval
 export const EMIT_MS = 250; // counter updates to the UI while rows stream in
 export const KEEPALIVE_MAX_BYTES = 60_000; // under the 64 KiB keepalive body cap
+export const STOP_DELIVERY_BUDGET_MS = 10_000; // how long stop() keeps trying before leaving rows to the outbox
+export const STOP_RETRY_DELAYS_MS = [500, 1000, 2000, 4000] as const; // waits after consecutive failures in stop()
 
 const OVERFLOW_SLACK = 1_500; // trim in bulk, not one splice per push, once over the cap
 
-export type AuthCtx = { url: string; key: string; token: string };
+export type AuthCtx = { url: string; key: string; token: string; userId?: string };
 
 export type FlushRpcArgs = { p_session: string; p_frames: FrameRow[]; p_events: FogEventRow[] };
 
-export type FlushRpc = (args: FlushRpcArgs) => Promise<{ data: unknown; error: { message?: string } | null }>;
+export type FlushRpcError = { message?: string; code?: string };
+
+export type FlushRpc = (args: FlushRpcArgs) => Promise<{ data: unknown; error: FlushRpcError | null }>;
+
+export interface StopOptions {
+  /** Time allowed for delivery before the rest is left in IndexedDB for the outbox. */
+  budgetMs?: number;
+}
 
 /** Test seams. Production uses the browser Supabase client and IndexedDB. */
 export interface TelemetryBufferDeps {
@@ -98,18 +127,25 @@ export class TelemetryBuffer {
   private persistChain: Promise<void> = Promise.resolve();
   private lastEmitAt = 0;
   private auth: AuthCtx | null = null;
-  readonly counters: Required<BufferCounters> = {
+  private recoveredOwner: string | null = null;
+  private stopped = false;
+  private releaseActive: (() => void) | null = null;
+  private readonly keepaliveRows = new WeakSet<FrameRow>();
+  readonly counters: TelemetryCounters = {
     framesSent: 0,
     eventsSent: 0,
     pending: 0,
     errors: 0,
     lastError: null,
     framesDropped: 0,
+    framesConfirmed: 0,
+    framesSkipped: 0,
+    framesKeepaliveSent: 0,
   };
 
   constructor(
     private readonly sessionId: string,
-    private readonly onUpdate?: (c: BufferCounters) => void,
+    private readonly onUpdate?: (c: TelemetryCounters) => void,
     deps: TelemetryBufferDeps = {},
   ) {
     let client: ReturnType<typeof createClient> | null = null;
@@ -122,6 +158,8 @@ export class TelemetryBuffer {
   /** Begin the periodic flush loop and arm the unload safety net. Recovers anything a
    * previous instance for this same session left undelivered (crash, unclean reload). */
   async start(): Promise<void> {
+    this.stopped = false;
+    this.releaseActive ??= markSessionActive(this.sessionId);
     await this.recoverDurable();
     await this.refreshAuth(); // cache a token so the unload path can flush with auth headers
     if (!this.timer) this.timer = setInterval(() => void this.flush(), FLUSH_MS);
@@ -159,13 +197,20 @@ export class TelemetryBuffer {
     this.flushing = this.sendBatch().catch(() => false).then((delivered) => {
       this.flushing = null;
       // Keep draining a backlog while the network is healthy; after a failure, wait for the timer.
-      if (delivered && this.frames.length >= FLUSH_FRAMES) void this.flush();
+      // Once stopped, stop() drives the remaining rounds itself.
+      if (delivered && !this.stopped && this.frames.length >= FLUSH_FRAMES) void this.flush();
     });
     return this.flushing;
   }
 
-  /** Stop the loop, detach the unload net, drain what remains and force the durable record current. */
-  async stop(): Promise<void> {
+  /**
+   * Stop the loop and detach the unload net, then try to deliver everything still undelivered for up to
+   * `budgetMs` (ten seconds by default), retrying failures with backoff. Whatever is left is written to IndexedDB,
+   * where the outbox picks it up. Resolves once that record is current; `counters.pending` then says how many rows
+   * were left.
+   */
+  async stop({ budgetMs = STOP_DELIVERY_BUDGET_MS }: StopOptions = {}): Promise<void> {
+    this.stopped = true;
     if (this.timer) {
       clearInterval(this.timer);
       this.timer = null;
@@ -174,14 +219,36 @@ export class TelemetryBuffer {
       window.removeEventListener("pagehide", this.onUnload);
       document.removeEventListener("visibilitychange", this.onVisibility);
     }
-    const maxRounds = Math.ceil(MAX_BUFFER / MAX_BATCH_FRAMES) + 2;
-    for (let round = 0; round < maxRounds; round += 1) {
-      if (!this.flushing && this.frames.length === 0 && this.events.length === 0) break;
+    const deadline = Date.now() + budgetMs;
+    let failures = 0;
+    while (this.undelivered() > 0) {
+      const left = deadline - Date.now();
+      if (left <= 0) break;
       const errorsBefore = this.counters.errors;
-      await this.flush();
-      if (this.counters.errors > errorsBefore) break; // offline: leave the rest to the durable record
+      const answered = await withTimeout(
+        this.flush().then(() => true),
+        left,
+        false,
+      );
+      if (!answered) break; // a request is still out; its rows stay in the durable record
+      if (this.counters.errors > errorsBefore) {
+        const delay = Math.min(
+          STOP_RETRY_DELAYS_MS[Math.min(failures, STOP_RETRY_DELAYS_MS.length - 1)],
+          deadline - Date.now(),
+        );
+        failures += 1;
+        if (delay <= 0) break;
+        await sleep(delay);
+      }
     }
     await this.persistNow();
+    this.releaseActive?.();
+    this.releaseActive = null;
+    if (this.undelivered() > 0) notifyOutbox();
+  }
+
+  private undelivered(): number {
+    return this.inFlightFrames.length + this.frames.length + this.inFlightEvents.length + this.events.length;
   }
 
   private async sendBatch(): Promise<boolean> {
@@ -197,9 +264,11 @@ export class TelemetryBuffer {
         p_events: this.inFlightEvents,
       });
       if (error) throw error;
-      const res = (data ?? {}) as { frames?: number; events?: number };
-      this.counters.framesSent += res.frames ?? this.inFlightFrames.length;
-      this.counters.eventsSent += res.events ?? this.inFlightEvents.length;
+      const skipped = skippedCounts(data, this.inFlightFrames.length, this.inFlightEvents.length);
+      this.counters.framesConfirmed += this.inFlightFrames.length - skipped.frames;
+      this.counters.framesSent = this.counters.framesConfirmed;
+      this.counters.framesSkipped += skipped.frames;
+      this.counters.eventsSent += this.inFlightEvents.length - skipped.events;
       this.inFlightFrames = [];
       this.inFlightEvents = [];
       delivered = true;
@@ -231,8 +300,8 @@ export class TelemetryBuffer {
     if (this.frames.length === 0 && this.events.length === 0) return;
     const auth = this.auth;
     if (!auth) return;
-    const body = keepaliveBody(this.sessionId, this.frames, this.events);
-    if (!body) return;
+    const batch = keepaliveBatch(this.sessionId, this.frames, this.events);
+    if (!batch) return;
     try {
       void fetch(`${auth.url}/rest/v1/rpc/flush_session_telemetry_batch`, {
         method: "POST",
@@ -242,10 +311,16 @@ export class TelemetryBuffer {
           apikey: auth.key,
           Authorization: `Bearer ${auth.token}`,
         },
-        body,
+        body: batch.body,
       }).catch(() => undefined);
+      for (let i = 0; i < batch.frameCount; i += 1) {
+        const row = this.frames[i];
+        if (this.keepaliveRows.has(row)) continue;
+        this.keepaliveRows.add(row);
+        this.counters.framesKeepaliveSent += 1;
+      }
     } catch {
-      /* best-effort — the awaited stop() and the durable record are the guarantees */
+      /* best-effort — the awaited stop(), the durable record and the outbox are the guarantees */
     }
   };
 
@@ -275,7 +350,11 @@ export class TelemetryBuffer {
         const frames = [...this.inFlightFrames, ...this.frames];
         const events = [...this.inFlightEvents, ...this.events];
         if (frames.length === 0 && events.length === 0) await this.durable.clear(this.sessionId);
-        else await this.durable.save(this.sessionId, frames, events);
+        else {
+          await this.durable.save(this.sessionId, frames, events, {
+            ownerId: this.auth?.userId ?? this.recoveredOwner,
+          });
+        }
       })
       .catch(() => undefined);
     return this.persistChain;
@@ -287,6 +366,7 @@ export class TelemetryBuffer {
   private async recoverDurable(): Promise<void> {
     const saved = await this.durable.load(this.sessionId);
     if (!saved) return;
+    this.recoveredOwner = saved.ownerId ?? null;
     const frames = [...saved.frames, ...this.frames];
     if (frames.length > MAX_BUFFER) this.counters.framesDropped += frames.length - MAX_BUFFER;
     this.frames = frames.slice(-MAX_BUFFER);
@@ -304,8 +384,7 @@ export class TelemetryBuffer {
   }
 
   private emit(force: boolean): void {
-    this.counters.pending =
-      this.inFlightFrames.length + this.frames.length + this.inFlightEvents.length + this.events.length;
+    this.counters.pending = this.undelivered();
     const now = Date.now();
     if (!force && now - this.lastEmitAt < EMIT_MS) return;
     this.lastEmitAt = now;
@@ -314,23 +393,76 @@ export class TelemetryBuffer {
 }
 
 /**
- * The JSON body for a keepalive flush: every event plus as many of the oldest frames as fit in `maxBytes`
- * (halving until it fits). Null when not even the events alone fit.
+ * How many rows of a batch the flush RPC reported as skipped because they were recorded after the session ended.
+ * 0034 answers `{ skipped: <frames>, skipped_events: <events> }`. Also accepts `skipped` alone as one number
+ * (frames first) or as `{frames, events}`; anything else counts as none.
  */
+export function skippedCounts(data: unknown, frames: number, events: number): { frames: number; events: number } {
+  const answer = data && typeof data === "object" ? (data as { skipped?: unknown; skipped_events?: unknown }) : {};
+  const skipped = answer.skipped;
+  if (typeof skipped === "number" && answer.skipped_events !== undefined) {
+    return { frames: clampCount(skipped, frames), events: clampCount(answer.skipped_events, events) };
+  }
+  if (typeof skipped === "number") {
+    const skippedFrames = clampCount(skipped, frames);
+    return { frames: skippedFrames, events: clampCount(skipped - skippedFrames, events) };
+  }
+  if (skipped && typeof skipped === "object") {
+    const parts = skipped as { frames?: unknown; events?: unknown };
+    return { frames: clampCount(parts.frames, frames), events: clampCount(parts.events, events) };
+  }
+  return { frames: 0, events: 0 };
+}
+
+/**
+ * The JSON body for a keepalive flush: every event plus as many of the oldest frames as fit in `maxBytes`
+ * (halving until it fits), with the number of frames it carries. Null when not even the events alone fit.
+ */
+export function keepaliveBatch(
+  sessionId: string,
+  frames: readonly FrameRow[],
+  events: readonly FogEventRow[],
+  maxBytes: number = KEEPALIVE_MAX_BYTES,
+): { body: string; frameCount: number } | null {
+  const encoder = new TextEncoder();
+  let count = frames.length;
+  for (;;) {
+    const body = JSON.stringify({ p_session: sessionId, p_frames: frames.slice(0, count), p_events: events });
+    if (encoder.encode(body).length <= maxBytes) return { body, frameCount: count };
+    if (count === 0) return null;
+    count = Math.floor(count / 2);
+  }
+}
+
+/** The body alone, see keepaliveBatch. */
 export function keepaliveBody(
   sessionId: string,
   frames: readonly FrameRow[],
   events: readonly FogEventRow[],
   maxBytes: number = KEEPALIVE_MAX_BYTES,
 ): string | null {
-  const encoder = new TextEncoder();
-  let count = frames.length;
-  for (;;) {
-    const body = JSON.stringify({ p_session: sessionId, p_frames: frames.slice(0, count), p_events: events });
-    if (encoder.encode(body).length <= maxBytes) return body;
-    if (count === 0) return null;
-    count = Math.floor(count / 2);
-  }
+  return keepaliveBatch(sessionId, frames, events, maxBytes)?.body ?? null;
+}
+
+/** Resolves with the promise's value, or with `fallback` once `ms` pass first. A rejection counts as settling. */
+export function withTimeout<T>(promise: Promise<T>, ms: number, fallback: T): Promise<T> {
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => resolve(fallback), ms);
+    promise.then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      () => {
+        clearTimeout(timer);
+        resolve(fallback);
+      },
+    );
+  });
+}
+
+export function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 async function sessionAuth(supabase: ReturnType<typeof createClient>): Promise<AuthCtx | null> {
@@ -338,10 +470,14 @@ async function sessionAuth(supabase: ReturnType<typeof createClient>): Promise<A
   const token = data.session?.access_token;
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-  return token && url && key ? { url, key, token } : null;
+  return token && url && key ? { url, key, token, userId: data.session?.user?.id } : null;
 }
 
-function errMessage(err: unknown): string {
+function clampCount(value: unknown, max: number): number {
+  return typeof value === "number" && Number.isFinite(value) ? Math.min(max, Math.max(0, Math.floor(value))) : 0;
+}
+
+export function errMessage(err: unknown): string {
   if (err && typeof err === "object" && "message" in err) {
     return String((err as { message?: unknown }).message ?? err);
   }

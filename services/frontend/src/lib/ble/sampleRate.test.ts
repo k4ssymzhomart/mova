@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 
-import { COMMAND_SPACING_MS, configureSampleRate, type SampleRateIo } from "./sampleRate";
+import {
+  COMMAND_SPACING_MS,
+  configureSampleRate,
+  readBatteryLevel,
+  requestedRateFromParam,
+  type SampleRateIo,
+} from "./sampleRate";
 import type { RegisterReply } from "./witRegister";
 
 type Answer = RegisterReply | null | "throw";
@@ -98,5 +104,66 @@ describe("configureSampleRate", () => {
     const result = await configureSampleRate(io, 50, { sleep });
 
     expect(result).toMatchObject({ confirmed: false, failure: "write_failed", errorMessage: "GATT Server is disconnected." });
+  });
+});
+
+const battery = (raw: number): RegisterReply => ({ register: 0x64, values: [raw, 0, 0, 0] });
+
+describe("readBatteryLevel", () => {
+  it("reads register 0x64 without unlocking, after the command spacing, and converts the reply", async () => {
+    sleeps.length = 0;
+    const { io, writes, armed } = fakeIo([battery(392)]);
+
+    const result = await readBatteryLevel(io, { sleep });
+
+    expect(writes).toEqual([[0xff, 0xaa, 0x27, 0x64, 0x00]]);
+    expect(armed).toEqual([{ register: 0x64, timeoutMs: 1500 }]);
+    expect(sleeps).toEqual([COMMAND_SPACING_MS]);
+    expect(result).toEqual({ ok: true, rawValue: 392, volts: 3.92, vendorPercent: 72.5, attempts: 1 });
+  });
+
+  it("retries a missing reply, then reports no_reply with no value", async () => {
+    const { io, writes } = fakeIo([null, null]);
+
+    const result = await readBatteryLevel(io, { sleep });
+
+    expect(result).toEqual({ ok: false, failure: "no_reply", rawValue: null, errorMessage: null, attempts: 2 });
+    expect(writes).toHaveLength(2);
+  });
+
+  it("confirms on the second attempt after a lost reply", async () => {
+    const { io } = fakeIo([null, battery(371)]);
+
+    expect(await readBatteryLevel(io, { sleep })).toMatchObject({ ok: true, volts: 3.71, attempts: 2 });
+  });
+
+  it("reports an implausible value as a failed read, never as a reading", async () => {
+    const { io } = fakeIo([battery(0), battery(-3)]);
+
+    const result = await readBatteryLevel(io, { sleep });
+
+    expect(result).toEqual({ ok: false, failure: "implausible_value", rawValue: -3, errorMessage: null, attempts: 2 });
+  });
+
+  it("reports a failed write with its message", async () => {
+    const { io } = fakeIo(["throw", "throw"]);
+
+    const result = await readBatteryLevel(io, { sleep });
+
+    expect(result).toMatchObject({ ok: false, failure: "write_failed", errorMessage: "GATT Server is disconnected." });
+  });
+});
+
+describe("requestedRateFromParam", () => {
+  it("requests 100 Hz only for rate=100, and 50 Hz for anything else", () => {
+    expect(requestedRateFromParam("100")).toBe(100);
+    expect(requestedRateFromParam(["100", "50"])).toBe(100);
+    expect(requestedRateFromParam("50")).toBe(50);
+    expect(requestedRateFromParam(undefined)).toBe(50);
+    expect(requestedRateFromParam(null)).toBe(50);
+    expect(requestedRateFromParam([])).toBe(50);
+    expect(requestedRateFromParam("200")).toBe(50);
+    expect(requestedRateFromParam("100.0")).toBe(50);
+    expect(requestedRateFromParam("fast")).toBe(50);
   });
 });

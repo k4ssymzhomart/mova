@@ -4,13 +4,15 @@
 // (0022), whose clinic-membership check is a different, looser rule: the section renders exactly when the review
 // RPCs say the caller may see it, whatever the rest of the page decides.
 //
-// Nothing sensitive leaks through the states: an unauthorized caller, a failed list call, or a patient without a
-// Heel Slide session all come back as "none" and render nothing.
+// An unauthorized caller (the RPC answers null) and a patient without a Heel Slide session come back as "none" and
+// render nothing, so nothing about the patient leaks. A failed read is different: it comes back as "error" and is
+// shown as a load error, because an empty page would tell the clinician there is no session when the app simply
+// could not find out.
 
 import "server-only";
 
 import { buildStoredProxySeries } from "@/lib/motion/flexion";
-import { countOrientedRepetitions, heelSlideThresholds } from "@/lib/motion/reps";
+import { countOrientedRepetitions, heelSlideThresholds, MAX_REP_GAP_MS } from "@/lib/motion/reps";
 import { createClient } from "@/lib/supabase/server";
 
 import {
@@ -18,19 +20,27 @@ import {
   type HeelSlideView,
   isUuid,
   type MotionDeps,
-  parseSessionList,
   pickHeelSlideSession,
   type ReviewSessionItem,
+  sessionListOutcome,
 } from "./heelSlideView";
 
-const MOTION: MotionDeps = { buildStoredProxySeries, countOrientedRepetitions, heelSlideThresholds };
+const MOTION: MotionDeps = {
+  buildStoredProxySeries,
+  countOrientedRepetitions,
+  heelSlideThresholds,
+  maxRepGapMs: MAX_REP_GAP_MS,
+};
 
 export type HeelSlideSection =
   | { kind: "none" }
   /** The requested session is not one of this patient's Heel Slide sessions, or is no longer readable. */
   | { kind: "unavailable"; patientId: string; sessions: ReviewSessionItem[] }
-  /** The list loaded but the result call failed. Not "not found": the session exists. */
-  | { kind: "error"; patientId: string; sessions: ReviewSessionItem[]; selectedId: string }
+  /**
+   * A read failed. selectedId null: the session list itself did not load, so whether there are sessions is
+   * unknown. Otherwise the list loaded and the result call for that session failed.
+   */
+  | { kind: "error"; patientId: string; sessions: ReviewSessionItem[]; selectedId: string | null }
   | { kind: "ok"; patientId: string; sessions: ReviewSessionItem[]; view: HeelSlideView };
 
 /**
@@ -44,16 +54,25 @@ export async function loadHeelSlideSection(
   if (!isUuid(patientId)) return { kind: "none" };
   const supabase = createClient();
 
-  const list = await supabase.rpc("clinician_patient_sessions", { p_patient: patientId });
-  if (list.error) return { kind: "none" };
-  const sessions = parseSessionList(list.data);
-  if (!sessions) return { kind: "none" };
+  let list: ReturnType<typeof sessionListOutcome>;
+  try {
+    list = sessionListOutcome(await supabase.rpc("clinician_patient_sessions", { p_patient: patientId }));
+  } catch {
+    list = { kind: "error" };
+  }
+  if (list.kind === "error") return { kind: "error", patientId, sessions: [], selectedId: null };
+  if (list.kind === "not_allowed") return { kind: "none" };
 
-  const pick = pickHeelSlideSession(sessions, requestedSessionId);
+  const pick = pickHeelSlideSession(list.sessions, requestedSessionId);
   if (pick.kind === "none") return pick;
   if (pick.kind === "unavailable") return { kind: "unavailable", patientId, sessions: pick.sessions };
 
-  const result = await supabase.rpc("clinician_session_result", { p_session: pick.selected.id });
+  let result: { data: unknown; error: unknown };
+  try {
+    result = await supabase.rpc("clinician_session_result", { p_session: pick.selected.id });
+  } catch (error) {
+    result = { data: null, error };
+  }
   if (result.error) {
     return { kind: "error", patientId, sessions: pick.sessions, selectedId: pick.selected.id };
   }

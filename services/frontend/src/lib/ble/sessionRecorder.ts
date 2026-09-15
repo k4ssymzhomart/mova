@@ -18,6 +18,9 @@ import type { ParsedWt901Frame } from "./wt901ble68";
  * - Signal quality is evaluated at most once a second. The full report rides
  *   only on the row taken at that tick; every row carries the latest rollup in
  *   `quality` (null until the first evaluation).
+ * - stop() keeps trying to deliver for about ten seconds (TelemetryBuffer.stop).
+ *   Rows it could not deliver stay in IndexedDB, where the telemetry outbox
+ *   sends them later; `pending` in the returned counters says how many.
  *
  * No resampling, no cross-role alignment, no unit conversion -- see `toFrameRow`.
  * start/stop are queued behind each other, so a quick stop-then-start (React
@@ -26,14 +29,41 @@ import type { ParsedWt901Frame } from "./wt901ble68";
 
 export const QUALITY_EVALUATION_INTERVAL_MS = 1000;
 
-export const ZERO_COUNTERS: BufferCounters = {
+/** Buffer counters with every field present. */
+export interface RecorderCounters extends BufferCounters {
+  /** Rows the server acknowledged as stored. Rows only carried by a keepalive request are not included. */
+  framesConfirmed: number;
+  /** Rows the server acknowledged but did not store because they were recorded after the session ended. */
+  framesSkipped: number;
+  /** Distinct rows handed to a keepalive request on page hide, unconfirmed by it. */
+  framesKeepaliveSent: number;
+  framesDropped: number;
+}
+
+export const ZERO_COUNTERS: RecorderCounters = {
   framesSent: 0,
+  framesConfirmed: 0,
+  framesSkipped: 0,
+  framesKeepaliveSent: 0,
   eventsSent: 0,
   pending: 0,
   errors: 0,
   lastError: null,
   framesDropped: 0,
 };
+
+/** Fills the optional fields a buffer may leave out. `framesSent` is the older name of `framesConfirmed`. */
+export function recorderCounters(counters: BufferCounters): RecorderCounters {
+  const framesConfirmed = counters.framesConfirmed ?? counters.framesSent;
+  return {
+    ...counters,
+    framesSent: framesConfirmed,
+    framesConfirmed,
+    framesSkipped: counters.framesSkipped ?? 0,
+    framesKeepaliveSent: counters.framesKeepaliveSent ?? 0,
+    framesDropped: counters.framesDropped ?? 0,
+  };
+}
 
 export interface RecorderBuffer {
   start(): Promise<void>;
@@ -43,7 +73,7 @@ export interface RecorderBuffer {
 }
 
 export interface BleSessionRecorderOptions {
-  onCounters?: (counters: BufferCounters) => void;
+  onCounters?: (counters: RecorderCounters) => void;
   /** Test seam; defaults to a real TelemetryBuffer. */
   createBuffer?: (sessionId: string, onUpdate: (counters: BufferCounters) => void) => RecorderBuffer;
 }
@@ -56,7 +86,7 @@ export class BleSessionRecorder {
   private quality: SignalQualityReport | null = null;
   private lastEvaluatedAt: number | null = null;
   private lifecycle: Promise<unknown> = Promise.resolve();
-  private readonly onCounters?: (counters: BufferCounters) => void;
+  private readonly onCounters?: (counters: RecorderCounters) => void;
   private readonly createBuffer: NonNullable<BleSessionRecorderOptions["createBuffer"]>;
 
   constructor({ onCounters, createBuffer }: BleSessionRecorderOptions = {}) {
@@ -73,15 +103,18 @@ export class BleSessionRecorder {
       this.monitor.reset();
       this.quality = null;
       this.lastEvaluatedAt = null;
-      const buffer = this.createBuffer(sessionId, (counters) => this.onCounters?.(counters));
+      const buffer = this.createBuffer(sessionId, (counters) => this.onCounters?.(recorderCounters(counters)));
       this.buffer = buffer;
       this.onCounters?.(ZERO_COUNTERS);
       await buffer.start();
     });
   }
 
-  /** Stop and await the final drain. Resolves with the final counters, or null when nothing was recording. */
-  stop(): Promise<BufferCounters | null> {
+  /**
+   * Stop and try to deliver for about ten seconds. Resolves with the final counters, or null when nothing was
+   * recording. `pending` rows were not delivered and remain in IndexedDB for the outbox.
+   */
+  stop(): Promise<RecorderCounters | null> {
     return this.enqueue(() => this.stopBuffer());
   }
 
@@ -127,12 +160,12 @@ export class BleSessionRecorder {
     return this.recorded;
   }
 
-  private async stopBuffer(): Promise<BufferCounters | null> {
+  private async stopBuffer(): Promise<RecorderCounters | null> {
     const buffer = this.buffer;
     this.buffer = null;
     if (!buffer) return null;
     await buffer.stop();
-    const counters = { ...buffer.counters };
+    const counters = recorderCounters(buffer.counters);
     this.onCounters?.(counters);
     return counters;
   }

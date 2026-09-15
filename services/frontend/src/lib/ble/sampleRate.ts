@@ -16,15 +16,21 @@
  * figure that counts.
  *
  * Nothing is saved to flash: the rate is set again at the start of every session.
+ *
+ * The battery read (register 0x64) lives here too, because it is the other
+ * register sequence spoken over the same transport seam. It needs no unlock.
  */
 
 import {
   RATE_CODE_BY_HZ,
+  WIT_BATTERY_REGISTER,
   WIT_RATE_REGISTER,
   WIT_WRITE_CHARACTERISTIC_UUID,
+  batteryVoltsFromRaw,
   readRegisterCommand,
   setReturnRateCommand,
   unlockCommand,
+  vendorBatteryPercent,
   type RegisterReply,
   type SupportedRateHz,
 } from "./witRegister";
@@ -32,6 +38,15 @@ import {
 export const SAMPLE_RATE_CHARACTERISTIC_UUID = WIT_WRITE_CHARACTERISTIC_UUID;
 
 export const TARGET_SAMPLE_RATE_HZ: SupportedRateHz = 50;
+
+/**
+ * The rate a page asks for from its `?rate=` parameter: "100" requests 100 Hz; "50", no parameter or anything
+ * else requests 50 Hz. Only the two agreed codes can come out of it.
+ */
+export function requestedRateFromParam(value: string | readonly string[] | null | undefined): SupportedRateHz {
+  const raw = typeof value === "string" ? value : value?.[0];
+  return raw === "100" ? 100 : TARGET_SAMPLE_RATE_HZ;
+}
 
 export const COMMAND_SPACING_MS = 150;
 export const REPLY_TIMEOUT_MS = 1500;
@@ -129,4 +144,72 @@ export async function configureSampleRate(
   }
 
   return result(false);
+}
+
+// — battery ———————————————————————————————————————————————————————————————————
+
+export const BATTERY_READ_ATTEMPTS = 2;
+
+/**
+ * - no_reply: the sensor never answered the 0x64 read.
+ * - write_failed: the read command could not be written (see `errorMessage`).
+ * - implausible_value: it answered with a value that cannot be a supply voltage (see `rawValue`).
+ */
+export type BatteryReadFailure = "no_reply" | "write_failed" | "implausible_value";
+
+export type BatteryReadResult =
+  | { ok: true; rawValue: number; volts: number; vendorPercent: number; attempts: number }
+  | { ok: false; failure: BatteryReadFailure; rawValue: number | null; errorMessage: string | null; attempts: number };
+
+export interface ReadBatteryOptions {
+  spacingMs?: number;
+  replyTimeoutMs?: number;
+  maxAttempts?: number;
+  sleep?: (ms: number) => Promise<void>;
+}
+
+/**
+ * Read register 0x64 and convert it: volts = value / 100, percent from the WitMotion table. Each attempt waits
+ * the SDK's command spacing first, so it never lands back to back with the previous protocol write. A failure is
+ * returned as such; no voltage is ever assumed.
+ */
+export async function readBatteryLevel(
+  io: SampleRateIo,
+  {
+    spacingMs = COMMAND_SPACING_MS,
+    replyTimeoutMs = REPLY_TIMEOUT_MS,
+    maxAttempts = BATTERY_READ_ATTEMPTS,
+    sleep = defaultSleep,
+  }: ReadBatteryOptions = {},
+): Promise<BatteryReadResult> {
+  let failure: BatteryReadFailure = "no_reply";
+  let rawValue: number | null = null;
+  let errorMessage: string | null = null;
+  let attempts = 0;
+
+  while (attempts < maxAttempts) {
+    attempts += 1;
+    try {
+      await sleep(spacingMs);
+      const reply = io.awaitRegisterReply(WIT_BATTERY_REGISTER, replyTimeoutMs);
+      await io.write(readRegisterCommand(WIT_BATTERY_REGISTER));
+      const answer = await reply;
+      if (!answer) {
+        failure = "no_reply";
+        continue;
+      }
+      rawValue = answer.values[0];
+      const volts = batteryVoltsFromRaw(rawValue);
+      if (volts === null) {
+        failure = "implausible_value";
+        continue;
+      }
+      return { ok: true, rawValue, volts, vendorPercent: vendorBatteryPercent(volts), attempts };
+    } catch (error) {
+      failure = "write_failed";
+      errorMessage = error instanceof Error ? error.message : String(error);
+    }
+  }
+
+  return { ok: false, failure, rawValue, errorMessage, attempts };
 }

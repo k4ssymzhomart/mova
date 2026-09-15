@@ -1,8 +1,10 @@
 "use client";
 
 // useSensorStatus — the one hook the UI reads for the three sensor roles. What sits behind it:
-//  - "ble": the real Web Bluetooth store (lib/ble/liveSensors) as soon as any role is connecting, streaming or
-//    lost. Battery stays null: the WT901BLE68 data frame carries none and nothing reads it separately.
+//  - "ble": the real Web Bluetooth store (lib/ble/liveSensors) as soon as any role is connecting (which includes
+//    reconnecting), streaming or lost. batteryPct stays null: the store does read the supply voltage, but its
+//    percent comes from WitMotion's interpolation table, not from the device, and this field is never estimated.
+//    Screens that show the table's figure read it from useLiveSensors(), labelled as such.
 //  - "none": nothing connected yet, so every role reads "disconnected", or "unsupported" in browsers without
 //    Web Bluetooth (Safari and every iOS browser).
 //  - "mock": NEXT_PUBLIC_SENSOR_MOCK=1, for walking through the flow without hardware. Refused on the

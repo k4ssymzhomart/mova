@@ -1,5 +1,12 @@
 /// <reference types="web-bluetooth" />
-import { configureSampleRate, TARGET_SAMPLE_RATE_HZ, type SampleRateIo, type SampleRateResult } from "./sampleRate";
+import {
+  configureSampleRate,
+  readBatteryLevel,
+  TARGET_SAMPLE_RATE_HZ,
+  type BatteryReadResult,
+  type SampleRateIo,
+  type SampleRateResult,
+} from "./sampleRate";
 import {
   WIT_WRITE_CHARACTERISTIC_UUID,
   WitRegisterReplyBuffer,
@@ -17,11 +24,30 @@ import {
 
 export type BleConnectionStatus = "requesting" | "connecting" | "connected" | "disconnected" | "error";
 
+/**
+ * How long connecting and service discovery may take before the attempt is abandoned. Neither Chrome nor
+ * CoreBluetooth on macOS times out a GATT connect on its own, so without this a sensor that dies while it is
+ * being picked leaves the attempt pending for good.
+ */
+export const GATT_CONNECT_TIMEOUT_MS = 15_000;
+
 export interface SensorConnectionHandlers {
   onFrame(frame: ParsedWt901Frame, raw: Uint8Array): void;
   /** "disconnected" fires only when the link drops on its own, not after a local `disconnect()`. */
   onStatusChange?(status: BleConnectionStatus): void;
   onError?(error: unknown): void;
+}
+
+export interface ConnectDeviceOptions {
+  /** Defaults to GATT_CONNECT_TIMEOUT_MS. */
+  timeoutMs?: number;
+}
+
+export class SensorConnectTimeoutError extends Error {
+  constructor(timeoutMs: number) {
+    super(`GATT connection did not complete within ${Math.round(timeoutMs / 1000)} s`);
+    this.name = "TimeoutError";
+  }
 }
 
 export interface SensorConnection {
@@ -35,8 +61,10 @@ export interface SensorConnection {
    * which body location every time.
    */
   deviceName: string | null;
-  /** Write the rate over `ffe9` and read it back (see `sampleRate.ts`). Calls queue behind each other; never rejects. */
+  /** Write the rate over `ffe9` and read it back (see `sampleRate.ts`). Queued with readBattery; never rejects. */
   configureSampleRate(hz?: SupportedRateHz): Promise<SampleRateResult>;
+  /** Read the supply voltage from register 0x64. Queued with configureSampleRate; never rejects. */
+  readBattery(): Promise<BatteryReadResult>;
   disconnect(): void;
 }
 
@@ -76,21 +104,35 @@ export async function requestWt901Device(): Promise<BluetoothDevice> {
   });
 }
 
+// The newest connection made on each device object. A reconnect reuses the same BluetoothDevice, so an older,
+// abandoned connection must not call gatt.disconnect() and take the newer link down with it.
+const currentConnectionByDevice = new WeakMap<BluetoothDevice, symbol>();
+
 /**
  * Connects GATT, subscribes to `ffe4` and takes `ffe9` for register writes.
+ * Calling it again on the same device is how a dropped sensor is reconnected
+ * without the chooser: everything below is acquired afresh.
  *
  * Every raw notification feeds two buffers: the verbatim `WitMotion61FrameBuffer`
  * for data frames and `WitRegisterReplyBuffer` for `55 71` register replies.
  * Writes go through one per-device queue, because Chrome rejects a GATT
- * operation started while another is still in progress on the same device.
- * Listeners and pending reply waits are released on either kind of disconnect.
+ * operation started while another is still in progress on the same device, and
+ * the rate and battery sequences queue behind each other so their commands never
+ * interleave. Connecting and discovery are abandoned after `timeoutMs`; the
+ * pending connect is then cancelled with `gatt.disconnect()`. Listeners and
+ * pending reply waits are released on either kind of disconnect.
  */
 export async function connectWt901Device(
   device: BluetoothDevice,
   handlers: SensorConnectionHandlers,
+  { timeoutMs = GATT_CONNECT_TIMEOUT_MS }: ConnectDeviceOptions = {},
 ): Promise<SensorConnection> {
   handlers.onStatusChange?.("connecting");
-  if (!device.gatt) throw new Error("Selected device does not support GATT");
+  const gatt = device.gatt;
+  if (!gatt) throw new Error("Selected device does not support GATT");
+
+  const token = Symbol(device.id);
+  currentConnectionByDevice.set(device, token);
 
   const frameBuffer = new WitMotion61FrameBuffer();
   const replyBuffer = new WitRegisterReplyBuffer();
@@ -99,7 +141,7 @@ export async function connectWt901Device(
   let writer: BluetoothRemoteGATTCharacteristic | null = null;
   let closed = false;
   let gattQueue: Promise<unknown> = Promise.resolve();
-  let rateQueue: Promise<SampleRateResult> | null = null;
+  let protocolQueue: Promise<unknown> = Promise.resolve();
 
   const onValue = (event: Event) => {
     const value = (event.target as BluetoothRemoteGATTCharacteristic).value;
@@ -125,35 +167,71 @@ export async function connectWt901Device(
     for (const waiter of [...waiters]) waiter.settle(null);
   };
 
+  const disconnectGatt = () => {
+    if (currentConnectionByDevice.get(device) === token) gatt.disconnect();
+  };
+
   function onRemoteDisconnect() {
     if (closed) return;
     release();
     handlers.onStatusChange?.("disconnected");
   }
 
+  const ensureOpen = () => {
+    if (closed) throw new Error("Sensor is disconnected");
+  };
+
   const enqueueGatt = <T>(operation: () => Promise<T>): Promise<T> => {
     const run = gattQueue.then(() => {
-      if (closed) throw new Error("Sensor is disconnected");
+      ensureOpen();
       return operation();
     });
     gattQueue = run.catch(() => undefined);
     return run;
   };
 
+  const enqueueProtocol = <T>(operation: () => Promise<T>): Promise<T> => {
+    const run = protocolQueue.then(operation);
+    protocolQueue = run.catch(() => undefined);
+    return run;
+  };
+
   device.addEventListener("gattserverdisconnected", onRemoteDisconnect);
-  try {
-    const server = await device.gatt.connect();
+
+  // Each step checks that the attempt was not abandoned meanwhile (timeout or a drop), so a connect that settles
+  // late never attaches listeners to a connection nobody holds.
+  const setup = async () => {
+    const server = await gatt.connect();
+    ensureOpen();
     const service = await server.getPrimaryService(WT901BLE68_SERVICE_UUID);
-    notify = await service.getCharacteristic(WT901BLE68_CHARACTERISTIC_UUID);
-    // Streaming works without ffe9; only rate configuration needs it, and reports its absence.
+    ensureOpen();
+    const characteristic = await service.getCharacteristic(WT901BLE68_CHARACTERISTIC_UUID);
+    ensureOpen();
+    // Streaming works without ffe9; only the register sequences need it, and they report its absence.
     writer = await service.getCharacteristic(WIT_WRITE_CHARACTERISTIC_UUID).catch(() => null);
-    notify.addEventListener("characteristicvaluechanged", onValue);
-    const characteristic = notify;
+    ensureOpen();
+    notify = characteristic;
+    characteristic.addEventListener("characteristicvaluechanged", onValue);
     await enqueueGatt(() => characteristic.startNotifications());
+    ensureOpen();
+  };
+
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const setupRun = setup();
+  setupRun.catch(() => undefined); // a setup that loses the race settles unobserved
+  try {
+    await Promise.race([
+      setupRun,
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new SensorConnectTimeoutError(timeoutMs)), timeoutMs);
+      }),
+    ]);
   } catch (error) {
     release();
-    device.gatt.disconnect();
+    disconnectGatt();
     throw error;
+  } finally {
+    clearTimeout(timer);
   }
   handlers.onStatusChange?.("connected");
 
@@ -175,12 +253,12 @@ export async function connectWt901Device(
         const waiter = {
           register,
           settle: (reply: RegisterReply | null) => {
-            clearTimeout(timer);
+            clearTimeout(waitTimer);
             waiters.delete(waiter);
             resolve(reply);
           },
         };
-        const timer = setTimeout(() => waiter.settle(null), timeoutMs);
+        const waitTimer = setTimeout(() => waiter.settle(null), timeoutMs);
         waiters.add(waiter);
       }),
   };
@@ -188,15 +266,12 @@ export async function connectWt901Device(
   return {
     deviceId: device.id,
     deviceName: device.name ?? null,
-    configureSampleRate: (hz = TARGET_SAMPLE_RATE_HZ) => {
-      const run = () => configureSampleRate(io, hz);
-      rateQueue = rateQueue ? rateQueue.then(run) : run();
-      return rateQueue;
-    },
+    configureSampleRate: (hz = TARGET_SAMPLE_RATE_HZ) => enqueueProtocol(() => configureSampleRate(io, hz)),
+    readBattery: () => enqueueProtocol(() => readBatteryLevel(io)),
     disconnect: () => {
       if (closed) return;
       release();
-      device.gatt?.disconnect();
+      disconnectGatt();
     },
   };
 }

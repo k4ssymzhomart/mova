@@ -2,9 +2,10 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import { buildStoredProxySeries } from "../motion/flexion.ts";
-import { countOrientedRepetitions, heelSlideThresholds } from "../motion/reps.ts";
+import { countOrientedRepetitions, heelSlideThresholds, MAX_REP_GAP_MS } from "../motion/reps.ts";
 import {
   buildHeelSlideView,
+  clockDuration,
   deliveredHz,
   downsampleMinMax,
   formatDecimal,
@@ -12,19 +13,31 @@ import {
   isUuid,
   type MotionDeps,
   niceTicks,
+  parseBaselineWindow,
+  parseBattery,
   parseCheckIn,
+  parseRateHistory,
   parseRateReadout,
   parseSessionList,
   pickHeelSlideSession,
   type ReviewSessionItem,
+  sessionListOutcome,
 } from "./heelSlideView.ts";
 
-const MOTION: MotionDeps = { buildStoredProxySeries, countOrientedRepetitions, heelSlideThresholds };
+const MOTION: MotionDeps = {
+  buildStoredProxySeries,
+  countOrientedRepetitions,
+  heelSlideThresholds,
+  maxRepGapMs: MAX_REP_GAP_MS,
+};
 
 const PATIENT = "11111111-1111-4111-8111-111111111111";
 const SESSION = "22222222-2222-4222-8222-222222222222";
 const OLDER = "33333333-3333-4333-8333-333333333333";
 const OTHER_EXERCISE = "44444444-4444-4444-8444-444444444444";
+
+const T0 = Date.parse("2026-09-15T08:00:00Z");
+const STARTED_AT = "2026-09-15T07:59:30Z";
 
 const RUBRIC = {
   schema: "exercise_config/heel_slide_path.v1",
@@ -38,19 +51,31 @@ function listItem(id: string, startedAt: string, slug: string | null): ReviewSes
 }
 
 /**
- * A stored session at `hz`: the leg rests straight, then `reps` slow heel slides of `peakDeg` of relative
- * orientation, each followed by a rest. The thigh sits near +175 degrees of pitch, so the shank crosses the
- * +/-180 seam on every bend. The shank sensor notifies `skewMs` after the thigh.
+ * A stored session at `hz`: the leg rests, then `reps` slow heel slides of `peakDeg` of relative orientation, each
+ * followed by a rest. The thigh sits near +175 degrees of pitch, so the shank crosses the +/-180 seam on every
+ * bend. The shank sensor notifies `skewMs` after the thigh. `offsetDeg` shifts the shank's rest pose (a strap that
+ * moved), and no frames are stored inside `gapsMs` ([from, to) ms after `t0`, both sensors silent).
  */
-function storedSession({ hz = 50, reps = 10, peakDeg = 60, restS = 1.5, repS = 2, skewMs = 6 } = {}) {
+function storedSession({
+  hz = 50,
+  reps = 10,
+  peakDeg = 60,
+  restS = 1.5,
+  repS = 2,
+  skewMs = 6,
+  t0 = T0,
+  offsetDeg = 0,
+  gapsMs = [] as [number, number][],
+} = {}) {
   const thigh: [number, number][] = [];
   const shank: [number, number][] = [];
-  const t0 = Date.parse("2026-09-15T08:00:00Z");
   const cycleS = repS + restS;
   const totalS = restS + reps * cycleS;
   const n = Math.round(totalS * hz);
   for (let i = 0; i < n; i += 1) {
     const tS = i / hz;
+    const relMs = i * (1000 / hz);
+    if (gapsMs.some(([from, to]) => relMs >= from && relMs < to)) continue;
     const inCycle = tS - restS;
     let bend = 0;
     if (inCycle >= 0) {
@@ -58,23 +83,23 @@ function storedSession({ hz = 50, reps = 10, peakDeg = 60, restS = 1.5, repS = 2
       if (phase < repS) bend = peakDeg * Math.sin((Math.PI * phase) / repS);
     }
     const thighPitch = 175 + 0.3 * Math.sin(i * 0.7);
-    const shankRaw = thighPitch + bend;
+    const shankRaw = thighPitch + offsetDeg + bend;
     const shankPitch = shankRaw > 180 ? shankRaw - 360 : shankRaw;
-    const tMs = t0 + i * (1000 / hz);
+    const tMs = t0 + relMs;
     thigh.push([tMs, thighPitch]);
     shank.push([tMs + skewMs, shankPitch]);
   }
-  return { thigh, shank, t0 };
+  return { thigh, shank };
 }
 
-function resultPayload(overrides: Record<string, unknown> = {}) {
+function resultPayload(overrides: Record<string, unknown> = {}, summaryOverrides: Record<string, unknown> = {}) {
   const { thigh, shank } = storedSession();
   return {
     session: {
       id: SESSION,
       patient_id: PATIENT,
       status: "completed",
-      started_at: "2026-09-15T07:59:30Z",
+      started_at: STARTED_AT,
       ended_at: "2026-09-15T08:00:42Z",
       device_info: {
         transport: "web-bluetooth",
@@ -84,7 +109,7 @@ function resultPayload(overrides: Record<string, unknown> = {}) {
           foot: { device_id: "c", device_name: "WT901-C", rate: null },
         },
       },
-      summary: { kind: "heel_slide_path.v1", reps_counted_on_device: 9, telemetry: { pending_at_finish: 0 } },
+      summary: { kind: "heel_slide_path.v1", reps_counted_on_device: 9, telemetry: { pending_at_finish: 0 }, ...summaryOverrides },
     },
     exercise: { slug: "heel-slide", name: "Heel Slide", scoring_rubric: RUBRIC, default_dose: { reps: 12 } },
     prescription: { id: OLDER, status: "active", dose: { reps: 10 } },
@@ -123,6 +148,13 @@ test("the session list maps rows and keeps null for an unauthorised caller", () 
     { id: OLDER, startedAt: null, endedAt: null, status: null, exerciseSlug: null, exerciseName: null, hasCheckIn: false },
   ]);
   assert.deepEqual(parseSessionList([]), []);
+});
+
+test("a failed session-list call is an error, never 'no sessions'; null data is a refusal", () => {
+  assert.deepEqual(sessionListOutcome({ data: null, error: { code: "PGRST202", message: "not found" } }), { kind: "error" });
+  assert.deepEqual(sessionListOutcome({ data: [], error: new Error("fetch failed") }), { kind: "error" });
+  assert.deepEqual(sessionListOutcome({ data: null, error: null }), { kind: "not_allowed" });
+  assert.deepEqual(sessionListOutcome({ data: [], error: null }), { kind: "ok", sessions: [] });
 });
 
 test("the newest Heel Slide session is picked by default; other exercises never are", () => {
@@ -212,13 +244,51 @@ test("rate readbacks are read in every shape the sensors step may store, and not
   assert.deepEqual(parseRateReadout("50"), { status: "unknown" });
 });
 
-test("numbers and codes format for display", () => {
+test("rate history entries keep their order and time, with the sensor's requested rate", () => {
+  assert.equal(parseRateHistory(undefined, 50), null);
+  assert.deepEqual(
+    parseRateHistory(
+      [
+        { at_ms: 1_000, confirmed: false, readback_code: null, failure: "no_reply" },
+        "junk",
+        { at_ms: 2_000, confirmed: true, readback_code: 9, failure: null },
+        { confirmed: "yes" },
+      ],
+      100,
+    ),
+    [
+      { atMs: 1_000, readout: { status: "unconfirmed", requestedHz: 100, failure: "no_reply", readbackCode: null } },
+      { atMs: 2_000, readout: { status: "confirmed", requestedHz: 100 } },
+      { atMs: null, readout: { status: "unknown" } },
+    ],
+  );
+});
+
+test("battery readings are read as stored; a failed or implausible read stays unknown", () => {
+  assert.deepEqual(parseBattery({ volts: 3.92, vendor_percent: 75 }), { volts: 3.92, vendorPercent: 75 });
+  assert.deepEqual(parseBattery({ volts: 7.9, vendorPercent: 140 }), { volts: 7.9, vendorPercent: null });
+  assert.equal(parseBattery({ volts: 0, vendor_percent: 0 }), null);
+  assert.equal(parseBattery({ volts: 42, vendor_percent: 100 }), null);
+  assert.equal(parseBattery({ vendor_percent: 50 }), null);
+  assert.equal(parseBattery(null), null);
+});
+
+test("the saved zero window is read only when both bounds are numbers", () => {
+  assert.deepEqual(parseBaselineWindow({ start: 10, end: 510 }), { startMs: 10, endMs: 510 });
+  assert.equal(parseBaselineWindow({ start: "10", end: 510 }), null);
+  assert.equal(parseBaselineWindow(undefined), null);
+});
+
+test("numbers, codes and durations format for display", () => {
   assert.equal(formatDecimal(49.84, "en"), "49.8");
   assert.equal(formatDecimal(49.84, "ru"), "49,8");
   assert.equal(formatDecimal(49.84, "kk"), "49,8");
   assert.equal(formatDecimal(12, "en", 0), "12");
   assert.equal(hexCode(8), "0x08");
   assert.equal(hexCode(0x0b), "0x0B");
+  assert.equal(clockDuration(65_000), "1:05");
+  assert.equal(clockDuration(-45_400), "0:45");
+  assert.equal(clockDuration(0), "0:00");
 });
 
 test("check-in answers are read as stored; unknown values stay unknown", () => {
@@ -240,6 +310,9 @@ test("the view recounts reps from stored frames across the seam, apart from the 
   assert.ok(view);
   assert.equal(view.recount.count, 10);
   assert.equal(view.recount.reason, null);
+  assert.equal(view.recount.cancelled, 0);
+  assert.equal(view.recount.maxGapMs, MAX_REP_GAP_MS);
+  assert.deepEqual(view.recount.baseline, { source: "first_samples", zeroFound: true, pairsBeforeWindow: 0 });
   assert.deepEqual(view.recount.thresholds, { enterDeg: 22.5, exitDeg: 7, minRepMs: 250 });
   assert.equal(view.deviceCount, 9);
   assert.equal(view.targetReps, 10);
@@ -249,7 +322,8 @@ test("the view recounts reps from stored frames across the seam, apart from the 
   assert.equal(view.patientName, "test.patient");
   assert.equal(view.session.durationMs, 72_000);
   assert.equal(view.session.status, "completed");
-  assert.equal(view.pendingAtFinish, 0);
+  assert.equal(view.telemetry.pendingAtFinish, 0);
+  assert.equal(view.restartedAfterReload, null);
 });
 
 test("the chart is capped, and its peaks survive the cap", () => {
@@ -257,12 +331,13 @@ test("the chart is capped, and its peaks survive the cap", () => {
   assert.ok(view);
   assert.ok(view.chart.totalPoints > 1500, `series has ${view.chart.totalPoints} samples`);
   assert.ok(view.chart.points.length <= 1500);
+  assert.deepEqual(view.chart.beforeStart, []);
   const drawnPeak = Math.max(...view.chart.points.map((p) => p.value));
   assert.ok(drawnPeak > 59 && drawnPeak <= 60.5, `peak ${drawnPeak}`);
   assert.equal(view.chart.startMs, view.chart.points[0].tMs);
 });
 
-test("the technical block reports stored counts, rates and pairing as recorded", () => {
+test("without a finish record, the technical block reports stored counts and the start record, marked as such", () => {
   const payload = resultPayload();
   const view = buildHeelSlideView(payload, MOTION);
   assert.ok(view);
@@ -272,16 +347,205 @@ test("the technical block reports stored counts, rates and pairing as recorded",
   assert.equal(shank.storedFrames, payload.frames.shank.length + 2);
   assert.ok(thigh.deliveredHz !== null && Math.abs(thigh.deliveredHz - 50) < 1e-6);
   assert.equal(foot.deliveredHz, null);
-  assert.equal(thigh.deviceName, "WT901-A");
+  assert.deepEqual(thigh.device, { name: "WT901-A", idShort: "a" });
+  assert.equal(thigh.deviceSource, "start");
+  assert.equal(thigh.deviceAtStartIfChanged, null);
   assert.deepEqual(thigh.rate, { status: "confirmed", requestedHz: 50 });
+  assert.equal(thigh.rateSource, "start");
+  assert.equal(thigh.rateChecks, null);
+  assert.equal(thigh.requestedHz, 50);
   assert.deepEqual(shank.rate, { status: "unconfirmed", requestedHz: 50, failure: "mismatch", readbackCode: 6 });
   assert.deepEqual(foot.rate, { status: "unknown" });
+  assert.equal(foot.requestedHz, null);
+  assert.equal(thigh.batteryStart, null);
+  assert.equal(thigh.batteryEnd, null);
+  assert.equal(thigh.reconnects, null);
   assert.equal(view.pairing.medianSkewMs, 6);
   assert.equal(view.pairing.maxSkewMs, 6);
   assert.equal(view.pairing.unpairedShank, 0);
   assert.deepEqual(view.checkIn?.symptoms, ["redness", "other"]);
   assert.equal(view.checkIn?.otherNote, "stiff in the morning");
   assert.equal(view.checkIn?.kneeFeels, "same");
+});
+
+test("the finish record wins for device, rate and battery, and a swapped device is flagged", () => {
+  const startMs = Date.parse(STARTED_AT);
+  const payload = resultPayload();
+  payload.session.device_info.roles.thigh = {
+    device_id: "WebBluetoothId-aa1111",
+    device_name: "WT901-A",
+    rate: { requestedHz: 50, confirmed: true },
+    battery: { volts: 4.01, vendor_percent: 100 },
+  } as never;
+  payload.session.device_info.roles.shank = {
+    device_id: "WebBluetoothId-bb2222",
+    device_name: "WT901-B",
+    rate: { status: "configuring", requestedHz: 50 },
+    battery: { volts: 3.7, vendor_percent: 15 },
+  } as never;
+  payload.session.device_info.roles.foot = {
+    device_id: "WebBluetoothId-cc3333",
+    device_name: "WT901-C",
+    rate: null,
+    battery: null,
+  } as never;
+  (payload.session.summary as Record<string, unknown>).sensors = {
+    thigh: {
+      device_name: "WT901-A2",
+      device_id_short: "zz9999",
+      requested_hz: 100,
+      rate_history: [
+        { at_ms: startMs - 45_000, confirmed: false, readback_code: null, failure: "no_reply" },
+        { at_ms: startMs + 12_000, confirmed: true, readback_code: 9, failure: null },
+      ],
+      delivered_hz: 99.1,
+      battery_start: { volts: 3.92, vendor_percent: 75 },
+      battery_end: { volts: 3.85, vendor_percent: 57.2 },
+      reconnects: 1,
+    },
+    foot: {
+      device_name: "WT901-C",
+      device_id_short: "cc3333",
+      requested_hz: 50,
+      rate_history: [],
+      battery_start: { volts: 0, vendor_percent: 0 },
+      battery_end: "unknown",
+      reconnects: 0,
+    },
+  };
+
+  const view = buildHeelSlideView(payload, MOTION);
+  assert.ok(view);
+  const [thigh, shank, foot] = view.roles;
+
+  assert.deepEqual(thigh.device, { name: "WT901-A2", idShort: "zz9999" });
+  assert.equal(thigh.deviceSource, "finish");
+  assert.deepEqual(thigh.deviceAtStartIfChanged, { name: "WT901-A", idShort: "aa1111" });
+  assert.equal(thigh.requestedHz, 100);
+  assert.deepEqual(thigh.rate, { status: "confirmed", requestedHz: 100 });
+  assert.equal(thigh.rateSource, "finish");
+  assert.deepEqual(
+    thigh.rateChecks?.map((check) => [check.atMs, check.readout.status]),
+    [
+      [startMs - 45_000, "unconfirmed"],
+      [startMs + 12_000, "confirmed"],
+    ],
+  );
+  assert.deepEqual(thigh.batteryStart, { volts: 3.92, vendorPercent: 75 });
+  assert.deepEqual(thigh.batteryEnd, { volts: 3.85, vendorPercent: 57.2 });
+  assert.equal(thigh.reconnects, 1);
+
+  // No finish record for the shank: everything comes from the start, including a setup still running then.
+  assert.deepEqual(shank.device, { name: "WT901-B", idShort: "bb2222" });
+  assert.equal(shank.deviceSource, "start");
+  assert.deepEqual(shank.rate, { status: "pending", requestedHz: 50 });
+  assert.equal(shank.rateSource, "start");
+  assert.deepEqual(shank.batteryStart, { volts: 3.7, vendorPercent: 15 });
+  assert.equal(shank.batteryEnd, null);
+  assert.equal(shank.reconnects, null);
+
+  // Same unit at start and finish, an empty history, and battery reads that failed.
+  assert.equal(foot.deviceAtStartIfChanged, null);
+  assert.deepEqual(foot.rateChecks, []);
+  assert.equal(foot.rateSource, "start");
+  assert.equal(foot.batteryStart, null);
+  assert.equal(foot.batteryEnd, null);
+  assert.equal(foot.reconnects, 0);
+});
+
+test("telemetry counts are the device's; a summary without frames_confirmed is unknown, not zero", () => {
+  const confirmed = buildHeelSlideView(
+    resultPayload({}, { telemetry: { frames_confirmed: 1_200, pending_at_finish: 3, errors: 1, dropped: 0 } }),
+    MOTION,
+  );
+  assert.deepEqual(confirmed?.telemetry, { framesConfirmed: 1_200, pendingAtFinish: 3, errors: 1, dropped: 0 });
+
+  const older = buildHeelSlideView(resultPayload({}, { telemetry: { frames_sent: 50, pending_at_finish: null } }), MOTION);
+  assert.deepEqual(older?.telemetry, { framesConfirmed: null, pendingAtFinish: null, errors: null, dropped: null });
+});
+
+test("the recount zeroes on the saved window, so an abandoned start before it is drawn but not counted", () => {
+  // A start abandoned after 0.3 s at one rest pose, then the strap shifts 12 degrees and ten reps follow.
+  const abandoned = storedSession({ reps: 0, restS: 0.3 });
+  const started = storedSession({ t0: T0 + 5_000, offsetDeg: 12 });
+  const frames = {
+    thigh: [...abandoned.thigh, ...started.thigh],
+    shank: [...abandoned.shank, ...started.shank],
+    foot_count: 0,
+  };
+  const window = { start: T0 + 5_000, end: T0 + 5_500 };
+
+  const withWindow = buildHeelSlideView(
+    resultPayload({ frames }, { reps_counted_on_device: 10, baseline_window_ms: window, restarted_after_reload: true }),
+    MOTION,
+  );
+  assert.ok(withWindow);
+  assert.equal(withWindow.recount.count, 10);
+  assert.deepEqual(withWindow.recount.baseline, {
+    source: "window",
+    zeroFound: true,
+    pairsBeforeWindow: abandoned.shank.length,
+  });
+  assert.equal(withWindow.restartedAfterReload, true);
+  // Drawn, within the shared cap (the pre-start line gets its share of the points), from the first stored pair.
+  assert.ok(withWindow.chart.beforeStart.length > 0);
+  assert.ok(withWindow.chart.beforeStart.length <= abandoned.shank.length);
+  assert.ok(withWindow.chart.beforeStart.every((sample) => sample.tMs < window.start));
+  assert.equal(withWindow.chart.startMs, T0 + 6);
+  assert.equal(withWindow.chart.totalPoints, withWindow.pairing.pairs);
+  // The abandoned pose reads about 12 degrees below the zero it is drawn on.
+  const abandonedLevel = withWindow.chart.beforeStart[0].value;
+  assert.ok(Math.abs(Math.abs(abandonedLevel) - 12) < 1.5, `abandoned start drawn at ${abandonedLevel}`);
+
+  // Without the window the zero is the abandoned pose, and the shifted rest never falls back below the exit.
+  const withoutWindow = buildHeelSlideView(resultPayload({ frames }, { reps_counted_on_device: 10 }), MOTION);
+  assert.ok(withoutWindow);
+  assert.equal(withoutWindow.recount.baseline.source, "first_samples");
+  assert.notEqual(withoutWindow.recount.count, 10);
+});
+
+test("a saved window with no stored pair inside it gives no zero and no count, rather than another zero", () => {
+  const view = buildHeelSlideView(
+    resultPayload({}, { baseline_window_ms: { start: T0 + 3_600_000, end: T0 + 3_600_500 } }),
+    MOTION,
+  );
+  assert.ok(view);
+  assert.equal(view.recount.count, null);
+  assert.equal(view.recount.reason, "insufficient_samples");
+  assert.deepEqual(view.recount.baseline, { source: "window", zeroFound: false, pairsBeforeWindow: 0 });
+  assert.equal(view.chart.points.length, 0);
+  assert.ok(view.pairing.pairs > 0);
+});
+
+test("a rep open when the data paused for more than the gap is not recounted", () => {
+  // Rep 4 runs from 12 s to 14 s after the start; both sensors fall silent from 12.5 s to 14.7 s.
+  const paused = storedSession({ gapsMs: [[12_500, 14_700]] });
+  const view = buildHeelSlideView(
+    resultPayload({ frames: { thigh: paused.thigh, shank: paused.shank, foot_count: 0 } }),
+    MOTION,
+  );
+  assert.ok(view);
+  assert.equal(view.recount.count, 9);
+  assert.equal(view.recount.cancelled, 1);
+  for (const segment of view.chart.segments) {
+    assert.ok(segment.endMs <= T0 + 12_500 || segment.startMs >= T0 + 14_700, "no counted rep spans the pause");
+  }
+});
+
+test("both chart lines together stay within the cap", () => {
+  const abandoned = storedSession({ reps: 2 });
+  const started = storedSession({ t0: T0 + 60_000 });
+  const frames = { thigh: [...abandoned.thigh, ...started.thigh], shank: [...abandoned.shank, ...started.shank], foot_count: 0 };
+  const view = buildHeelSlideView(
+    resultPayload({ frames }, { baseline_window_ms: { start: T0 + 60_000, end: T0 + 60_500 } }),
+    MOTION,
+    { maxChartPoints: 300 },
+  );
+  assert.ok(view);
+  assert.ok(view.chart.beforeStart.length >= 2);
+  assert.ok(view.chart.points.length + view.chart.beforeStart.length <= 300);
+  assert.equal(view.chart.totalPoints, abandoned.shank.length + started.shank.length);
+  assert.equal(view.recount.count, 10);
 });
 
 test("a session with too few frames is not countable rather than zero", () => {
@@ -303,9 +567,10 @@ test("missing dose and summary stay unknown; the default dose is the fallback ta
   assert.ok(view);
   assert.equal(view.targetReps, 12);
   assert.equal(view.deviceCount, null);
-  assert.equal(view.pendingAtFinish, null);
+  assert.deepEqual(view.telemetry, { framesConfirmed: null, pendingAtFinish: null, errors: null, dropped: null });
   assert.equal(view.session.durationMs, null);
   assert.deepEqual(view.roles.map((r) => r.rate.status), ["unknown", "unknown", "unknown"]);
+  assert.deepEqual(view.roles.map((r) => r.deviceSource), [null, null, null]);
 });
 
 test("a payload that is not this patient's session result gives no view", () => {

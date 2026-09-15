@@ -5,15 +5,28 @@
 //
 // What the clinician sees is recounted here, never read back from the patient's device: the stored thigh and
 // shank pitch series are paired and oriented by lib/motion's batch rules and counted with the same state machine
-// the exercise screen runs. The device's own count is carried separately so the view can say when the two differ.
+// the exercise screen runs, pause rule included. The zero is taken on the span the device took it on
+// (summary.baseline_window_ms, the latest «Начать»), so frames from an abandoned start or from before a reload are
+// not counted and are only drawn. The device's own count is carried separately so the view can say when the two
+// differ.
+//
+// Sensor facts come from two records the patient's app writes: device_info when the session starts, and
+// summary.sensors when it finishes. The finish record wins, because a sensor can reconnect, be swapped or be
+// re-rated during the session; a value known only from the start is marked as such.
 //
 // Honesty: the charted value is the flexion proxy, a relative orientation difference between two uncalibrated
 // sensors. It is not knee flexion and nothing here turns it into a score. Anything the payload does not carry is
 // null and is shown as unknown, never filled in.
 
 import type { SensorRole } from "@/lib/ble/roles";
-import type { PairingStats, ProxySample, StoredPitchPoint, StoredProxySeries } from "@/lib/motion/flexion";
-import type { RepReason, RepReport, RepThresholds } from "@/lib/motion/reps";
+import type {
+  BaselineWindow,
+  PairingStats,
+  ProxySample,
+  StoredPitchPoint,
+  StoredProxySeries,
+} from "@/lib/motion/flexion";
+import type { RepCounterOptions, RepReason, RepReport, RepThresholds } from "@/lib/motion/reps";
 import type { Locale } from "@/locales";
 
 export const HEEL_SLIDE_SLUG = "heel-slide";
@@ -37,6 +50,12 @@ const RATE_FAILURES: readonly RateFailure[] = ["no_reply", "mismatch", "write_fa
 const ROLES: readonly SensorRole[] = ["thigh", "shank", "foot"];
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** The live store shows the last six characters of BluetoothDevice.id; the start record keeps the whole id. */
+const DEVICE_ID_SHORT_LENGTH = 6;
+
+/** A plausible battery voltage from register 0x64 (lib/ble/witRegister.ts accepts up to 10 V). */
+const MAX_BATTERY_VOLTS = 10;
 
 type JsonRecord = Record<string, unknown>;
 
@@ -63,6 +82,10 @@ function positiveInt(value: unknown): number | null {
 
 function oneOf<T extends string>(value: unknown, allowed: readonly T[]): T | null {
   return typeof value === "string" && (allowed as readonly string[]).includes(value) ? (value as T) : null;
+}
+
+function record(value: unknown): JsonRecord {
+  return isRecord(value) ? value : {};
 }
 
 /** Ids reach the page from the URL; anything that is not a uuid cannot name a row. */
@@ -100,6 +123,23 @@ export function parseSessionList(raw: unknown): ReviewSessionItem[] | null {
     });
   }
   return items;
+}
+
+export type SessionListOutcome =
+  /** The call failed: transport, PostgREST, or the function is missing. Never read as "no sessions". */
+  | { kind: "error" }
+  /** The RPC answered null: the caller may not review this patient. */
+  | { kind: "not_allowed" }
+  | { kind: "ok"; sessions: ReviewSessionItem[] };
+
+/**
+ * What a clinician_patient_sessions response means. The RPC answers an unauthorised caller with null and no error,
+ * so an error is always a failed read and has to be shown as one.
+ */
+export function sessionListOutcome(response: { data: unknown; error: unknown }): SessionListOutcome {
+  if (response.error) return { kind: "error" };
+  const sessions = parseSessionList(response.data);
+  return sessions ? { kind: "ok", sessions } : { kind: "not_allowed" };
 }
 
 export type SessionPick =
@@ -224,22 +264,29 @@ export function hexCode(code: number): string {
   return `0x${code.toString(16).toUpperCase().padStart(2, "0")}`;
 }
 
-// --- device_info ----------------------------------------------------------------------------------------------
+/** A duration as m:ss, e.g. 1:05. Negative input is taken as its size. */
+export function clockDuration(ms: number): string {
+  const totalS = Math.round(Math.abs(ms) / 1000);
+  return `${Math.floor(totalS / 60)}:${String(totalS % 60).padStart(2, "0")}`;
+}
+
+// --- sensor records -------------------------------------------------------------------------------------------
 
 export type RateReadout =
   | { status: "confirmed"; requestedHz: number | null }
   | { status: "unconfirmed"; requestedHz: number | null; failure: RateFailure | null; readbackCode: number | null }
-  /** Rate setup was still running when the session started. */
+  /** Rate setup was still running when the record was taken (only the start record can say this). */
   | { status: "pending"; requestedHz: number | null }
   | { status: "unknown" };
 
-function pick(record: JsonRecord, camel: string, snake: string): unknown {
-  return record[camel] !== undefined ? record[camel] : record[snake];
+function pick(source: JsonRecord, camel: string, snake: string): unknown {
+  return source[camel] !== undefined ? source[camel] : source[snake];
 }
 
 /**
- * One role's rate readback as the sensors step stored it in device_info.roles[role].rate: a SampleRateResult,
- * the live store's RateState wrapping one, or its snake_case form. Anything else is unknown.
+ * One rate readback as the patient's app stores it: device_info.roles[role].rate (a SampleRateResult, the live
+ * store's RateState wrapping one, or their snake_case form), or one summary.sensors[role].rate_history entry.
+ * Anything else is unknown.
  */
 export function parseRateReadout(raw: unknown): RateReadout {
   if (!isRecord(raw)) return { status: "unknown" };
@@ -255,6 +302,58 @@ export function parseRateReadout(raw: unknown): RateReadout {
     failure: oneOf(raw.failure, RATE_FAILURES),
     readbackCode: count(readback),
   };
+}
+
+export interface RateCheck {
+  /** Epoch ms on the patient's device clock; null when not recorded. */
+  atMs: number | null;
+  readout: RateReadout;
+}
+
+/** summary.sensors[role].rate_history, oldest first. null when the record carries no history at all. */
+export function parseRateHistory(raw: unknown, requestedHz: number | null): RateCheck[] | null {
+  if (!Array.isArray(raw)) return null;
+  const checks: RateCheck[] = [];
+  for (const entry of raw) {
+    if (!isRecord(entry)) continue;
+    checks.push({
+      atMs: finite(pick(entry, "atMs", "at_ms")),
+      readout: parseRateReadout({
+        confirmed: entry.confirmed,
+        readback_code: pick(entry, "readbackCode", "readback_code"),
+        failure: entry.failure,
+        requested_hz: requestedHz,
+      }),
+    });
+  }
+  return checks;
+}
+
+export interface BatteryValue {
+  volts: number;
+  /** WitMotion's interpolation table, not a measured charge. null when absent or out of range. */
+  vendorPercent: number | null;
+}
+
+/** A battery reading as stored ({ volts, vendor_percent }). A missing, zero or implausible voltage is unknown. */
+export function parseBattery(raw: unknown): BatteryValue | null {
+  if (!isRecord(raw)) return null;
+  const volts = finite(raw.volts);
+  if (volts === null || volts <= 0 || volts > MAX_BATTERY_VOLTS) return null;
+  const percent = finite(pick(raw, "vendorPercent", "vendor_percent"));
+  return { volts, vendorPercent: percent !== null && percent >= 0 && percent <= 100 ? percent : null };
+}
+
+export interface DeviceIdentity {
+  /** Advertised name; the three units usually share one. */
+  name: string | null;
+  /** Last six characters of the browser's BluetoothDevice.id. */
+  idShort: string | null;
+}
+
+function shortId(value: unknown): string | null {
+  const id = str(value);
+  return id ? id.slice(-DEVICE_ID_SHORT_LENGTH) : null;
 }
 
 // --- check-in -------------------------------------------------------------------------------------------------
@@ -297,12 +396,14 @@ export function parseCheckIn(raw: unknown): CheckInAnswers | null {
 
 /** lib/motion, passed in by the caller (see the header). */
 export interface MotionDeps {
-  buildStoredProxySeries(series: {
-    thigh: readonly StoredPitchPoint[];
-    shank: readonly StoredPitchPoint[];
-  }): StoredProxySeries;
-  countOrientedRepetitions(samples: readonly ProxySample[], options?: Partial<RepThresholds>): RepReport;
+  buildStoredProxySeries(
+    series: { thigh: readonly StoredPitchPoint[]; shank: readonly StoredPitchPoint[] },
+    options?: { baselineWindow?: BaselineWindow | null },
+  ): StoredProxySeries;
+  countOrientedRepetitions(samples: readonly ProxySample[], options?: RepCounterOptions): RepReport;
   heelSlideThresholds(rubric: unknown): RepThresholds;
+  /** reps.ts MAX_REP_GAP_MS: a pause in the samples longer than this discards an open rep, live and here. */
+  maxRepGapMs: number;
 }
 
 export interface RoleTechnical {
@@ -311,8 +412,21 @@ export interface RoleTechnical {
   storedFrames: number | null;
   /** From stored timestamps. Always null for the foot: the result carries its count, not its times. */
   deliveredHz: number | null;
-  deviceName: string | null;
+  /** The device at finish when recorded, else the one recorded at start. */
+  device: DeviceIdentity;
+  deviceSource: "finish" | "start" | null;
+  /** The device recorded at start, only when its id differs from the one recorded at finish. */
+  deviceAtStartIfChanged: DeviceIdentity | null;
+  requestedHz: number | null;
+  /** The latest readback: the session's last rate check when recorded, else the one recorded at start. */
   rate: RateReadout;
+  rateSource: "finish" | "start";
+  /** Every rate check the device recorded, oldest first. null when the finish record carries none. */
+  rateChecks: RateCheck[] | null;
+  batteryStart: BatteryValue | null;
+  batteryEnd: BatteryValue | null;
+  /** Times the link to this device came back after dropping; null when not recorded. */
+  reconnects: number | null;
 }
 
 export interface HeelSlideView {
@@ -332,11 +446,28 @@ export interface HeelSlideView {
     count: number | null;
     reason: RepReason | null;
     thresholds: RepThresholds;
+    maxGapMs: number;
+    /** Reps discarded because the data paused while they were open. */
+    cancelled: number;
+    baseline: {
+      /** "window": zeroed on summary.baseline_window_ms; "first_samples": on the first stored half second. */
+      source: "window" | "first_samples";
+      /** false when the saved window holds no stored pair, so nothing could be zeroed or counted. */
+      zeroFound: boolean;
+      /** Paired samples before the window: drawn, not counted. */
+      pairsBeforeWindow: number;
+    };
   };
   /** summary.reps_counted_on_device, as the patient's screen counted it. */
   deviceCount: number | null;
+  /** summary.restarted_after_reload; null when not recorded. */
+  restartedAfterReload: boolean | null;
   chart: {
+    /** The recounted samples, capped for drawing. */
     points: ProxySample[];
+    /** Pairs before the zero window, on the same zero, capped for drawing. Not counted. */
+    beforeStart: ProxySample[];
+    /** Samples behind both lines before capping. */
     totalPoints: number;
     segments: { startMs: number; endMs: number }[];
     startMs: number | null;
@@ -344,8 +475,14 @@ export interface HeelSlideView {
   };
   roles: RoleTechnical[];
   pairing: PairingStats;
-  /** summary.telemetry.pending_at_finish: frames still unsent when the patient finished. */
-  pendingAtFinish: number | null;
+  /** summary.telemetry: the device's own counters when the patient finished. */
+  telemetry: {
+    /** Rows the server reported receiving. Older summaries without this field are unknown, not zero. */
+    framesConfirmed: number | null;
+    pendingAtFinish: number | null;
+    errors: number | null;
+    dropped: number | null;
+  };
   checkIn: CheckInAnswers | null;
 }
 
@@ -354,6 +491,64 @@ function durationBetween(startedAt: string | null, endedAt: string | null): numb
   const start = Date.parse(startedAt);
   const end = Date.parse(endedAt);
   return Number.isFinite(start) && Number.isFinite(end) && end >= start ? end - start : null;
+}
+
+/** summary.baseline_window_ms { start, end } as the motion window, or null. flexion.ts rejects an empty span. */
+export function parseBaselineWindow(raw: unknown): BaselineWindow | null {
+  if (!isRecord(raw)) return null;
+  const startMs = finite(raw.start);
+  const endMs = finite(raw.end);
+  return startMs === null || endMs === null ? null : { startMs, endMs };
+}
+
+/** How many of the chart's points go to the pre-window line and to the counted line, within `maxPoints`. */
+function chartBudget(before: number, counted: number, maxPoints: number): [number, number] {
+  if (before === 0 || maxPoints < 4) return [0, maxPoints];
+  if (before + counted <= maxPoints) return [before, counted];
+  const forBefore = Math.min(maxPoints - 2, Math.max(2, Math.round((maxPoints * before) / (before + counted))));
+  return [forBefore, maxPoints - forBefore];
+}
+
+function roleTechnical(
+  role: SensorRole,
+  start: JsonRecord,
+  finish: JsonRecord | null,
+  storedFrames: number | null,
+  storedHz: number | null,
+): RoleTechnical {
+  const startDevice: DeviceIdentity = {
+    name: str(pick(start, "deviceName", "device_name")),
+    idShort: shortId(pick(start, "deviceId", "device_id")),
+  };
+  const finishDevice: DeviceIdentity | null = finish
+    ? { name: str(finish.device_name), idShort: str(finish.device_id_short) }
+    : null;
+  const finishKnown = finishDevice !== null && (finishDevice.name !== null || finishDevice.idShort !== null);
+  const startKnown = startDevice.name !== null || startDevice.idShort !== null;
+  const changed =
+    finishDevice?.idShort != null && startDevice.idShort !== null && finishDevice.idShort !== startDevice.idShort;
+
+  const startRate = parseRateReadout(start.rate);
+  const startRequested = startRate.status === "unknown" ? null : startRate.requestedHz;
+  const requestedHz = (finish ? finite(finish.requested_hz) : null) ?? startRequested;
+  const rateChecks = finish ? parseRateHistory(finish.rate_history, requestedHz) : null;
+  const latest = rateChecks ? [...rateChecks].reverse().find((check) => check.readout.status !== "unknown") : undefined;
+
+  return {
+    role,
+    storedFrames,
+    deliveredHz: storedHz,
+    device: finishKnown ? (finishDevice as DeviceIdentity) : startDevice,
+    deviceSource: finishKnown ? "finish" : startKnown ? "start" : null,
+    deviceAtStartIfChanged: changed ? startDevice : null,
+    requestedHz,
+    rate: latest ? latest.readout : startRate,
+    rateSource: latest ? "finish" : "start",
+    rateChecks,
+    batteryStart: (finish ? parseBattery(finish.battery_start) : null) ?? parseBattery(start.battery),
+    batteryEnd: finish ? parseBattery(finish.battery_end) : null,
+    reconnects: finish ? count(finish.reconnects) : null,
+  };
 }
 
 /**
@@ -371,35 +566,42 @@ export function buildHeelSlideView(
 
   const exercise = isRecord(raw.exercise) ? raw.exercise : null;
   const prescription = isRecord(raw.prescription) ? raw.prescription : null;
-  const frames = isRecord(raw.frames) ? raw.frames : {};
-  const frameCounts = isRecord(raw.frame_counts) ? raw.frame_counts : {};
-  const summary = isRecord(session.summary) ? session.summary : {};
-  const deviceInfo = isRecord(session.device_info) ? session.device_info : {};
-  const deviceRoles = isRecord(deviceInfo.roles) ? deviceInfo.roles : {};
-  const telemetry = isRecord(summary.telemetry) ? summary.telemetry : {};
+  const frames = record(raw.frames);
+  const frameCounts = record(raw.frame_counts);
+  const summary = record(session.summary);
+  const deviceRoles = record(record(session.device_info).roles);
+  const summarySensors = isRecord(summary.sensors) ? summary.sensors : null;
+  const telemetry = record(summary.telemetry);
 
   const thigh = parsePitchSeries(frames.thigh);
   const shank = parsePitchSeries(frames.shank);
-  const series = motion.buildStoredProxySeries({ thigh, shank });
+  const baselineWindow = parseBaselineWindow(summary.baseline_window_ms);
+  const series = motion.buildStoredProxySeries({ thigh, shank }, { baselineWindow });
   const thresholds = motion.heelSlideThresholds(exercise?.scoring_rubric);
-  const reps = motion.countOrientedRepetitions(series.samples, thresholds);
+  const reps = motion.countOrientedRepetitions(series.samples, { ...thresholds, maxGapMs: motion.maxRepGapMs });
 
-  const dose = isRecord(prescription?.dose) ? prescription.dose : {};
-  const defaultDose = isRecord(exercise?.default_dose) ? exercise.default_dose : {};
+  const dose = record(prescription?.dose);
+  const defaultDose = record(exercise?.default_dose);
   const startedAt = str(session.started_at);
   const endedAt = str(session.ended_at);
   const samples = series.samples;
+  const before = series.beforeBaselineWindow;
 
-  const roles = ROLES.map((role): RoleTechnical => {
-    const device = isRecord(deviceRoles[role]) ? deviceRoles[role] : {};
-    return {
+  const [beforeBudget, countedBudget] = chartBudget(before.length, samples.length, maxChartPoints);
+  const firstMs = [before[0]?.tMs, samples[0]?.tMs].filter((ms): ms is number => ms !== undefined);
+  const lastMs = [before[before.length - 1]?.tMs, samples[samples.length - 1]?.tMs].filter(
+    (ms): ms is number => ms !== undefined,
+  );
+
+  const roles = ROLES.map((role) =>
+    roleTechnical(
       role,
-      storedFrames: count(frameCounts[role]),
-      deliveredHz: role === "thigh" ? deliveredHz(thigh) : role === "shank" ? deliveredHz(shank) : null,
-      deviceName: str(pick(device, "deviceName", "device_name")),
-      rate: parseRateReadout(device.rate),
-    };
-  });
+      record(deviceRoles[role]),
+      summarySensors && isRecord(summarySensors[role]) ? summarySensors[role] : null,
+      count(frameCounts[role]),
+      role === "thigh" ? deliveredHz(thigh) : role === "shank" ? deliveredHz(shank) : null,
+    ),
+  );
 
   return {
     patientName: isRecord(raw.patient) ? str(raw.patient.name) : null,
@@ -416,18 +618,32 @@ export function buildHeelSlideView(
       count: reps.reason === "insufficient_samples" ? null : reps.count,
       reason: reps.reason,
       thresholds,
+      maxGapMs: motion.maxRepGapMs,
+      cancelled: reps.cancelled,
+      baseline: {
+        source: series.baselineSource,
+        zeroFound: series.baselineDeg !== null,
+        pairsBeforeWindow: before.length,
+      },
     },
     deviceCount: count(summary.reps_counted_on_device),
+    restartedAfterReload: typeof summary.restarted_after_reload === "boolean" ? summary.restarted_after_reload : null,
     chart: {
-      points: downsampleMinMax(samples, maxChartPoints),
-      totalPoints: samples.length,
+      points: downsampleMinMax(samples, Math.max(2, countedBudget)),
+      beforeStart: beforeBudget > 0 ? downsampleMinMax(before, beforeBudget) : [],
+      totalPoints: samples.length + (beforeBudget > 0 ? before.length : 0),
       segments: reps.segments.map(({ startMs, endMs }) => ({ startMs, endMs })),
-      startMs: samples.length ? samples[0].tMs : null,
-      endMs: samples.length ? samples[samples.length - 1].tMs : null,
+      startMs: firstMs.length ? Math.min(...firstMs) : null,
+      endMs: lastMs.length ? Math.max(...lastMs) : null,
     },
     roles,
     pairing: series.pairing,
-    pendingAtFinish: count(telemetry.pending_at_finish),
+    telemetry: {
+      framesConfirmed: count(telemetry.frames_confirmed),
+      pendingAtFinish: count(telemetry.pending_at_finish),
+      errors: count(telemetry.errors),
+      dropped: count(telemetry.dropped),
+    },
     checkIn: parseCheckIn(raw.check_in),
   };
 }

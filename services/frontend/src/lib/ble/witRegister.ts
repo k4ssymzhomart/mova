@@ -15,12 +15,21 @@
  * The save-to-flash command (`FF AA 00 00 00`) is deliberately absent: the rate
  * is written at the start of every session, so nothing needs to survive a power
  * cycle and the sensor's flash is never worn.
+ *
+ * Battery: the SDK reads register `0x64` (`FF AA 27 64 00` -> `55 71 64 00 ...`),
+ * whose first value is the supply voltage x 100, and turns volts into a percent
+ * with a fixed interpolation table (`Bwt901bleProcessor.getEqPercent`). That
+ * percent is the vendor's table, not a measured state of charge, and is labelled
+ * as such wherever it is shown.
  */
 
 export const WIT_WRITE_CHARACTERISTIC_UUID = "0000ffe9-0000-1000-8000-00805f9a34fb";
 
 /** RRATE, the return-rate register. Reading it back returns the active rate code in `values[0]`. */
 export const WIT_RATE_REGISTER = 0x03;
+
+/** Supply voltage register. `values[0]` is volts x 100. */
+export const WIT_BATTERY_REGISTER = 0x64;
 
 export const RATE_CODE_BY_HZ = { 50: 0x08, 100: 0x09 } as const;
 
@@ -102,6 +111,36 @@ export class WitRegisterReplyBuffer {
     }
     return -1;
   }
+}
+
+/**
+ * Volts from the raw `0x64` value, or null when the value cannot be a supply voltage (not above zero, or above
+ * 10 V, beyond the SDK's two-cell table). An implausible reply is reported as a failed read, never clamped.
+ */
+export function batteryVoltsFromRaw(raw: number): number | null {
+  if (!Number.isInteger(raw) || raw <= 0 || raw > 1000) return null;
+  return raw / 100;
+}
+
+// Bwt901bleProcessor.getEqPercent: a two-cell pack above 5.5 V, otherwise a single cell.
+const ONE_CELL_VOLTS = [3.4, 3.5, 3.68, 3.7, 3.73, 3.77, 3.79, 3.82, 3.87, 3.93, 3.96, 3.99] as const;
+const ONE_CELL_PERCENT = [0, 5, 10, 15, 20, 30, 40, 50, 60, 75, 90, 100] as const;
+const TWO_CELL_VOLTS = [6.5, 6.8, 7.35, 7.75, 8.5, 8.8] as const;
+const TWO_CELL_PERCENT = [0, 10, 30, 60, 90, 100] as const;
+const TWO_CELL_ABOVE_VOLTS = 5.5;
+
+/** The WitMotion table's percent for a voltage: linear between points, clamped to 0-100, one decimal. */
+export function vendorBatteryPercent(volts: number): number {
+  const twoCell = volts > TWO_CELL_ABOVE_VOLTS;
+  const xs: readonly number[] = twoCell ? TWO_CELL_VOLTS : ONE_CELL_VOLTS;
+  const ys: readonly number[] = twoCell ? TWO_CELL_PERCENT : ONE_CELL_PERCENT;
+  if (volts <= xs[0]) return ys[0];
+  const last = xs.length - 1;
+  if (volts >= xs[last]) return ys[last];
+  let i = 0;
+  while (volts >= xs[i + 1]) i += 1;
+  const percent = ys[i] + ((volts - xs[i]) * (ys[i + 1] - ys[i])) / (xs[i + 1] - xs[i]);
+  return Math.round(percent * 10) / 10;
 }
 
 function byte(value: number): number {
