@@ -13,7 +13,8 @@ insert into public.clinics (id, name, slug) values
   ('10000000-0000-0000-0000-000000000001', 'Clinic One', 'clinic-one'),
   ('10000000-0000-0000-0000-000000000002', 'Clinic Two', 'clinic-two');
 
--- Users (the on_auth_user_created trigger provisions profiles with the meta role).
+-- Users. The on_auth_user_created trigger makes every one of them a patient in Mova Personal, whatever the
+-- metadata asks for (0035), so the clinician role and the clinics are set explicitly below.
 insert into auth.users (instance_id, id, aud, role, email, encrypted_password, email_confirmed_at, raw_app_meta_data, raw_user_meta_data, created_at, updated_at) values
   ('00000000-0000-0000-0000-000000000000', '20000000-0000-0000-0000-000000000001', 'authenticated', 'authenticated', 'clin1@test.dev', 'x', now(), '{}'::jsonb, '{"role":"clinician"}'::jsonb, now(), now()),
   ('00000000-0000-0000-0000-000000000000', '20000000-0000-0000-0000-0000000000a1', 'authenticated', 'authenticated', 'pa@test.dev',    'x', now(), '{}'::jsonb, '{"role":"patient"}'::jsonb,   now(), now()),
@@ -24,6 +25,8 @@ update public.profiles set clinic_id = '10000000-0000-0000-0000-000000000001'
   where id in ('20000000-0000-0000-0000-000000000001','20000000-0000-0000-0000-0000000000a1','20000000-0000-0000-0000-0000000000b1');
 update public.profiles set clinic_id = '10000000-0000-0000-0000-000000000002'
   where id = '20000000-0000-0000-0000-0000000000c1';
+update public.profiles set role = 'clinician'
+  where id = '20000000-0000-0000-0000-000000000001';
 
 insert into public.clinicians (id, profile_id, clinic_id) values
   ('c0000000-0000-0000-0000-0000000000f1', '20000000-0000-0000-0000-000000000001', '10000000-0000-0000-0000-000000000001');

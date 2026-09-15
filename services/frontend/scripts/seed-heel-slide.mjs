@@ -14,12 +14,26 @@
  *   prescriptions      an active Heel Slide prescription, dose {"reps": 10}, prescribed by the clinician
  *
  * Idempotent: every run looks each row up first and only creates what is missing or updates fields that
- * differ. It uses the service role, so it runs only where SUPABASE_SERVICE_ROLE_KEY is available and never in
- * the browser. Passwords come from the environment, are needed only when an account is created, and are never
- * printed; output is limited to ids, emails and routes.
+ * differ, so a run that stopped half way (a network error between two requests) is completed by running it
+ * again. It uses the service role, so it runs only where SUPABASE_SERVICE_ROLE_KEY is available and never in the
+ * browser. Passwords come from the environment, are needed only when an account is created or taken over, and
+ * are never printed; output is limited to ids, emails and routes.
  *
- * The database is shared with real users. Before writing anything the script checks every precondition, and it
- * refuses to take over an existing account that lives outside the test clinic unless --adopt-existing is given.
+ * The database is shared with real users, so the script only ever touches @mova.test addresses and refuses any
+ * other email before it reads anything. The .test domain receives no mail and belongs to no Google account, so
+ * no real person signs in behind one. When an address already has an account, the account is:
+ *
+ *   - reused as it is when it is already in the test clinic with the right role;
+ *   - taken over when it is fresh: the patient profile in Mova Personal that every new account starts as, with
+ *     no patient or clinician record yet. That is typically this script's own account from a run that stopped
+ *     right after creating it, so a rerun finishes it without any flag;
+ *   - taken over only with --adopt-existing when it is some other test account in another clinic, and never
+ *     when it has a privileged role, already is the other test role, carries its own MRN, or has records in
+ *     another clinic (moving it would split its rows between two clinics).
+ *
+ * Taking an account over sets its password from the environment and confirms its email, so whoever created it
+ * no longer controls it. Roles never come from signup metadata (0035_signup_role_hotfix.sql): a new account is
+ * created as a patient in Mova Personal and the script sets its role and clinic in the next request.
  *
  * Usage (from services/frontend):
  *   node scripts/seed-heel-slide.mjs --dry-run
@@ -61,6 +75,11 @@ const PRESCRIPTION_DOSE = { reps: 10 };
 
 const DEFAULT_PATIENT_EMAIL = "heel-slide-patient@mova.test";
 const DEFAULT_CLINICIAN_EMAIL = "heel-slide-clinician@mova.test";
+const TEST_EMAIL = /^[^@\s]+@mova\.test$/;
+
+// Where app.handle_new_user puts every new account (0017, 0035).
+const MOVA_PERSONAL_CLINIC_ID = "00000000-0000-0000-0000-0000000000a1";
+const PRIVILEGED_ROLES = new Set(["admin", "clinic_admin"]);
 
 const KNOWN_ARGS = new Set(["--dry-run", "--adopt-existing", "--help", "-h"]);
 const ARGS = new Set(process.argv.slice(2));
@@ -72,14 +91,15 @@ function usage() {
     "Usage: node scripts/seed-heel-slide.mjs [--dry-run] [--adopt-existing]",
     "",
     "  --dry-run          read-only: print what would be created or changed and write nothing",
-    "  --adopt-existing   allow an existing account outside the test clinic to be moved into it",
+    "  --adopt-existing   also take over an existing @mova.test account from another clinic (never a privileged",
+    "                     account, the other test role, or one with its own MRN or records in another clinic)",
     "",
     "Environment (the process environment wins over services/frontend/.env.local):",
     "  NEXT_PUBLIC_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY   required",
-    `  HEEL_SLIDE_PATIENT_EMAIL        default ${DEFAULT_PATIENT_EMAIL}`,
-    `  HEEL_SLIDE_CLINICIAN_EMAIL      default ${DEFAULT_CLINICIAN_EMAIL}`,
-    "  HEEL_SLIDE_PATIENT_PASSWORD     required only when the patient account is created",
-    "  HEEL_SLIDE_CLINICIAN_PASSWORD   required only when the clinician account is created",
+    `  HEEL_SLIDE_PATIENT_EMAIL        default ${DEFAULT_PATIENT_EMAIL} (a @mova.test address only)`,
+    `  HEEL_SLIDE_CLINICIAN_EMAIL      default ${DEFAULT_CLINICIAN_EMAIL} (a @mova.test address only)`,
+    "  HEEL_SLIDE_PATIENT_PASSWORD     required when the patient account is created or taken over",
+    "  HEEL_SLIDE_CLINICIAN_PASSWORD   required when the clinician account is created or taken over",
     "  HEEL_SLIDE_SIDE                 operated side: right (default) or left",
   ].join("\n");
 }
@@ -134,6 +154,59 @@ function step(action, subject, detail) {
   console.log(`  ${verb.padEnd(13)} ${subject}${detail ? `  ${detail}` : ""}`);
 }
 
+/**
+ * What the seed may do with an existing account, from what the database holds for it. Pure, so the rules can
+ * be checked without a database.
+ *
+ *   in_place  already the test account: reuse it
+ *   fresh     a new account's patient profile with no patient/clinician record: take it over, no flag needed
+ *   movable   another test account in another clinic: take it over only with --adopt-existing
+ *   refused   never touched; `reason` says why
+ */
+export function classifyAccount(account, { profile, patient, clinician, recordsElsewhere }, testClinicId) {
+  const own = account.role === "patient" ? patient : clinician;
+  const other = account.role === "patient" ? clinician : patient;
+  const otherTable = account.role === "patient" ? "clinicians" : "patients";
+  const fresh = "use another @mova.test address";
+
+  if (other) {
+    return {
+      kind: "refused",
+      reason: `${account.email} already has a ${otherTable} row, so it cannot be the test ${account.role}; ${fresh}`,
+    };
+  }
+  // No profile means no patient or clinician record either (both reference the profile).
+  if (!profile) return { kind: "fresh" };
+  if (PRIVILEGED_ROLES.has(profile.role)) {
+    return { kind: "refused", reason: `${account.email} has role ${profile.role}; the seed never changes a privileged account` };
+  }
+  if (profile.role !== account.role && profile.role !== "patient") {
+    return { kind: "refused", reason: `${account.email} has role ${profile.role}, not ${account.role}; ${fresh}` };
+  }
+
+  const inTestClinic = testClinicId !== null && profile.clinic_id === testClinicId;
+  if (inTestClinic && profile.role === account.role && (!own || own.clinic_id === testClinicId)) {
+    return { kind: "in_place" };
+  }
+  // Programs, prescriptions, sessions and care-team links all hang off the patient or clinician record, so an
+  // account without one has nothing to split between clinics.
+  if (!own && (profile.clinic_id === null || profile.clinic_id === MOVA_PERSONAL_CLINIC_ID)) {
+    return { kind: "fresh" };
+  }
+  if (recordsElsewhere.length > 0) {
+    return {
+      kind: "refused",
+      reason:
+        `${account.email} has ${recordsElsewhere.join(", ")} in another clinic, and moving it would split its ` +
+        `records between two clinics; ${fresh}`,
+    };
+  }
+  if (account.role === "patient" && own?.mrn && own.mrn !== PATIENT_MRN) {
+    return { kind: "refused", reason: `${account.email} is patient record ${own.mrn} in another clinic; ${fresh}` };
+  }
+  return { kind: "movable", detail: `role ${profile.role}, clinic ${profile.clinic_id ?? "none"}` };
+}
+
 // ── Reads ──────────────────────────────────────────────────────────────────────────────────────────────────────
 
 async function findUserByEmail(db, email) {
@@ -155,17 +228,52 @@ async function findClinic(db) {
 
 async function findProfile(db, userId) {
   return must(
-    await db.from("profiles").select("id, role, clinic_id, full_name, display_name").eq("id", userId).maybeSingle(),
+    await db.from("profiles").select("id, email, role, clinic_id, full_name, display_name").eq("id", userId).maybeSingle(),
     "read profile",
   );
 }
 
+/** Rows of `table` owned through `column = id` that live outside the test clinic (all of them if it does not exist yet). */
+async function countOutsideTestClinic(db, table, column, id, testClinicId) {
+  let query = db.from(table).select("id", { count: "exact", head: true }).eq(column, id);
+  if (testClinicId) query = query.neq("clinic_id", testClinicId);
+  const { count, error } = await query;
+  if (error) throw new Error(`count ${table}: ${error.message || "request failed"}`);
+  return count ?? 0;
+}
+
+async function readAccountState(db, userId, testClinicId) {
+  const profile = await findProfile(db, userId);
+  const patient = must(
+    await db.from("patients").select("id, clinic_id, mrn").eq("profile_id", userId).maybeSingle(),
+    "read patients",
+  );
+  const clinician = must(
+    await db.from("clinicians").select("id, clinic_id").eq("profile_id", userId).maybeSingle(),
+    "read clinicians",
+  );
+  const recordsElsewhere = [];
+  if (patient) {
+    for (const table of ["programs", "prescriptions", "sessions"]) {
+      const n = await countOutsideTestClinic(db, table, "patient_id", patient.id, testClinicId);
+      if (n > 0) recordsElsewhere.push(`${n} ${table}`);
+    }
+  }
+  if (clinician) {
+    const n = await countOutsideTestClinic(db, "care_team_links", "clinician_id", clinician.id, testClinicId);
+    if (n > 0) recordsElsewhere.push(`${n} care_team_links`);
+  }
+  return { profile, patient, clinician, recordsElsewhere };
+}
+
 /**
- * Everything that must hold before the first write. Returns human-readable blockers; an empty list means the
- * real run can proceed. Reads only.
+ * Everything that must hold before the first write. Reads only. Returns human-readable blockers (an empty list
+ * means the real run can proceed) and whether an account itself is unusable, in which case a dry run prints no
+ * plan either. Marks each account with `takeOver` ("fresh" | "moved") when the run would take it over.
  */
 async function preflight(db, accounts) {
   const blockers = [];
+  let planBlocked = false;
 
   const enumProbe = await db.from("exercises").select("id").eq("modality", EXERCISE.modality).limit(1);
   if (enumProbe.error) {
@@ -185,34 +293,60 @@ async function preflight(db, accounts) {
   }
 
   const clinic = await findClinic(db);
+  const testClinicId = clinic?.id ?? null;
   for (const account of accounts) {
     account.user = await findUserByEmail(db, account.email);
+    account.takeOver = null;
     if (!account.user) {
       if (!process.env[account.passwordVar]) {
         blockers.push(`${account.email} does not exist yet and ${account.passwordVar} is not set`);
       }
       continue;
     }
-    const profile = await findProfile(db, account.user.id);
-    const inTestClinic = Boolean(clinic && profile?.clinic_id === clinic.id);
-    if (!inTestClinic && !ADOPT_EXISTING) {
-      blockers.push(
-        `${account.email} already exists outside the test clinic (role ${profile?.role ?? "unknown"}); ` +
-          "pass --adopt-existing to move it into the test clinic",
-      );
+
+    const verdict = classifyAccount(account, await readAccountState(db, account.user.id, testClinicId), testClinicId);
+    if (verdict.kind === "refused") {
+      blockers.push(verdict.reason);
+      planBlocked = true;
+      continue;
     }
-    // A patient account must not already be a clinician, and the other way round.
-    const otherTable = account.role === "patient" ? "clinicians" : "patients";
-    const other = must(
-      await db.from(otherTable).select("id").eq("profile_id", account.user.id).maybeSingle(),
-      `read ${otherTable}`,
-    );
-    if (other) {
-      blockers.push(`${account.email} already has a ${otherTable} row, so it cannot be the test ${account.role}`);
+    if (verdict.kind === "fresh") account.takeOver = "fresh";
+    if (verdict.kind === "movable") {
+      if (ADOPT_EXISTING) {
+        account.takeOver = "moved";
+      } else {
+        blockers.push(
+          `${account.email} is an existing test account outside the test clinic (${verdict.detail}); ` +
+            "pass --adopt-existing to take it over and move it into the test clinic",
+        );
+        planBlocked = true;
+      }
+    }
+    if (account.takeOver && !process.env[account.passwordVar]) {
+      blockers.push(`${account.email} would be taken over, which sets its password: set ${account.passwordVar}`);
     }
   }
 
-  return blockers;
+  // patients.(clinic_id, mrn) is unique: a different account already holding the test MRN in the test clinic
+  // (the patient email was changed between runs) would make the patient write fail half way.
+  if (testClinicId) {
+    const patientAccount = accounts.find((account) => account.role === "patient");
+    const holders = must(
+      await db.from("patients").select("profile_id").eq("clinic_id", testClinicId).eq("mrn", PATIENT_MRN),
+      "read test patients",
+    );
+    const holder = holders.find((row) => row.profile_id !== patientAccount.user?.id);
+    if (holder) {
+      const profile = await findProfile(db, holder.profile_id);
+      blockers.push(
+        `the test clinic already has the test patient ${profile?.email ?? holder.profile_id} (mrn ${PATIENT_MRN}); ` +
+          "set HEEL_SLIDE_PATIENT_EMAIL to that address",
+      );
+      planBlocked = true;
+    }
+  }
+
+  return { blockers, planBlocked };
 }
 
 // ── Writes (each one looks up first; in a dry run it only reports) ─────────────────────────────────────────────
@@ -277,12 +411,24 @@ async function ensureAccount(db, account, clinicId) {
         email: account.email,
         password: process.env[account.passwordVar],
         email_confirm: true,
-        // role is read by app.handle_new_user, so the profile is born with the right role.
-        user_metadata: { role: account.role, full_name: account.fullName },
+        // Name only: the new-user trigger ignores any role here (0035). The role is set on the profile below.
+        user_metadata: { full_name: account.fullName },
       }),
       `create ${account.role} account`,
     );
     userId = created.user.id;
+  } else if (account.takeOver) {
+    const why = account.takeOver === "fresh" ? "fresh account with no records" : "moved from another clinic";
+    step("take over", `${account.role} account ${account.email}`, `${userId} (${why}; password set, email confirmed)`);
+    if (!DRY_RUN) {
+      must(
+        await db.auth.admin.updateUserById(userId, {
+          password: process.env[account.passwordVar],
+          email_confirm: true,
+        }),
+        `take over ${account.role} account`,
+      );
+    }
   } else {
     step("ok", `${account.role} account ${account.email}`, userId);
   }
@@ -299,7 +445,7 @@ async function ensureAccount(db, account, clinicId) {
     }
     return userId;
   }
-  // Names are only filled in, never overwritten: an adopted account keeps its owner's name.
+  // Names are only filled in, never overwritten: a taken-over account keeps the name it had.
   if (!profile.full_name) desired.full_name = account.fullName;
   if (!profile.display_name) desired.display_name = account.fullName;
   const changed = clinicId ? changedFields(profile, desired) : Object.keys(desired);
@@ -401,21 +547,26 @@ async function ensureCareTeamLink(db, clinicianId, patientId, clinicId) {
   return current.id;
 }
 
-/** Today lists the active prescriptions of the patient's newest active program, so reuse that one if it exists. */
+/**
+ * Today lists the active prescriptions of the patient's newest active program, so reuse that one if it exists.
+ * Only programs in the test clinic count: preflight refuses accounts with records anywhere else.
+ */
 async function ensureProgram(db, patientId, clinicId, clinicianId) {
-  const current = patientId
-    ? must(
-        await db
-          .from("programs")
-          .select("id, title")
-          .eq("patient_id", patientId)
-          .eq("status", "active")
-          .order("created_at", { ascending: false })
-          .limit(1)
-          .maybeSingle(),
-        "read program",
-      )
-    : null;
+  const current =
+    patientId && clinicId
+      ? must(
+          await db
+            .from("programs")
+            .select("id, title")
+            .eq("patient_id", patientId)
+            .eq("clinic_id", clinicId)
+            .eq("status", "active")
+            .order("created_at", { ascending: false })
+            .limit(1)
+            .maybeSingle(),
+          "read program",
+        )
+      : null;
   if (current) {
     step("ok", "active program", current.id);
     return current.id;
@@ -492,6 +643,40 @@ async function main() {
   }
 
   loadEnvFile(ENV_FILE);
+  const accounts = [
+    {
+      role: "clinician",
+      email: (process.env.HEEL_SLIDE_CLINICIAN_EMAIL || DEFAULT_CLINICIAN_EMAIL).trim().toLowerCase(),
+      passwordVar: "HEEL_SLIDE_CLINICIAN_PASSWORD",
+      fullName: "Heel Slide test clinician",
+      user: null,
+      takeOver: null,
+    },
+    {
+      role: "patient",
+      email: (process.env.HEEL_SLIDE_PATIENT_EMAIL || DEFAULT_PATIENT_EMAIL).trim().toLowerCase(),
+      passwordVar: "HEEL_SLIDE_PATIENT_PASSWORD",
+      fullName: "Heel Slide test patient",
+      user: null,
+      takeOver: null,
+    },
+  ];
+  // Checked before anything is read: this script never looks up, let alone changes, a real account.
+  for (const account of accounts) {
+    if (!TEST_EMAIL.test(account.email)) {
+      console.error(
+        `seed:heel-slide: ${account.email} is not a @mova.test address. The seed only creates or changes test ` +
+          "accounts; a real mailbox is never used, adopted or moved.",
+      );
+      return 2;
+    }
+  }
+  const [clinicianAccount, patientAccount] = accounts;
+  if (clinicianAccount.email === patientAccount.email) {
+    console.error("seed:heel-slide: the patient and clinician emails must differ");
+    return 2;
+  }
+
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!url || !serviceKey) {
@@ -504,27 +689,6 @@ async function main() {
     console.error("seed:heel-slide: HEEL_SLIDE_SIDE must be left or right");
     return 2;
   }
-  const accounts = [
-    {
-      role: "clinician",
-      email: (process.env.HEEL_SLIDE_CLINICIAN_EMAIL || DEFAULT_CLINICIAN_EMAIL).trim().toLowerCase(),
-      passwordVar: "HEEL_SLIDE_CLINICIAN_PASSWORD",
-      fullName: "Heel Slide test clinician",
-      user: null,
-    },
-    {
-      role: "patient",
-      email: (process.env.HEEL_SLIDE_PATIENT_EMAIL || DEFAULT_PATIENT_EMAIL).trim().toLowerCase(),
-      passwordVar: "HEEL_SLIDE_PATIENT_PASSWORD",
-      fullName: "Heel Slide test patient",
-      user: null,
-    },
-  ];
-  const [clinicianAccount, patientAccount] = accounts;
-  if (clinicianAccount.email === patientAccount.email) {
-    console.error("seed:heel-slide: the patient and clinician emails must differ");
-    return 2;
-  }
 
   const db = createClient(url, serviceKey, {
     auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
@@ -532,12 +696,16 @@ async function main() {
 
   console.log(`Heel Slide test data on ${new URL(url).host}${DRY_RUN ? " (dry run: nothing is written)" : ""}`);
 
-  const blockers = await preflight(db, accounts);
+  const { blockers, planBlocked } = await preflight(db, accounts);
   if (blockers.length > 0) {
     console.log("\nPreconditions not met:");
     for (const blocker of blockers) console.log(`  - ${blocker}`);
     if (!DRY_RUN) {
       console.log("\nNothing was written.");
+      return 1;
+    }
+    if (planBlocked) {
+      console.log("\nNo plan: an account above cannot be used as it stands.");
       return 1;
     }
     console.log("\nPlan as the database stands now:");
@@ -572,10 +740,13 @@ async function main() {
   return 0;
 }
 
-main().then(
-  (code) => process.exit(code),
-  (error) => {
-    console.error(`seed:heel-slide: ${error instanceof Error ? error.message : String(error)}`);
-    process.exit(1);
-  },
-);
+// Run only when executed directly, so classifyAccount can be imported without touching the database.
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  main().then(
+    (code) => process.exit(code),
+    (error) => {
+      console.error(`seed:heel-slide: ${error instanceof Error ? error.message : String(error)}`);
+      process.exit(1);
+    },
+  );
+}
