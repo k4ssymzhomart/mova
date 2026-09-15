@@ -46,11 +46,13 @@ because the frame shape itself was already wrong once before being corrected aga
 hardware. Getting a scale factor wrong silently corrupts every downstream angle/ROM calculation,
 so this waits for the calibration-maths issue rather than guessing here.
 
-Same reasoning for the sample-rate write path: [sampleRate.ts](../../services/frontend/src/lib/ble/sampleRate.ts)
-has the `ffe9` characteristic call site wired up, but `setSampleRate()` throws until the sibling
-**sampling-rate issue** lands a bench-validated register/save-command protocol for this specific
-hardware. Phoenix has no code here at all — it only ever records whatever rate the firmware
-happens to be broadcasting.
+The sample-rate write path is no longer a stub. [sampleRate.ts](../../services/frontend/src/lib/ble/sampleRate.ts)
+writes the WitMotion SDK sequence to `ffe9` (unlock, set return rate, read register `0x03` back from
+the `55 71` reply) and reports whether the sensor confirmed it; only 50 Hz (`0x08`) and 100 Hz
+(`0x09`) are used, and the save-to-flash command is never sent. The rate actually delivered is
+measured per sensor from received frames. Protocol sources and where they disagree:
+[heel-slide-path.md §6](../heel-slide-path.md#6-web-bluetooth-constraints). Phoenix has no code here
+at all — it only ever records whatever rate the firmware happens to be broadcasting.
 
 ## 4. Role assignment and persistence
 
@@ -89,15 +91,16 @@ than a generic pass/fail, per AC-05/IMU-06-08. `scoring_permitted` is computed a
 ## 6. Ingestion path
 
 Real per-role frames go through the existing [TelemetryBuffer](../../services/frontend/src/lib/telemetry/buffer.ts)
-(`useBleSessionRecorder.ts`), batched every 100 frames / 2s — this is what avoids Phoenix's
+(`useBleSessionRecorder.ts`), sized for 3 sensors × 50 Hz: a flush at 150 queued rows or every
+second, at most 600 rows per RPC — this is what avoids Phoenix's
 one-fetch-per-BLE-frame pattern (fatal at 3 sensors × 10-50 Hz). A single session-wide sequence
 counter, not per-role, keeps `session_frames`'s `(session_id, recorded_at, seq)` primary key
 collision-free when two sensors report in the same millisecond.
 
 [DurableQueue](../../services/frontend/src/lib/telemetry/durableQueue.ts) mirrors whatever
-TelemetryBuffer still considers undelivered into IndexedDB on every change, and `start()`
-recovers it — so a killed network plus a reloaded tab loses nothing that hadn't already reached
-Postgres. A duplicate resend after recovery is harmless: `flush_session_telemetry_batch` is
+TelemetryBuffer still considers undelivered into IndexedDB at most about once a second, plus on
+stop and page hide, and `start()` recovers it — so a killed network plus a reloaded tab loses at
+most the last second or so of rows that hadn't already reached Postgres. A duplicate resend after recovery is harmless: `flush_session_telemetry_batch` is
 idempotent on the same primary key.
 
 ## 7. Token model

@@ -1,80 +1,56 @@
 "use client";
 
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
-import { type BufferCounters, TelemetryBuffer } from "@/lib/telemetry/buffer";
+import type { BufferCounters } from "@/lib/telemetry/buffer";
 
 import type { SensorRole } from "./roles";
+import { BleSessionRecorder, ZERO_COUNTERS } from "./sessionRecorder";
 import type { SignalQualityReport } from "./signalQuality";
-import { SignalQualityMonitor } from "./signalQualityMonitor";
-import { toFrameRow } from "./telemetryFrame";
 import type { ParsedWt901Frame } from "./wt901ble68";
 
-const ZERO_COUNTERS: BufferCounters = { framesSent: 0, eventsSent: 0, pending: 0, errors: 0, lastError: null };
-
 export interface UseBleSessionRecorderResult {
+  /** Delivery counters, updated a few times a second while frames stream in and after every flush. */
   counters: BufferCounters;
-  /** Start recording into `sessionId`. Call once per session, before pairing/streaming begins. */
+  /** Start recording into `sessionId`. Call once the session row exists. */
   start: (sessionId: string) => Promise<void>;
-  /** Stop the loop and await a final flush -- no trailing frames lost. */
-  stop: () => Promise<void>;
-  /** Feed one raw BLE sample. Non-blocking; TelemetryBuffer batches it under the hood. */
-  recordFrame: (role: SensorRole, frame: ParsedWt901Frame) => void;
-  /** The signal-quality report as of the most recent recorded frame, or null before all three roles have reported. */
+  /** Stop and await the final drain -- no trailing frames lost. Resolves with the final counters. */
+  stop: () => Promise<BufferCounters | null>;
+  /** Feed one frame with its browser receive time (epoch ms), e.g. straight from `subscribeFrames`. */
+  recordFrame: (role: SensorRole, frame: ParsedWt901Frame, receivedAtMs: number) => void;
+  /** The latest signal-quality evaluation (at most once a second), or null before the first frame. */
   lastQuality: () => SignalQualityReport | null;
+  /** Frames handed to the buffer since start. */
+  framesRecorded: () => number;
 }
 
 /**
- * Routes real per-role BLE frames into the existing TelemetryBuffer batching
- * pipeline (100 frames / 2s per network call) instead of Phoenix's
- * one-fetch-per-frame pattern -- at 10-50 Hz x 3 sensors that would be a
- * fetch per sample. TelemetryBuffer itself needs no changes; only what gets
- * pushed into it does.
- *
- * A single session-wide sequence counter (not per-role) is used so that two
- * roles emitting a frame in the same millisecond never collide on
- * `session_frames`'s (session_id, recorded_at, seq) primary key.
- *
- * Intentionally does not resample to a fixed rate, align roles to a shared
- * clock, or convert raw LSB counts to physical units -- see `toFrameRow`.
- * Wiring this into an actual exercise session's UI is left to that (separate)
- * issue.
+ * React handle on `BleSessionRecorder` (see that file for what a recorded row
+ * holds). The recorder lives for the component's lifetime; unmounting stops it,
+ * which still drains what is queued, so leaving the screen without calling
+ * `stop()` does not strand frames in memory.
  */
 export function useBleSessionRecorder(): UseBleSessionRecorderResult {
-  const bufferRef = useRef<TelemetryBuffer | null>(null);
-  const seqRef = useRef(0);
-  const monitorRef = useRef(new SignalQualityMonitor());
   const [counters, setCounters] = useState<BufferCounters>(ZERO_COUNTERS);
+  const recorderRef = useRef<BleSessionRecorder | null>(null);
+  if (!recorderRef.current) recorderRef.current = new BleSessionRecorder({ onCounters: setCounters });
+  const recorder = recorderRef.current;
 
-  const start = useCallback(async (sessionId: string) => {
-    seqRef.current = 0;
-    monitorRef.current.reset();
-    setCounters(ZERO_COUNTERS);
-    const buffer = new TelemetryBuffer(sessionId, setCounters);
-    bufferRef.current = buffer;
-    await buffer.start();
-  }, []);
+  useEffect(
+    () => () => {
+      void recorder.stop();
+    },
+    [recorder],
+  );
 
-  const stop = useCallback(async () => {
-    const buffer = bufferRef.current;
-    bufferRef.current = null;
-    await buffer?.stop();
-  }, []);
+  const start = useCallback((sessionId: string) => recorder.start(sessionId), [recorder]);
+  const stop = useCallback(() => recorder.stop(), [recorder]);
+  const recordFrame = useCallback(
+    (role: SensorRole, frame: ParsedWt901Frame, receivedAtMs: number) => recorder.recordFrame(role, frame, receivedAtMs),
+    [recorder],
+  );
+  const lastQuality = useCallback(() => recorder.lastQuality, [recorder]);
+  const framesRecorded = useCallback(() => recorder.framesRecorded, [recorder]);
 
-  const recordFrame = useCallback((role: SensorRole, frame: ParsedWt901Frame) => {
-    monitorRef.current.push(role, {
-      ax: frame.accelerometerRaw[0],
-      ay: frame.accelerometerRaw[1],
-      az: frame.accelerometerRaw[2],
-      gx: frame.gyroscopeRaw[0],
-      gy: frame.gyroscopeRaw[1],
-      gz: frame.gyroscopeRaw[2],
-    });
-    const quality = monitorRef.current.evaluate();
-    bufferRef.current?.pushFrame(toFrameRow(role, frame, seqRef.current++, { quality }));
-  }, []);
-
-  const lastQuality = useCallback(() => monitorRef.current.evaluate(), []);
-
-  return { counters, start, stop, recordFrame, lastQuality };
+  return { counters, start, stop, recordFrame, lastQuality, framesRecorded };
 }

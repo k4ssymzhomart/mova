@@ -5,10 +5,15 @@ import { LEVEL_SCORE, type SignalQualityReport } from "./signalQuality";
 import type { ParsedWt901Frame } from "./wt901ble68";
 
 export interface ToFrameRowOptions {
+  /** When the frame reached the browser. The WT901BLE68 frame carries no device timestamp. */
   recordedAt?: Date;
-  /** Most recent cross-role evaluation, if available -- rolled up into `quality` and
-   * embedded in full under `imu.signal_quality` so a row can be filtered/joined on either. */
+  /** Most recent cross-role evaluation, if any -- rolled up into the numeric `quality` column on every row. */
   quality?: SignalQualityReport | null;
+  /**
+   * Embed the full report under `imu.signal_quality`. The recorder sets this only on the row taken at an
+   * evaluation tick (at most once a second), so 150 rows/s do not each repeat the same report.
+   */
+  attachReport?: boolean;
 }
 
 /**
@@ -29,23 +34,24 @@ export function toFrameRow(
   role: SensorRole,
   frame: ParsedWt901Frame,
   seq: number,
-  { recordedAt = new Date(), quality = null }: ToFrameRowOptions = {},
+  { recordedAt = new Date(), quality = null, attachReport = false }: ToFrameRowOptions = {},
 ): FrameRow {
+  const imu: Record<string, unknown> = {
+    role,
+    ax: frame.accelerometerRaw[0],
+    ay: frame.accelerometerRaw[1],
+    az: frame.accelerometerRaw[2],
+    gx: frame.gyroscopeRaw[0],
+    gy: frame.gyroscopeRaw[1],
+    gz: frame.gyroscopeRaw[2],
+    euler_deg: frame.eulerDegrees,
+    validation_status: "unverified_checksum",
+  };
+  if (attachReport && quality) imu.signal_quality = quality;
   return {
     recorded_at: recordedAt.toISOString(),
     seq,
-    imu: {
-      role,
-      ax: frame.accelerometerRaw[0],
-      ay: frame.accelerometerRaw[1],
-      az: frame.accelerometerRaw[2],
-      gx: frame.gyroscopeRaw[0],
-      gy: frame.gyroscopeRaw[1],
-      gz: frame.gyroscopeRaw[2],
-      euler_deg: frame.eulerDegrees,
-      validation_status: "unverified_checksum",
-      signal_quality: quality,
-    },
+    imu,
     quality: quality ? LEVEL_SCORE[quality.level] : null,
   };
 }

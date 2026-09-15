@@ -10,6 +10,16 @@ const FRAME: ParsedWt901Frame = {
   eulerDegrees: [12.5, -3.25, 180],
 };
 
+const QUALITY: SignalQualityReport = {
+  level: "MEDIUM",
+  reasons: ["sensor_synchronization_out_of_range"],
+  calibrationDurationSeconds: 5,
+  synchronizationSkewMs: 300,
+  sampleRatesHz: { thigh: 20, shank: 20, foot: 20 },
+  packetCounts: { thigh: 100, shank: 100, foot: 100 },
+  scoringPermitted: true,
+};
+
 describe("toFrameRow", () => {
   it("tags the row with role and passes raw counts through unconverted", () => {
     const row = toFrameRow("shank", FRAME, 7, { recordedAt: new Date("2026-01-01T00:00:00.000Z") });
@@ -26,7 +36,6 @@ describe("toFrameRow", () => {
       gz: 167,
       euler_deg: [12.5, -3.25, 180],
       validation_status: "unverified_checksum",
-      signal_quality: null,
     });
     expect(row.quality).toBeNull();
   });
@@ -50,19 +59,18 @@ describe("toFrameRow", () => {
     expect(thigh.seq).not.toBe(shank.seq);
   });
 
-  it("rolls a signal-quality report into the numeric quality column and embeds the full report", () => {
-    const quality: SignalQualityReport = {
-      level: "MEDIUM",
-      reasons: ["sensor_synchronization_out_of_range"],
-      calibrationDurationSeconds: 5,
-      synchronizationSkewMs: 300,
-      sampleRatesHz: { thigh: 20, shank: 20, foot: 20 },
-      packetCounts: { thigh: 100, shank: 100, foot: 100 },
-      scoringPermitted: true,
-    };
-    const row = toFrameRow("thigh", FRAME, 0, { quality });
+  it("rolls a report into the numeric quality column and embeds it in full only when asked", () => {
+    const tick = toFrameRow("thigh", FRAME, 0, { quality: QUALITY, attachReport: true });
+    const between = toFrameRow("thigh", FRAME, 1, { quality: QUALITY });
 
-    expect(row.quality).toBe(0.6);
-    expect((row.imu as { signal_quality: SignalQualityReport }).signal_quality).toEqual(quality);
+    expect(tick.quality).toBe(0.6);
+    expect((tick.imu as { signal_quality: SignalQualityReport }).signal_quality).toEqual(QUALITY);
+    expect(between.quality).toBe(0.6);
+    expect(between.imu).not.toHaveProperty("signal_quality");
+  });
+
+  it("keeps pitch at euler index 1", () => {
+    const row = toFrameRow("shank", FRAME, 0);
+    expect((row.imu as { euler_deg: number[] }).euler_deg[1]).toBe(-3.25);
   });
 });
