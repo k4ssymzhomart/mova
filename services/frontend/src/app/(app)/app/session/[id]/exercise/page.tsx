@@ -1,14 +1,21 @@
-// Step 3 of the exercise flow (Упражнение). Holds the step's place until the session screen exists. The frame
-// above already shows the three sensor statuses on this step.
+// Step 3 of the exercise flow (Упражнение). Heel Slide runs here with real sensors (HeelSlideExercise). Any other
+// exercise keeps the placeholder: this path covers one exercise. The frame above already shows the three sensor
+// statuses on this step.
+//
+// Only a session in progress opens the exercise. A completed one goes on to its check-in, one that was stopped or
+// has been reviewed goes to its summary, and a scheduled one has not been started.
 
 import { Activity } from "lucide-react";
 import type { Metadata } from "next";
+import { redirect } from "next/navigation";
 
+import PageHeader from "@/components/app/PageHeader";
+import HeelSlideExercise from "@/components/flow/HeelSlideExercise";
 import { stepHref } from "@/components/flow/steps";
 import { getTranslation } from "@/locales/server";
 
 import FlowUnavailable from "../../_flow/FlowUnavailable";
-import { loadFlowSession } from "../../_flow/load";
+import { FINISHED_STATUSES, HEEL_SLIDE_SLUG, loadSensorContext, loadSessionExercise } from "../../_flow/load";
 import StepPending from "../../_flow/StepPending";
 
 export async function generateMetadata(): Promise<Metadata> {
@@ -18,7 +25,7 @@ export async function generateMetadata(): Promise<Metadata> {
 
 export default async function ExerciseStep({ params }: { params: { id: string } }) {
   const { t } = getTranslation();
-  const session = await loadFlowSession(params.id);
+  const session = await loadSessionExercise(params.id);
   if (session.kind !== "ok") {
     return (
       <FlowUnavailable
@@ -28,15 +35,49 @@ export default async function ExerciseStep({ params }: { params: { id: string } 
     );
   }
 
-  // TODO(#22): the session screen (demonstration video, repetition counter, live cue, ghost guide) replaces this
-  // placeholder, and its end of exercise replaces the link onward.
+  const { id, status, exerciseName, exerciseSlug, scoringRubric, targetReps } = session.value;
+  if (status === "completed") redirect(stepHref(id, "checkIn"));
+  if (FINISHED_STATUSES.includes(status)) redirect(stepHref(id, "summary"));
+  if (status !== "in_progress") return <FlowUnavailable eyebrow={t("flow.steps.exercise")} reason="notStarted" />;
+
+  if (exerciseSlug !== HEEL_SLIDE_SLUG) {
+    // TODO(#22): the session screens of the other exercises replace this placeholder.
+    return (
+      <StepPending
+        step="exercise"
+        icon={Activity}
+        exerciseName={exerciseName}
+        nextStep="checkIn"
+        nextHref={stepHref(id, "checkIn")}
+      />
+    );
+  }
+
+  const sensors = await loadSensorContext();
+  if (sensors.kind !== "ok") {
+    return (
+      <FlowUnavailable
+        eyebrow={t("flow.steps.exercise")}
+        reason={sensors.kind === "error" ? "loadError" : "sessionNotFound"}
+      />
+    );
+  }
+
   return (
-    <StepPending
-      step="exercise"
-      icon={Activity}
-      exerciseName={session.value.exerciseName}
-      nextStep="checkIn"
-      nextHref={stepHref(session.value.id, "checkIn")}
-    />
+    <div className="space-y-8">
+      <PageHeader
+        eyebrow={t("flow.steps.exercise")}
+        title={exerciseName ?? t("flow.untitledExercise")}
+        lead={t("flow.exercise.lead")}
+      />
+      <HeelSlideExercise
+        sessionId={id}
+        targetReps={targetReps}
+        scoringRubric={scoringRubric}
+        patientId={sensors.value.patientId}
+        side={sensors.value.side}
+        savedDevices={sensors.value.savedDevices}
+      />
+    </div>
   );
 }

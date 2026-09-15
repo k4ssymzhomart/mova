@@ -1,56 +1,115 @@
 "use client";
 
-// The live part of the sensors step (НТЗ AC-03): three separate sensor statuses, then «Далее». «Далее» opens only
-// when all three sensors are streaming over the real transport. With no transport yet, or with the mock, it stays
-// disabled and says why next to it: a simulated sensor must never start a real session.
+// The live part of the sensors step (НТЗ AC-03): the three sensors connected one by one over Web Bluetooth, then
+// «Далее». «Далее» opens only when all three are streaming over the real transport. With the mock on it stays
+// disabled and says why next to it: a simulated sensor must never start a real session. An unconfirmed sample rate
+// does not block. The row shows it and the session records it; the delivered rate is the figure that counts.
+//
+// «Далее» opens the session (start_prescribed_session, which creates a row on every call, so a second press is
+// ignored while the first is under way) with the sensors' descriptors, then goes straight to the exercise. The
+// calibration step keeps its place in the flow but is not on this path: calibration does not exist yet, and the
+// exercise zeroes itself on the leg held straight.
 
-import { ArrowRight, Info } from "lucide-react";
-import { useId } from "react";
+import { ArrowRight, Info, LoaderCircle, TriangleAlert } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { useId, useRef, useState } from "react";
 
 import { primaryButton } from "@/components/app/recipes";
-import SensorStatusRows from "@/components/flow/SensorStatusRows";
+import SensorConnectPanel, { sensorDeviceInfo, type SavedDeviceRow } from "@/components/flow/SensorConnectPanel";
+import { stepHref } from "@/components/flow/steps";
+import { getSnapshot, useLiveSensors } from "@/lib/ble/liveSensors";
 import { useSensorStatus } from "@/lib/sensors/useSensorStatus";
+import { createClient } from "@/lib/supabase/client";
 import { useTranslation } from "@/locales/client";
 
-export default function SensorsStep() {
+export default function SensorsStep({
+  prescriptionId,
+  patientId,
+  side,
+  savedDevices,
+}: {
+  prescriptionId: string;
+  patientId: string;
+  side: "left" | "right" | null;
+  savedDevices: readonly SavedDeviceRow[];
+}) {
   const snapshot = useSensorStatus();
+  const live = useLiveSensors();
+  const router = useRouter();
   const { t } = useTranslation();
   const reasonId = useId();
+  const startingRef = useRef(false);
+  const [starting, setStarting] = useState(false);
+  const [startError, setStartError] = useState<"inactive" | "failed" | null>(null);
 
-  const ready = snapshot.allStreaming && snapshot.source === "ble";
+  const ready = snapshot.source === "ble" && live.allStreaming;
   const reason = ready
     ? null
     : snapshot.source === "mock"
       ? t("flow.sensors.blockedMock")
-      : snapshot.source === "none"
-        ? t("flow.sensors.blockedNoTransport")
+      : live.supported === false
+        ? t("flow.sensors.blockedUnsupported")
         : t("flow.sensors.blockedNotReady");
 
-  function start() {
-    if (!ready) return;
-    // TODO(#22): create the session row here for this prescription (with the device descriptors from #21), then
-    // move the patient on with router.push(stepHref(session.id, "calibrate")). Until that exists nothing is
-    // created, and nothing can reach this line: no transport reports "ble" yet (#21).
+  async function start() {
+    if (!ready || startingRef.current) return;
+    startingRef.current = true;
+    setStarting(true);
+    setStartError(null);
+
+    let sessionId: string | null = null;
+    let inactive = false;
+    try {
+      const { data, error } = await createClient().rpc("start_prescribed_session", {
+        p_prescription: prescriptionId,
+        p_device_info: sensorDeviceInfo(getSnapshot()),
+      });
+      const id = (data as { id?: unknown } | null)?.id;
+      if (!error && typeof id === "string") sessionId = id;
+      // 55000: the prescription or its program is no longer active.
+      inactive = error?.code === "55000";
+    } catch {
+      sessionId = null;
+    }
+
+    if (!sessionId) {
+      setStartError(inactive ? "inactive" : "failed");
+      startingRef.current = false;
+      setStarting(false);
+      return;
+    }
+    // The button stays disabled while the exercise opens.
+    router.push(stepHref(sessionId, "exercise"));
   }
 
   return (
     <div className="space-y-5">
-      <SensorStatusRows snapshot={snapshot} />
+      <SensorConnectPanel patientId={patientId} side={side} savedDevices={savedDevices} />
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-5">
         <button
           type="button"
           onClick={start}
-          disabled={!ready}
+          disabled={!ready || starting}
           aria-describedby={reason ? reasonId : undefined}
           className={primaryButton}
         >
-          {t("flow.next")}
-          <ArrowRight className="size-5" strokeWidth={2} aria-hidden="true" />
+          {starting ? t("flow.sensors.starting") : t("flow.next")}
+          {starting ? (
+            <LoaderCircle className="size-5 animate-spin motion-reduce:animate-none" strokeWidth={2} aria-hidden="true" />
+          ) : (
+            <ArrowRight className="size-5" strokeWidth={2} aria-hidden="true" />
+          )}
         </button>
         {reason && (
           <p id={reasonId} className="flex items-start gap-2 text-base leading-relaxed text-ink-soft">
             <Info className="mt-0.5 size-5 shrink-0" strokeWidth={1.8} aria-hidden="true" />
             {reason}
+          </p>
+        )}
+        {startError && (
+          <p role="alert" className="flex items-start gap-2 text-base leading-relaxed text-red-800">
+            <TriangleAlert className="mt-0.5 size-5 shrink-0" strokeWidth={2} aria-hidden="true" />
+            {startError === "inactive" ? t("flow.sensors.startInactive") : t("flow.sensors.startFailed")}
           </p>
         )}
       </div>
