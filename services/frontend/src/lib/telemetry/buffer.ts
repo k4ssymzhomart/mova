@@ -11,8 +11,15 @@
 // Durability: a clean Stop awaits a final flush, and an abrupt unload (tab close / navigation) triggers
 // a best-effort keepalive flush — so no trailing frames are lost. Transient failures re-queue the batch
 // (bounded) instead of dropping it. The RPC enforces session ownership server-side via auth.uid().
+//
+// The above covers a graceful close or a transient RPC failure, but not a reload or crash mid-outage --
+// nothing survives that without also persisting outside the JS heap. DurableQueue mirrors whatever is
+// still undelivered (queued + in-flight) into IndexedDB on every change; start() recovers it, so a
+// killed network + reloaded tab loses nothing that hadn't already reached Postgres.
 
 import { createClient } from "@/lib/supabase/client";
+
+import { DurableQueue } from "./durableQueue";
 
 export interface FrameRow {
   recorded_at: string; // ISO 8601
@@ -48,8 +55,14 @@ type AuthCtx = { url: string; key: string; token: string };
 
 export class TelemetryBuffer {
   private readonly supabase = createClient();
+  private readonly durable = new DurableQueue();
   private frames: FrameRow[] = [];
   private events: FogEventRow[] = [];
+  // Set only for the span of an in-flight flush -- see persistDurable(), which must count
+  // these alongside `frames`/`events` so a save mid-flight never durably drops a batch that
+  // a concurrent pushFrame() would otherwise overwrite out of the record.
+  private inFlightFrames: FrameRow[] = [];
+  private inFlightEvents: FogEventRow[] = [];
   private inFlight = false;
   private timer: ReturnType<typeof setInterval> | null = null;
   private auth: AuthCtx | null = null;
@@ -66,8 +79,10 @@ export class TelemetryBuffer {
     private readonly onUpdate?: (c: BufferCounters) => void,
   ) {}
 
-  /** Begin the periodic flush loop and arm the unload safety net. */
+  /** Begin the periodic flush loop and arm the unload safety net. Recovers anything a
+   * previous instance for this same session left undelivered (crash, unclean reload). */
   async start(): Promise<void> {
+    await this.recoverDurable();
     await this.refreshAuth(); // cache a token so the unload path can flush with auth headers
     if (!this.timer) this.timer = setInterval(() => void this.flush(), FLUSH_MS);
     if (typeof window !== "undefined") {
@@ -82,6 +97,7 @@ export class TelemetryBuffer {
     if (this.frames.length > MAX_BUFFER) this.frames.splice(0, this.frames.length - MAX_BUFFER);
     if (this.frames.length >= MAX_FRAMES) void this.flush();
     this.counters.pending = this.frames.length + this.events.length;
+    void this.persistDurable();
     this.emit();
   }
 
@@ -91,6 +107,7 @@ export class TelemetryBuffer {
     if (this.events.length > MAX_BUFFER) this.events.splice(0, this.events.length - MAX_BUFFER);
     void this.flush();
     this.counters.pending = this.frames.length + this.events.length;
+    void this.persistDurable();
     this.emit();
   }
 
@@ -99,27 +116,35 @@ export class TelemetryBuffer {
     if (this.inFlight) return;
     if (this.frames.length === 0 && this.events.length === 0) return;
     this.inFlight = true;
-    const fb = this.frames;
-    const eb = this.events;
+    // Held on the instance (not just a local) so persistDurable() can still see this batch
+    // if a pushFrame() lands while the request below is in flight.
+    this.inFlightFrames = this.frames;
+    this.inFlightEvents = this.events;
     this.frames = [];
     this.events = [];
     try {
       const { data, error } = await this.supabase.rpc("flush_session_telemetry_batch", {
         p_session: this.sessionId,
-        p_frames: fb,
-        p_events: eb,
+        p_frames: this.inFlightFrames,
+        p_events: this.inFlightEvents,
       });
       if (error) throw error;
       const res = (data ?? {}) as { frames?: number; events?: number };
-      this.counters.framesSent += res.frames ?? fb.length;
-      this.counters.eventsSent += res.events ?? eb.length;
+      this.counters.framesSent += res.frames ?? this.inFlightFrames.length;
+      this.counters.eventsSent += res.events ?? this.inFlightEvents.length;
+      this.inFlightFrames = [];
+      this.inFlightEvents = [];
+      void this.persistDurable(); // acknowledged -- drop it from the durable record too
       void this.refreshAuth(); // keep the unload token fresh
     } catch (err) {
       // Resilient: re-queue (bounded) so a transient failure doesn't drop telemetry.
-      this.frames = [...fb, ...this.frames].slice(-MAX_BUFFER);
-      this.events = [...eb, ...this.events].slice(-MAX_BUFFER);
+      this.frames = [...this.inFlightFrames, ...this.frames].slice(-MAX_BUFFER);
+      this.events = [...this.inFlightEvents, ...this.events].slice(-MAX_BUFFER);
+      this.inFlightFrames = [];
+      this.inFlightEvents = [];
       this.counters.errors += 1;
       this.counters.lastError = errMessage(err);
+      void this.persistDurable();
     } finally {
       this.inFlight = false;
       this.counters.pending = this.frames.length + this.events.length;
@@ -172,6 +197,31 @@ export class TelemetryBuffer {
       /* best-effort — the awaited stop() is the primary guarantee */
     }
   };
+
+  // — durable queue (survives a reload/crash, not just a graceful close) ——————————————
+
+  // The durable record must always equal the full undelivered set: whatever's queued right
+  // now PLUS whatever's mid-flight. Using only `this.frames` here would let a pushFrame()
+  // that lands while a flush is in-flight overwrite the record and durably lose the batch
+  // still in transit if the tab dies before that request resolves.
+  private async persistDurable(): Promise<void> {
+    const frames = [...this.inFlightFrames, ...this.frames];
+    const events = [...this.inFlightEvents, ...this.events];
+    if (frames.length === 0 && events.length === 0) await this.durable.clear(this.sessionId);
+    else await this.durable.save(this.sessionId, frames, events);
+  }
+
+  // Called once from start(): recovers anything left behind by a previous instance for this
+  // same session that never got to run stop()'s final flush (crash, unclean reload). Prepended
+  // so recovered data flushes ahead of anything pushed after this instance starts.
+  private async recoverDurable(): Promise<void> {
+    const saved = await this.durable.load(this.sessionId);
+    if (!saved) return;
+    this.frames = [...saved.frames, ...this.frames].slice(-MAX_BUFFER);
+    this.events = [...saved.events, ...this.events].slice(-MAX_BUFFER);
+    this.counters.pending = this.frames.length + this.events.length;
+    this.emit();
+  }
 
   private async refreshAuth(): Promise<void> {
     try {

@@ -1,46 +1,32 @@
 "use client";
 
 // DevicesClient — the hardware hub. Two halves:
-//  · Camera   — a LIVE permission check (Permissions API + getUserMedia probe) with an enable action.
-//  · Wearables — a WebBluetooth-style pairing flow for IMUs. The scan + telemetry are mocked (our pipeline
-//    ingests real DIP-format IMUs; this is the UI that will drive it), shown with battery + signal.
+//  · Camera     — a LIVE permission check (Permissions API + getUserMedia probe) with an enable action.
+//  · Wearables  — real Web Bluetooth pairing of the three WT901BLE68 IMUs (thigh/shank/foot), persisted
+//    to patient_ble_devices so the binding survives reloads and is visible to clinicians. Chrome/Edge on
+//    desktop or Android only for this pilot -- no Web Bluetooth on Safari/iOS.
 // Editorial Spatial, lucide icons, no gradients, no charts.
 
-import {
-  Battery,
-  BatteryLow,
-  BatteryMedium,
-  Bluetooth,
-  Camera,
-  CameraOff,
-  Check,
-  Cpu,
-  Loader2,
-  RefreshCw,
-  ShieldCheck,
-} from "lucide-react";
-import { useEffect, useState } from "react";
+import { AlertTriangle, Bluetooth, BluetoothOff, Camera, CameraOff, Check, Cpu, Loader2, Radio, ShieldCheck, X } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 
+import { SENSOR_ROLE_LABEL, SENSOR_ROLE_ORDER, type SensorRole, type Side } from "@/lib/ble/roles";
+import { describeSignalQuality, type SignalQualityReport } from "@/lib/ble/signalQuality";
+import { SignalQualityMonitor } from "@/lib/ble/signalQualityMonitor";
+import { type SensorUiStatus, useSensorConnect } from "@/lib/ble/useSensorConnect";
 import { cn } from "@/lib/utils";
 
 type CamState = "checking" | "granted" | "denied" | "prompt" | "unsupported";
 
-interface Sensor {
-  id: string;
-  name: string;
-  site: string;
-  battery: number;
-  rssi: number; // dBm; closer to 0 = stronger
-  connected: boolean;
-}
-
-const CATALOG: Omit<Sensor, "connected">[] = [
-  { id: "mv-lumbar", name: "Mova IMU · Lumbar", site: "Lower back", battery: 86, rssi: -49 },
-  { id: "mv-lshank", name: "Mova IMU · L-Shank", site: "Left shank", battery: 63, rssi: -62 },
-  { id: "mv-rshank", name: "Mova IMU · R-Shank", site: "Right shank", battery: 91, rssi: -55 },
-];
-
-export default function DevicesClient() {
+export default function DevicesClient({
+  patientId,
+  affectedSide,
+  pairedDeviceNames,
+}: {
+  patientId: string | null;
+  affectedSide: Side | null;
+  pairedDeviceNames: Partial<Record<SensorRole, string | null>>;
+}) {
   return (
     <div className="space-y-8">
       <header>
@@ -52,7 +38,7 @@ export default function DevicesClient() {
       </header>
 
       <CameraPanel />
-      <WearablesPanel />
+      <WearablesPanel patientId={patientId} affectedSide={affectedSide} pairedDeviceNames={pairedDeviceNames} />
     </div>
   );
 }
@@ -155,26 +141,72 @@ function CameraPanel() {
   );
 }
 
-// ---- Wearables -------------------------------------------------------------
+// ---- Wearables ---------------------------------------------------------------
 
-function WearablesPanel() {
-  const [phase, setPhase] = useState<"idle" | "scanning" | "found">("idle");
-  const [sensors, setSensors] = useState<Sensor[]>([]);
+function WearablesPanel({
+  patientId,
+  affectedSide,
+  pairedDeviceNames,
+}: {
+  patientId: string | null;
+  affectedSide: Side | null;
+  pairedDeviceNames: Partial<Record<SensorRole, string | null>>;
+}) {
+  const [side, setSide] = useState<Side | null>(affectedSide);
+  const [receivingData, setReceivingData] = useState<Record<SensorRole, boolean>>({
+    thigh: false,
+    shank: false,
+    foot: false,
+  });
+  const monitorRef = useRef(new SignalQualityMonitor());
+  const [quality, setQuality] = useState<SignalQualityReport | null>(null);
 
-  function scan() {
-    setPhase("scanning");
-    setSensors([]);
-    window.setTimeout(() => {
-      setSensors(CATALOG.map((c) => ({ ...c, connected: false })));
-      setPhase("found");
-    }, 1600);
+  const { statuses, deviceNames, connect, forget, connectedCount, bleSupported } = useSensorConnect(
+    patientId,
+    side,
+    pairedDeviceNames,
+    (role, frame) => {
+      setReceivingData((s) => (s[role] ? s : { ...s, [role]: true }));
+      monitorRef.current.push(role, {
+        ax: frame.accelerometerRaw[0],
+        ay: frame.accelerometerRaw[1],
+        az: frame.accelerometerRaw[2],
+        gx: frame.gyroscopeRaw[0],
+        gy: frame.gyroscopeRaw[1],
+        gz: frame.gyroscopeRaw[2],
+      });
+    },
+  );
+
+  // Only meaningful once all three roles are connected -- before that, "missing_sensor_roles"
+  // would just restate what the per-row Connect buttons already show.
+  useEffect(() => {
+    if (connectedCount < SENSOR_ROLE_ORDER.length) {
+      setQuality(null);
+      return;
+    }
+    const id = window.setInterval(() => setQuality(monitorRef.current.evaluate()), 1000);
+    return () => window.clearInterval(id);
+  }, [connectedCount]);
+
+  if (!bleSupported) {
+    return (
+      <section className="rounded-xl border border-line bg-card p-7">
+        <div className="flex items-center gap-4">
+          <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-paper-soft text-ink-soft ring-1 ring-line">
+            <BluetoothOff className="size-5" strokeWidth={1.7} />
+          </span>
+          <div>
+            <h2 className="text-2xl text-ink">Wearable IMUs</h2>
+            <p className="mt-1 text-[13px] leading-relaxed text-ink-soft">
+              Web Bluetooth isn't available in this browser. Pairing real sensors needs Chrome or Edge on
+              desktop or Android — Safari and iOS aren't supported for this pilot.
+            </p>
+          </div>
+        </div>
+      </section>
+    );
   }
-
-  function toggle(id: string) {
-    setSensors((list) => list.map((s) => (s.id === id ? { ...s, connected: !s.connected } : s)));
-  }
-
-  const connectedCount = sensors.filter((s) => s.connected).length;
 
   return (
     <section className="rounded-xl border border-line bg-card p-7">
@@ -186,131 +218,172 @@ function WearablesPanel() {
           <div>
             <h2 className="text-2xl text-ink">Wearable IMUs</h2>
             <p className="text-[13px] text-ink-soft">
-              {connectedCount > 0 ? `${connectedCount} paired` : "Pair sensors over Bluetooth for richer motion capture."}
+              {connectedCount > 0
+                ? `${connectedCount} of ${SENSOR_ROLE_ORDER.length} paired`
+                : "Pair the thigh, shank, and foot sensors in order."}
             </p>
           </div>
         </div>
-        <button
-          type="button"
-          onClick={scan}
-          disabled={phase === "scanning"}
-          className="inline-flex items-center gap-2 rounded-pill border border-line px-4 py-2.5 text-sm text-ink transition-colors hover:bg-paper-soft disabled:opacity-60"
-        >
-          {phase === "scanning" ? (
-            <Loader2 className="size-4 animate-spin" strokeWidth={1.8} />
-          ) : (
-            <RefreshCw className="size-4" strokeWidth={1.8} />
-          )}
-          {phase === "scanning" ? "Scanning…" : phase === "found" ? "Re-scan" : "Scan for sensors"}
-        </button>
       </div>
 
-      <div className="mt-6">
-        {phase === "idle" && (
-          <div className="rounded-lg border border-dashed border-line bg-paper-soft/40 px-6 py-12 text-center">
-            <Cpu className="mx-auto size-7 text-ink-faint" strokeWidth={1.5} />
-            <p className="mx-auto mt-3 max-w-sm text-sm text-ink-soft">
-              No sensors paired yet. Put your Mova IMUs in pairing mode and scan to connect.
-            </p>
-          </div>
-        )}
-
-        {phase === "scanning" && (
-          <div className="grid place-items-center rounded-lg border border-line bg-paper-soft/40 px-6 py-12">
-            <span className="relative grid size-16 place-items-center">
-              <span className="absolute inset-0 animate-ping rounded-full bg-signal/20" />
-              <span className="grid size-12 place-items-center rounded-full bg-card ring-1 ring-signal/30">
-                <Bluetooth className="size-6 text-signal" strokeWidth={1.7} />
-              </span>
-            </span>
-            <p className="mt-4 font-mono text-[11px] uppercase tracking-[0.16em] text-ink-faint">
-              Listening for nearby sensors…
-            </p>
-          </div>
-        )}
-
-        {phase === "found" && (
-          <div className="space-y-2.5">
-            {sensors.map((s) => (
-              <SensorRow key={s.id} sensor={s} onToggle={() => toggle(s.id)} />
-            ))}
-          </div>
-        )}
-      </div>
+      {!patientId ? (
+        <p className="mt-6 rounded-lg border border-dashed border-line bg-paper-soft/40 px-6 py-8 text-center text-sm text-ink-soft">
+          Finish setting up your profile before pairing sensors.
+        </p>
+      ) : !side ? (
+        <SidePicker onPick={setSide} />
+      ) : (
+        <div className="mt-6 space-y-2.5">
+          {SENSOR_ROLE_ORDER.map((role, i) => {
+            const prevConnected = i === 0 || statuses[SENSOR_ROLE_ORDER[i - 1]] === "connected";
+            return (
+              <SensorRow
+                key={role}
+                role={role}
+                status={statuses[role]}
+                deviceName={deviceNames[role]}
+                receivingData={receivingData[role]}
+                disabled={!prevConnected}
+                onConnect={() => connect(role)}
+                onForget={() => forget(role)}
+              />
+            );
+          })}
+          {quality && <SignalQualityBanner report={quality} />}
+        </div>
+      )}
     </section>
   );
 }
 
-function SensorRow({ sensor, onToggle }: { sensor: Sensor; onToggle: () => void }) {
+function SignalQualityBanner({ report }: { report: SignalQualityReport }) {
+  if (report.scoringPermitted) {
+    return (
+      <div className="flex items-center gap-2 rounded-lg bg-signal/10 px-4 py-3 text-[13px] text-signal-deep">
+        <Check className="size-4 shrink-0" strokeWidth={2} />
+        {report.level === "HIGH"
+          ? "All sensors synced and ready."
+          : "Sensors ready -- sync is a little loose but within range."}
+      </div>
+    );
+  }
+  const messages = describeSignalQuality(report);
+  return (
+    <div className="space-y-1.5 rounded-lg bg-amber-500/10 px-4 py-3 text-[13px] text-amber-700">
+      {messages.map((message, i) => (
+        <div key={i} className="flex items-start gap-2">
+          <AlertTriangle className="mt-0.5 size-4 shrink-0" strokeWidth={2} />
+          {message}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function SidePicker({ onPick }: { onPick: (side: Side) => void }) {
+  return (
+    <div className="mt-6 rounded-lg border border-dashed border-line bg-paper-soft/40 px-6 py-8 text-center">
+      <p className="mx-auto max-w-sm text-sm text-ink-soft">Which leg are the sensors strapped to for this session?</p>
+      <div className="mt-4 flex justify-center gap-3">
+        <button
+          type="button"
+          onClick={() => onPick("left")}
+          className="rounded-pill border border-line px-5 py-2.5 text-sm text-ink transition-colors hover:bg-paper-soft"
+        >
+          Left leg
+        </button>
+        <button
+          type="button"
+          onClick={() => onPick("right")}
+          className="rounded-pill border border-line px-5 py-2.5 text-sm text-ink transition-colors hover:bg-paper-soft"
+        >
+          Right leg
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function SensorRow({
+  role,
+  status,
+  deviceName,
+  receivingData,
+  disabled,
+  onConnect,
+  onForget,
+}: {
+  role: SensorRole;
+  status: SensorUiStatus;
+  deviceName: string | null | undefined;
+  receivingData: boolean;
+  disabled: boolean;
+  onConnect: () => void;
+  onForget: () => void;
+}) {
+  const connected = status === "connected";
+  const busy = status === "requesting" || status === "connecting";
+
   return (
     <div
       className={cn(
         "flex items-center gap-4 rounded-lg border p-4 transition-colors",
-        sensor.connected ? "border-signal/30 bg-signal/[0.04]" : "border-line bg-card",
+        connected ? "border-signal/30 bg-signal/[0.04]" : "border-line bg-card",
+        disabled && !connected && "opacity-50",
       )}
     >
       <span
         className={cn(
           "grid size-11 shrink-0 place-items-center rounded-xl ring-1",
-          sensor.connected ? "bg-card text-signal-deep ring-signal/25" : "bg-paper-soft text-ink-soft ring-line",
+          connected ? "bg-card text-signal-deep ring-signal/25" : "bg-paper-soft text-ink-soft ring-line",
         )}
       >
         <Cpu className="size-5" strokeWidth={1.6} />
       </span>
 
       <div className="min-w-0 flex-1">
-        <div className="truncate text-sm font-medium text-ink">{sensor.name}</div>
-        <div className="font-mono text-[11px] uppercase tracking-[0.1em] text-ink-faint">{sensor.site}</div>
+        <div className="truncate text-sm font-medium text-ink">{SENSOR_ROLE_LABEL[role]}</div>
+        <div className="truncate font-mono text-[11px] uppercase tracking-[0.1em] text-ink-faint">
+          {deviceName ?? (connected ? "Paired" : status === "error" ? "Connection failed" : "Not paired")}
+        </div>
       </div>
 
-      <SignalBars rssi={sensor.rssi} />
-      <BatteryPill level={sensor.battery} />
-
-      <button
-        type="button"
-        onClick={onToggle}
-        className={cn(
-          "inline-flex w-28 items-center justify-center gap-1.5 rounded-pill px-3 py-2 text-[13px] font-medium transition-colors",
-          sensor.connected
-            ? "bg-signal/10 text-signal-deep hover:bg-signal/15"
-            : "bg-night text-paper-soft hover:bg-ink",
-        )}
-      >
-        {sensor.connected ? (
-          <>
-            <Check className="size-3.5" strokeWidth={2.2} /> Paired
-          </>
-        ) : (
-          "Connect"
-        )}
-      </button>
-    </div>
-  );
-}
-
-function SignalBars({ rssi }: { rssi: number }) {
-  // -45 dBm ≈ excellent, -85 ≈ poor → 1..4 bars
-  const strength = Math.max(1, Math.min(4, Math.round((rssi + 90) / 12)));
-  return (
-    <div className="hidden items-end gap-0.5 sm:flex" title={`${rssi} dBm`} aria-label={`Signal ${strength} of 4`}>
-      {[1, 2, 3, 4].map((b) => (
+      {connected && (
         <span
-          key={b}
-          className={cn("w-1 rounded-sm", b <= strength ? "bg-signal" : "bg-line")}
-          style={{ height: `${5 + b * 3}px` }}
-        />
-      ))}
-    </div>
-  );
-}
+          className={cn(
+            "hidden items-center gap-1.5 font-mono text-[11px] uppercase tracking-[0.1em] sm:inline-flex",
+            receivingData ? "text-signal-deep" : "text-ink-faint",
+          )}
+        >
+          <Radio className="size-3.5" strokeWidth={1.8} />
+          {receivingData ? "Streaming" : "Waiting for data"}
+        </span>
+      )}
 
-function BatteryPill({ level }: { level: number }) {
-  const Icon = level > 66 ? Battery : level > 33 ? BatteryMedium : BatteryLow;
-  const tone = level > 33 ? "text-ink-soft" : "text-amber-600";
-  return (
-    <span className={cn("hidden items-center gap-1 font-mono text-[12px] sm:inline-flex", tone)}>
-      <Icon className="size-4" strokeWidth={1.7} />
-      {level}%
-    </span>
+      {connected ? (
+        <div className="flex items-center gap-1.5">
+          <span className="inline-flex items-center gap-1.5 rounded-pill bg-signal/10 px-3 py-2 text-[13px] font-medium text-signal-deep">
+            <Check className="size-3.5" strokeWidth={2.2} /> Paired
+          </span>
+          <button
+            type="button"
+            onClick={onForget}
+            title="Forget this sensor"
+            className="grid size-8 shrink-0 place-items-center rounded-full text-ink-faint transition-colors hover:bg-paper-soft hover:text-destructive"
+          >
+            <X className="size-4" strokeWidth={1.8} />
+          </button>
+        </div>
+      ) : (
+        <button
+          type="button"
+          onClick={onConnect}
+          disabled={disabled || busy}
+          className="inline-flex w-28 items-center justify-center gap-1.5 rounded-pill bg-night px-3 py-2 text-[13px] font-medium text-paper-soft transition-colors hover:bg-ink disabled:opacity-40"
+        >
+          {busy ? <Loader2 className="size-3.5 animate-spin" strokeWidth={2} /> : "Connect"}
+        </button>
+      )}
+    </div>
   );
 }
