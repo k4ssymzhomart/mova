@@ -4,24 +4,82 @@ import { test } from "node:test";
 import {
   type CheckInAnswers,
   checkInRpcArgs,
+  firstMissing,
   INITIAL_ANSWERS,
+  isScaleAnswer,
   missingAnswers,
+  SCALE_VALUES,
   submitErrorFor,
   toggleSymptom,
 } from "./answers.ts";
 
-const answered: CheckInAnswers = { ...INITIAL_ANSWERS, kneeFeels: "same", symptoms: ["none"] };
+const answered: CheckInAnswers = {
+  ...INITIAL_ANSWERS,
+  painBefore: 2,
+  painAfter: 5,
+  difficulty: 6,
+  kneeFeels: "same",
+  symptoms: ["none"],
+};
 
-test("starts from Phoenix's defaults with nothing chosen", () => {
+test("starts with every question unanswered, no preset scale values", () => {
   assert.deepEqual(INITIAL_ANSWERS, {
-    painBefore: 0,
-    painAfter: 0,
-    difficulty: 3,
+    painBefore: null,
+    painAfter: null,
+    difficulty: null,
     kneeFeels: null,
     symptoms: [],
     otherNote: "",
   });
-  assert.deepEqual(missingAnswers(INITIAL_ANSWERS), { kneeFeels: true, symptoms: true });
+  assert.deepEqual(missingAnswers(INITIAL_ANSWERS), {
+    painBefore: true,
+    painAfter: true,
+    difficulty: true,
+    kneeFeels: true,
+    symptoms: true,
+  });
+  assert.equal(checkInRpcArgs("s1", INITIAL_ANSWERS, "ru"), null);
+});
+
+test("the scale offers each whole number from 0 to 10 once", () => {
+  assert.deepEqual(SCALE_VALUES, [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+  assert.equal(isScaleAnswer(0), true);
+  assert.equal(isScaleAnswer(10), true);
+  assert.equal(isScaleAnswer(null), false);
+  assert.equal(isScaleAnswer(-1), false);
+  assert.equal(isScaleAnswer(11), false);
+  assert.equal(isScaleAnswer(2.5), false);
+});
+
+test("nothing is sent while any scale is unanswered", () => {
+  for (const question of ["painBefore", "painAfter", "difficulty"] as const) {
+    const answers = { ...answered, [question]: null };
+    assert.equal(checkInRpcArgs("s1", answers, "ru"), null, question);
+    assert.equal(missingAnswers(answers)[question], true, question);
+    assert.equal(firstMissing(missingAnswers(answers)), question);
+  }
+});
+
+test("0 is an answer, not a missing one", () => {
+  const zeros = { ...answered, painBefore: 0, painAfter: 0, difficulty: 0 };
+  assert.deepEqual(missingAnswers(zeros), {
+    painBefore: false,
+    painAfter: false,
+    difficulty: false,
+    kneeFeels: false,
+    symptoms: false,
+  });
+  const args = checkInRpcArgs("s1", zeros, "en");
+  assert.equal(args?.p_pain_before, 0);
+  assert.equal(args?.p_pain_after, 0);
+  assert.equal(args?.p_difficulty, 0);
+});
+
+test("the first missing answer follows the form's order", () => {
+  assert.equal(firstMissing(missingAnswers(INITIAL_ANSWERS)), "painBefore");
+  assert.equal(firstMissing(missingAnswers({ ...answered, kneeFeels: null, symptoms: [] })), "kneeFeels");
+  assert.equal(firstMissing(missingAnswers({ ...answered, symptoms: [] })), "symptoms");
+  assert.equal(firstMissing(missingAnswers(answered)), null);
 });
 
 test('"none" is exclusive in both directions', () => {
@@ -39,7 +97,13 @@ test("symptoms toggle on and off in the order picked", () => {
 test("nothing is sent while how the knee feels or the symptoms are unanswered", () => {
   assert.equal(checkInRpcArgs("s1", { ...answered, kneeFeels: null }, "ru"), null);
   assert.equal(checkInRpcArgs("s1", { ...answered, symptoms: [] }, "ru"), null);
-  assert.deepEqual(missingAnswers({ ...answered, symptoms: [] }), { kneeFeels: false, symptoms: true });
+  assert.deepEqual(missingAnswers({ ...answered, symptoms: [] }), {
+    painBefore: false,
+    painAfter: false,
+    difficulty: false,
+    kneeFeels: false,
+    symptoms: true,
+  });
 });
 
 test('"none" is sent as an empty list, with the answers and language as given', () => {

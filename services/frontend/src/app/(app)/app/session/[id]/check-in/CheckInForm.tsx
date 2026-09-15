@@ -1,8 +1,13 @@
 "use client";
 
 // The check-in form, ported from Phoenix's Questionnaire (apps/patient-app/src/components/Questionnaire.tsx): pain
-// before and after and difficulty on 0–10 sliders, how the knee feels (one choice, required), and new symptoms with
+// before and after and difficulty on 0–10 scales, how the knee feels (one choice, required), and new symptoms with
 // an exclusive "none" plus a short note for "other". The answer rules live in ./answers.
+//
+// The scales are rows of eleven radio buttons with nothing selected, not sliders. A slider always holds a value, so
+// an untouched one would be sent as an answer the patient never gave; and a native range input fires no change when
+// the patient clicks the value it already shows, so a deliberate 0 could not be told apart from no answer. Every
+// question must be answered before anything is sent.
 //
 // Answers go to submit_session_check_in in the language the form is shown in. The RPC validates every field again
 // and is idempotent on the session, so sending again after a dropped response returns the row already stored. On
@@ -12,7 +17,7 @@ import { ArrowRight, CircleAlert, Loader2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { type FormEvent, type ReactNode, useId, useRef, useState } from "react";
 
-import { card, focusRing, metricValue, primaryButton } from "@/components/app/recipes";
+import { card, focusRing, primaryButton } from "@/components/app/recipes";
 import { stepHref } from "@/components/flow/steps";
 import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
@@ -20,13 +25,16 @@ import { useTranslation } from "@/locales/client";
 
 import {
   checkInRpcArgs,
+  firstMissing,
   INITIAL_ANSWERS,
   KNEE_OPTIONS,
   type KneeFeels,
+  type MissingAnswers,
   missingAnswers,
   OTHER_NOTE_MAX,
   SCALE_MAX,
   SCALE_MIN,
+  SCALE_VALUES,
   type SubmitError,
   submitErrorFor,
   SYMPTOM_OPTIONS,
@@ -36,20 +44,30 @@ import {
 
 const choiceInput = cn("size-6 shrink-0 cursor-pointer accent-signal-deep", focusRing);
 
+const NOTHING_MISSING: MissingAnswers = {
+  painBefore: false,
+  painAfter: false,
+  difficulty: false,
+  kneeFeels: false,
+  symptoms: false,
+};
+
+type Question = keyof MissingAnswers;
+
 export default function CheckInForm({ sessionId }: { sessionId: string }) {
   const { t, locale } = useTranslation();
   const router = useRouter();
   const [supabase] = useState(() => createClient());
 
-  const [painBefore, setPainBefore] = useState(INITIAL_ANSWERS.painBefore);
-  const [painAfter, setPainAfter] = useState(INITIAL_ANSWERS.painAfter);
-  const [difficulty, setDifficulty] = useState(INITIAL_ANSWERS.difficulty);
+  const [painBefore, setPainBefore] = useState<number | null>(INITIAL_ANSWERS.painBefore);
+  const [painAfter, setPainAfter] = useState<number | null>(INITIAL_ANSWERS.painAfter);
+  const [difficulty, setDifficulty] = useState<number | null>(INITIAL_ANSWERS.difficulty);
   const [kneeFeels, setKneeFeels] = useState<KneeFeels | null>(INITIAL_ANSWERS.kneeFeels);
   const [symptoms, setSymptoms] = useState<Symptom[]>([...INITIAL_ANSWERS.symptoms]);
   const [otherNote, setOtherNote] = useState(INITIAL_ANSWERS.otherNote);
 
-  const [kneeMissing, setKneeMissing] = useState(false);
-  const [symptomsMissing, setSymptomsMissing] = useState(false);
+  // Which questions show their "answer this" line. Set on a submit attempt, cleared per question once answered.
+  const [shownMissing, setShownMissing] = useState<MissingAnswers>(NOTHING_MISSING);
   const [busy, setBusy] = useState(false);
   const [submitError, setSubmitError] = useState<SubmitError | null>(null);
   // State lands after the click that set it; the ref is what stops a quick second click from sending again.
@@ -60,8 +78,15 @@ export default function CheckInForm({ sessionId }: { sessionId: string }) {
   const symptomsErrorId = useId();
   const noteId = useId();
   const noteHintId = useId();
-  const firstKnee = useRef<HTMLInputElement>(null);
-  const firstSymptom = useRef<HTMLInputElement>(null);
+  // The first input of each question, so a submit with gaps can move focus to the first unanswered one.
+  const firstInputs = useRef<Partial<Record<Question, HTMLInputElement | null>>>({});
+  const firstInputRef = (question: Question) => (element: HTMLInputElement | null) => {
+    firstInputs.current[question] = element;
+  };
+
+  function answered(question: Question) {
+    setShownMissing((current) => (current[question] ? { ...current, [question]: false } : current));
+  }
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -69,12 +94,12 @@ export default function CheckInForm({ sessionId }: { sessionId: string }) {
 
     const answers = { painBefore, painAfter, difficulty, kneeFeels, symptoms, otherNote };
     const missing = missingAnswers(answers);
-    setKneeMissing(missing.kneeFeels);
-    setSymptomsMissing(missing.symptoms);
+    setShownMissing(missing);
     const args = checkInRpcArgs(sessionId, answers, locale);
     if (!args) {
-      // Focus lands in the first unanswered group, whose inputs are described by its error.
-      (missing.kneeFeels ? firstKnee : firstSymptom).current?.focus();
+      // Focus lands in the first unanswered question, whose inputs are described by its error.
+      const first = firstMissing(missing);
+      if (first) firstInputs.current[first]?.focus();
       return;
     }
 
@@ -101,37 +126,60 @@ export default function CheckInForm({ sessionId }: { sessionId: string }) {
     setSubmitError(reason);
   }
 
+  const required = t("flow.checkIn.required");
+
   return (
-    <form onSubmit={submit} noValidate className={cn(card, "max-w-3xl space-y-10 p-6 sm:p-8")}>
+    <form onSubmit={submit} noValidate className={cn(card, "max-w-3xl space-y-10 p-5 sm:p-8")}>
       <ScaleQuestion
         label={t("flow.checkIn.painBefore")}
+        required={required}
         value={painBefore}
-        onChange={setPainBefore}
+        onChange={(value) => {
+          setPainBefore(value);
+          answered("painBefore");
+        }}
         minLabel={t("flow.checkIn.painMin")}
         maxLabel={t("flow.checkIn.painMax")}
+        missing={shownMissing.painBefore}
+        missingText={t("flow.checkIn.scaleRequired")}
+        firstInputRef={firstInputRef("painBefore")}
       />
       <ScaleQuestion
         label={t("flow.checkIn.painAfter")}
+        required={required}
         value={painAfter}
-        onChange={setPainAfter}
+        onChange={(value) => {
+          setPainAfter(value);
+          answered("painAfter");
+        }}
         minLabel={t("flow.checkIn.painMin")}
         maxLabel={t("flow.checkIn.painMax")}
+        missing={shownMissing.painAfter}
+        missingText={t("flow.checkIn.scaleRequired")}
+        firstInputRef={firstInputRef("painAfter")}
       />
       <ScaleQuestion
         label={t("flow.checkIn.difficulty")}
+        required={required}
         value={difficulty}
-        onChange={setDifficulty}
+        onChange={(value) => {
+          setDifficulty(value);
+          answered("difficulty");
+        }}
         minLabel={t("flow.checkIn.diffMin")}
         maxLabel={t("flow.checkIn.diffMax")}
+        missing={shownMissing.difficulty}
+        missingText={t("flow.checkIn.scaleRequired")}
+        firstInputRef={firstInputRef("difficulty")}
       />
 
       <fieldset>
-        <Legend required={t("flow.checkIn.required")}>{t("flow.checkIn.knee")}</Legend>
+        <Legend required={required}>{t("flow.checkIn.knee")}</Legend>
         <div className="mt-3 grid gap-3 sm:grid-cols-2">
           {KNEE_OPTIONS.map((value, i) => (
             <Choice key={value} checked={kneeFeels === value}>
               <input
-                ref={i === 0 ? firstKnee : undefined}
+                ref={i === 0 ? firstInputRef("kneeFeels") : undefined}
                 type="radio"
                 name={kneeName}
                 value={value}
@@ -139,40 +187,40 @@ export default function CheckInForm({ sessionId }: { sessionId: string }) {
                 checked={kneeFeels === value}
                 onChange={() => {
                   setKneeFeels(value);
-                  setKneeMissing(false);
+                  answered("kneeFeels");
                 }}
-                aria-describedby={kneeMissing ? kneeErrorId : undefined}
+                aria-describedby={shownMissing.kneeFeels ? kneeErrorId : undefined}
                 className={choiceInput}
               />
               <span>{t(`flow.checkIn.kneeOpt.${value}`)}</span>
             </Choice>
           ))}
         </div>
-        {kneeMissing && <Problem id={kneeErrorId}>{t("flow.checkIn.kneeRequired")}</Problem>}
+        {shownMissing.kneeFeels && <Problem id={kneeErrorId}>{t("flow.checkIn.kneeRequired")}</Problem>}
       </fieldset>
 
       <fieldset>
-        <Legend required={t("flow.checkIn.required")}>{t("flow.checkIn.symptoms")}</Legend>
+        <Legend required={required}>{t("flow.checkIn.symptoms")}</Legend>
         <div className="mt-3 grid gap-3 sm:grid-cols-2">
           {SYMPTOM_OPTIONS.map((value, i) => (
             <Choice key={value} checked={symptoms.includes(value)}>
               <input
-                ref={i === 0 ? firstSymptom : undefined}
+                ref={i === 0 ? firstInputRef("symptoms") : undefined}
                 type="checkbox"
                 value={value}
                 checked={symptoms.includes(value)}
                 onChange={() => {
                   setSymptoms((current) => toggleSymptom(current, value));
-                  setSymptomsMissing(false);
+                  answered("symptoms");
                 }}
-                aria-describedby={symptomsMissing ? symptomsErrorId : undefined}
+                aria-describedby={shownMissing.symptoms ? symptomsErrorId : undefined}
                 className={choiceInput}
               />
               <span>{t(`flow.checkIn.symptomOpt.${value}`)}</span>
             </Choice>
           ))}
         </div>
-        {symptomsMissing && <Problem id={symptomsErrorId}>{t("flow.checkIn.symptomsRequired")}</Problem>}
+        {shownMissing.symptoms && <Problem id={symptomsErrorId}>{t("flow.checkIn.symptomsRequired")}</Problem>}
 
         {symptoms.includes("other") && (
           <div className="mt-5">
@@ -219,52 +267,77 @@ export default function CheckInForm({ sessionId }: { sessionId: string }) {
   );
 }
 
-/** A 0–10 answer on a native range input. The number above it is for the eye; the input announces its own value. */
+/**
+ * A 0–10 answer as eleven radio buttons in one group, none selected until the patient picks one. Each option is a
+ * 48px target showing its number next to the native radio, so the choice never shows by colour alone; the ends of
+ * the scale are described in words. Two rows of six and five on a phone, one row from sm up.
+ */
 function ScaleQuestion({
   label,
+  required,
   value,
   onChange,
   minLabel,
   maxLabel,
+  missing,
+  missingText,
+  firstInputRef,
 }: {
   label: string;
-  value: number;
+  required: string;
+  value: number | null;
   onChange: (value: number) => void;
   minLabel: string;
   maxLabel: string;
+  missing: boolean;
+  missingText: string;
+  firstInputRef: (element: HTMLInputElement | null) => void;
 }) {
-  const inputId = useId();
+  const name = useId();
   const endsId = useId();
+  const errorId = useId();
+  const describedBy = missing ? `${endsId} ${errorId}` : endsId;
+
   return (
-    <div>
-      <div className="flex items-baseline justify-between gap-4">
-        <label htmlFor={inputId} className="text-lg font-semibold leading-snug text-ink">
-          {label}
-        </label>
-        <span className={metricValue} aria-hidden="true">
-          {value}
-        </span>
+    <fieldset>
+      <Legend required={required}>{label}</Legend>
+      <div className="mt-3 grid grid-cols-6 gap-1.5 sm:grid-cols-11 sm:gap-2">
+        {SCALE_VALUES.map((option, i) => {
+          const checked = value === option;
+          return (
+            <label
+              key={option}
+              className={cn(
+                "flex min-h-12 min-w-0 cursor-pointer flex-col items-center justify-center gap-1 rounded-card border bg-card px-1 py-2 text-lg font-semibold text-ink transition-colors",
+                checked ? "border-signal-deep bg-signal/5 ring-1 ring-inset ring-signal-deep" : "border-line hover:border-ink-faint",
+              )}
+            >
+              <input
+                ref={i === 0 ? firstInputRef : undefined}
+                type="radio"
+                name={name}
+                value={option}
+                required
+                checked={checked}
+                onChange={() => onChange(option)}
+                aria-describedby={describedBy}
+                className={cn("size-5 shrink-0 cursor-pointer accent-signal-deep", focusRing)}
+              />
+              <span className="tnum leading-none">{option}</span>
+            </label>
+          );
+        })}
       </div>
-      <input
-        id={inputId}
-        type="range"
-        min={SCALE_MIN}
-        max={SCALE_MAX}
-        step={1}
-        value={value}
-        onChange={(e) => onChange(Number(e.target.value))}
-        aria-describedby={endsId}
-        className={cn("mt-2 block h-12 w-full cursor-pointer accent-signal-deep", focusRing)}
-      />
-      <div id={endsId} className="flex justify-between gap-4 text-base text-ink-soft">
+      <p id={endsId} className="mt-2 flex justify-between gap-4 text-base text-ink-soft">
         <span>
           <span className="tnum font-semibold text-ink">{SCALE_MIN}</span> — {minLabel}
         </span>
         <span className="text-right">
           <span className="tnum font-semibold text-ink">{SCALE_MAX}</span> — {maxLabel}
         </span>
-      </div>
-    </div>
+      </p>
+      {missing && <Problem id={errorId}>{missingText}</Problem>}
+    </fieldset>
   );
 }
 

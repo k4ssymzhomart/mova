@@ -5,19 +5,27 @@
 // disabled and says why next to it: a simulated sensor must never start a real session. An unconfirmed sample rate
 // does not block. The row shows it and the session records it; the delivered rate is the figure that counts.
 //
-// «Далее» opens the session (start_prescribed_session, which creates a row on every call, so a second press is
-// ignored while the first is under way) with the sensors' descriptors, then goes straight to the exercise. The
-// calibration step keeps its place in the flow but is not on this path: calibration does not exist yet, and the
-// exercise zeroes itself on the leg held straight.
+// The rate the sensors are asked for comes from the page (`?rate=`, 50 Hz unless 100) and is handed to the sensor
+// store before anything connects; the store writes it on every connect and reconnect. The closed «Технические
+// данные» block under the button holds the numbers the hardware test protocol is read from.
+//
+// «Далее» opens the session (start_prescribed_session, which creates a row on every call and aborts this patient's
+// earlier unfinished session for the same prescription, so a second press is ignored while the first is under way)
+// with the sensors' descriptors, then goes straight to the exercise. The calibration step keeps its place in the
+// flow but is not on this path: calibration does not exist yet, and the exercise zeroes itself on the leg held
+// straight.
 
 import { ArrowRight, Info, LoaderCircle, TriangleAlert } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useId, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 
 import { primaryButton } from "@/components/app/recipes";
-import SensorConnectPanel, { sensorDeviceInfo, type SavedDeviceRow } from "@/components/flow/SensorConnectPanel";
+import { sensorDeviceInfo } from "@/components/flow/heelSlideRecords";
+import SensorConnectPanel, { type SavedDeviceRow } from "@/components/flow/SensorConnectPanel";
+import SensorTechnicalReadout from "@/components/flow/SensorTechnicalReadout";
 import { stepHref } from "@/components/flow/steps";
-import { getSnapshot, useLiveSensors } from "@/lib/ble/liveSensors";
+import { getSnapshot, setRequestedRate, useLiveSensors } from "@/lib/ble/liveSensors";
+import type { SupportedRateHz } from "@/lib/ble/witRegister";
 import { useSensorStatus } from "@/lib/sensors/useSensorStatus";
 import { createClient } from "@/lib/supabase/client";
 import { useTranslation } from "@/locales/client";
@@ -27,11 +35,13 @@ export default function SensorsStep({
   patientId,
   side,
   savedDevices,
+  requestedHz,
 }: {
   prescriptionId: string;
   patientId: string;
   side: "left" | "right" | null;
   savedDevices: readonly SavedDeviceRow[];
+  requestedHz: SupportedRateHz;
 }) {
   const snapshot = useSensorStatus();
   const live = useLiveSensors();
@@ -41,6 +51,11 @@ export default function SensorsStep({
   const startingRef = useRef(false);
   const [starting, setStarting] = useState(false);
   const [startError, setStartError] = useState<"inactive" | "failed" | null>(null);
+
+  // Before any click can connect a sensor. Sensors already connected are set again only if the rate changed.
+  useEffect(() => {
+    setRequestedRate(requestedHz);
+  }, [requestedHz]);
 
   const ready = snapshot.source === "ble" && live.allStreaming;
   const reason = ready
@@ -113,6 +128,7 @@ export default function SensorsStep({
           </p>
         )}
       </div>
+      <SensorTechnicalReadout />
     </div>
   );
 }

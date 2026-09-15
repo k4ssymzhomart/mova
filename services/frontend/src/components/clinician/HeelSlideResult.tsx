@@ -1,8 +1,9 @@
-// One Heel Slide session for the clinician, at the top of the patient page. Server-rendered from the view the
-// loader built (lib/clinic/heelSlideResult.ts): reps recounted from the stored frames against the prescribed
-// target, the device's own count only as a labelled aside, the proxy chart, the technical facts a hardware check
-// needs, and the patient's check-in answers. No score and no knee angle: the proxy is shown only on the chart,
-// under its honest label.
+// One Heel Slide session for the clinician, inside the patient page after its header. Server-rendered from the
+// view the loader built (lib/clinic/heelSlideResult.ts): reps recounted from the stored frames against the
+// prescribed target, the device's own count only as a labelled aside, the proxy chart, the technical facts a
+// hardware check needs (per-sensor frames and rates, the rate checks, battery at start and finish, reconnects,
+// what the device confirmed sending), and the patient's check-in answers. No score and no knee angle: the proxy is
+// shown only on the chart, under its honest label.
 
 import Link from "next/link";
 
@@ -11,7 +12,10 @@ import { bodyText, card, cardTitle, eyebrow, metricValue, sectionTitle, textLink
 import HeelSlideProxyChart from "@/components/clinician/HeelSlideProxyChart";
 import type { HeelSlideSection } from "@/lib/clinic/heelSlideResult";
 import {
+  type BatteryValue,
   type CheckInAnswers,
+  clockDuration,
+  type DeviceIdentity,
   formatDecimal,
   hexCode,
   type HeelSlideView,
@@ -33,6 +37,13 @@ export default function HeelSlideResult({ section }: { section: Visible }) {
   const selectedId =
     section.kind === "ok" ? section.view.session.id : section.kind === "error" ? section.selectedId : null;
 
+  let problem: string | null = null;
+  if (section.kind === "error") {
+    problem = t(section.selectedId === null ? "clinician.heelSlide.listError" : "clinician.heelSlide.loadError");
+  } else if (section.kind === "unavailable") {
+    problem = t("clinician.heelSlide.unavailable");
+  }
+
   return (
     <section aria-labelledby="heel-slide-result-title" className={cn(card, "p-5 shadow-soft sm:p-6")}>
       <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_320px]">
@@ -45,7 +56,7 @@ export default function HeelSlideResult({ section }: { section: Visible }) {
                 {t("clinician.heelSlide.title")}
               </h2>
               <p role="status" className={cn(bodyText, "mt-3")}>
-                {section.kind === "error" ? t("clinician.heelSlide.loadError") : t("clinician.heelSlide.unavailable")}
+                {problem}
               </p>
             </header>
           )}
@@ -104,6 +115,7 @@ function SessionResult({ view, t }: { view: HeelSlideView; t: T }) {
 }
 
 function Reps({ view, t }: { view: HeelSlideView; t: T }) {
+  const { locale } = getTranslation();
   const { recount, targetReps, deviceCount } = view;
   const counted = recount.count;
   const value =
@@ -118,16 +130,34 @@ function Reps({ view, t }: { view: HeelSlideView; t: T }) {
   else if (counted !== null && deviceCount === counted) deviceNote = t("clinician.heelSlide.reps.deviceSame");
   else deviceNote = t("clinician.heelSlide.reps.deviceDiffers", { n: deviceCount });
 
+  const windowEmpty = recount.baseline.source === "window" && !recount.baseline.zeroFound;
+
   return (
     <div>
       <h3 className={cardTitle}>{t("clinician.heelSlide.reps.title")}</h3>
       <p className={cn(bodyText, "mt-1")}>{t("clinician.heelSlide.reps.basis")}</p>
       <p className={cn(metricValue, "mt-3")}>{value}</p>
       <ul className="mt-3 space-y-1 text-base leading-relaxed text-ink-soft">
-        {counted === null && (
+        {windowEmpty && <li>{t("clinician.heelSlide.reps.windowEmpty")}</li>}
+        {counted === null && !windowEmpty && (
           <li>{t("clinician.heelSlide.reps.notCountable", { pairs: view.pairing.pairs })}</li>
         )}
         {recount.reason === "no_excursion_detected" && <li>{t("clinician.heelSlide.reps.noExcursion")}</li>}
+        {recount.cancelled > 0 && (
+          <li>
+            {t("clinician.heelSlide.reps.cancelled", {
+              n: recount.cancelled,
+              ms: formatDecimal(recount.maxGapMs, locale, 0),
+            })}
+          </li>
+        )}
+        {recount.baseline.pairsBeforeWindow > 0 && (
+          <li>{t("clinician.heelSlide.reps.sinceLastStart", { n: recount.baseline.pairsBeforeWindow })}</li>
+        )}
+        {recount.baseline.source === "first_samples" && counted !== null && (
+          <li>{t("clinician.heelSlide.reps.zeroFromFirstFrames")}</li>
+        )}
+        {view.restartedAfterReload === true && <li>{t("clinician.heelSlide.reps.restarted")}</li>}
         {targetReps === null && <li>{t("clinician.heelSlide.reps.noTarget")}</li>}
         <li>{deviceNote}</li>
       </ul>
@@ -138,21 +168,42 @@ function Reps({ view, t }: { view: HeelSlideView; t: T }) {
 function Technical({ view, t }: { view: HeelSlideView; t: T }) {
   const { locale } = getTranslation();
   const unknown = t("clinician.heelSlide.unknown");
+  const whole = (value: number | null) => (value === null ? unknown : formatDecimal(value, locale, 0));
   const ms = (value: number | null) =>
     value === null ? unknown : t("clinician.heelSlide.tech.msValue", { n: formatDecimal(value, locale, 0) });
+  const battery = (value: BatteryValue | null) => {
+    if (value === null) return unknown;
+    const volts = formatDecimal(value.volts, locale, 2);
+    return value.vendorPercent === null
+      ? t("clinician.heelSlide.tech.batteryVolts", { v: volts })
+      : t("clinician.heelSlide.tech.batteryValue", { v: volts, pct: formatDecimal(value.vendorPercent, locale, 0) });
+  };
+  const device = (identity: DeviceIdentity) =>
+    [identity.name ?? unknown, identity.idShort ? t("clinician.heelSlide.tech.deviceId", { id: identity.idShort }) : null]
+      .filter(Boolean)
+      .join(" · ");
+
+  const sessionStartMs = view.session.startedAt ? Date.parse(view.session.startedAt) : NaN;
+  const checkTime = (atMs: number | null) => {
+    if (atMs === null || !Number.isFinite(sessionStartMs)) return unknown;
+    return atMs < sessionStartMs
+      ? t("clinician.heelSlide.tech.checkBeforeStart", { time: clockDuration(sessionStartMs - atMs) })
+      : t("clinician.heelSlide.tech.checkAfterStart", { time: clockDuration(atMs - sessionStartMs) });
+  };
   const { thresholds } = view.recount;
+  const th = cn(tileLabel, "py-2 pr-4");
 
   return (
     <div>
       <h3 className={cardTitle}>{t("clinician.heelSlide.tech.title")}</h3>
       <div className="mt-4 overflow-x-auto">
-        <table className="w-full min-w-[560px] border-collapse text-left text-base">
+        <table className="w-full min-w-[640px] border-collapse text-left text-base">
           <thead>
             <tr className="border-b border-line">
-              <th scope="col" className={cn(tileLabel, "py-2 pr-4")}>{t("clinician.heelSlide.tech.role")}</th>
-              <th scope="col" className={cn(tileLabel, "py-2 pr-4")}>{t("clinician.heelSlide.tech.device")}</th>
-              <th scope="col" className={cn(tileLabel, "py-2 pr-4 text-right")}>{t("clinician.heelSlide.tech.frames")}</th>
-              <th scope="col" className={cn(tileLabel, "py-2 pr-4 text-right")}>{t("clinician.heelSlide.tech.deliveredHz")}</th>
+              <th scope="col" className={th}>{t("clinician.heelSlide.tech.role")}</th>
+              <th scope="col" className={th}>{t("clinician.heelSlide.tech.device")}</th>
+              <th scope="col" className={cn(th, "text-right")}>{t("clinician.heelSlide.tech.frames")}</th>
+              <th scope="col" className={cn(th, "text-right")}>{t("clinician.heelSlide.tech.deliveredHz")}</th>
               <th scope="col" className={cn(tileLabel, "py-2")}>{t("clinician.heelSlide.tech.rate")}</th>
             </tr>
           </thead>
@@ -160,16 +211,29 @@ function Technical({ view, t }: { view: HeelSlideView; t: T }) {
             {view.roles.map((row) => (
               <tr key={row.role} className="border-b border-line align-top">
                 <th scope="row" className="py-2 pr-4 font-medium text-ink">{t(`sensors.role.${row.role}`)}</th>
-                <td className="py-2 pr-4 text-ink-soft [overflow-wrap:anywhere]">{row.deviceName ?? unknown}</td>
-                <td className="tnum py-2 pr-4 text-right text-ink">
-                  {row.storedFrames === null ? unknown : formatDecimal(row.storedFrames, locale, 0)}
+                <td className="py-2 pr-4 text-ink-soft [overflow-wrap:anywhere]">
+                  <span className="text-ink">{row.deviceSource === null ? unknown : device(row.device)}</span>
+                  {row.deviceSource === "start" && (
+                    <span className="block text-sm">{t("clinician.heelSlide.tech.fromStart")}</span>
+                  )}
+                  {row.deviceAtStartIfChanged && (
+                    <span className="block text-sm">
+                      {t("clinician.heelSlide.tech.deviceAtStart", { device: device(row.deviceAtStartIfChanged) })}
+                    </span>
+                  )}
                 </td>
+                <td className="tnum py-2 pr-4 text-right text-ink">{whole(row.storedFrames)}</td>
                 <td className="tnum py-2 pr-4 text-right text-ink">
                   {row.deliveredHz === null
                     ? unknown
                     : t("clinician.heelSlide.tech.hzValue", { n: formatDecimal(row.deliveredHz, locale) })}
                 </td>
-                <td className="py-2 text-ink-soft">{rateLabel(row.rate, t)}</td>
+                <td className="py-2 text-ink-soft">
+                  <span className="text-ink">{rateLabel(row.rate, t)}</span>
+                  {row.rateSource === "start" && row.rate.status !== "unknown" && (
+                    <span className="block text-sm">{t("clinician.heelSlide.tech.fromStart")}</span>
+                  )}
+                </td>
               </tr>
             ))}
           </tbody>
@@ -180,18 +244,66 @@ function Technical({ view, t }: { view: HeelSlideView; t: T }) {
         <li>{t("clinician.heelSlide.tech.footHzUnavailable")}</li>
       </ul>
 
+      <h4 className="mt-6 text-lg font-semibold text-ink">{t("clinician.heelSlide.tech.rateChecks")}</h4>
+      <div className="mt-2 grid gap-4 sm:grid-cols-3">
+        {view.roles.map((row) => (
+          <div key={row.role}>
+            <p className={tileLabel}>
+              {t(`sensors.role.${row.role}`)}
+              {row.requestedHz !== null && ` · ${t("clinician.heelSlide.tech.requestedHz", { hz: row.requestedHz })}`}
+            </p>
+            {row.rateChecks?.length ? (
+              <ol className="mt-1 space-y-1 text-base leading-snug text-ink">
+                {row.rateChecks.map((check, i) => (
+                  <li key={i}>
+                    <span className="tnum text-ink-soft">{checkTime(check.atMs)}</span>: {rateLabel(check.readout, t, false)}
+                  </li>
+                ))}
+              </ol>
+            ) : (
+              <p className="mt-1 text-base text-ink-soft">{t("clinician.heelSlide.tech.rateChecksNone")}</p>
+            )}
+          </div>
+        ))}
+      </div>
+
+      <h4 className="mt-6 text-lg font-semibold text-ink">{t("clinician.heelSlide.tech.linkTitle")}</h4>
+      <div className="mt-2 overflow-x-auto">
+        <table className="w-full min-w-[560px] border-collapse text-left text-base">
+          <thead>
+            <tr className="border-b border-line">
+              <th scope="col" className={th}>{t("clinician.heelSlide.tech.role")}</th>
+              <th scope="col" className={th}>{t("clinician.heelSlide.tech.batteryStart")}</th>
+              <th scope="col" className={th}>{t("clinician.heelSlide.tech.batteryEnd")}</th>
+              <th scope="col" className={cn(tileLabel, "py-2 text-right")}>{t("clinician.heelSlide.tech.reconnects")}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {view.roles.map((row) => (
+              <tr key={row.role} className="border-b border-line align-top">
+                <th scope="row" className="py-2 pr-4 font-medium text-ink">{t(`sensors.role.${row.role}`)}</th>
+                <td className="tnum py-2 pr-4 text-ink">{battery(row.batteryStart)}</td>
+                <td className="tnum py-2 pr-4 text-ink">{battery(row.batteryEnd)}</td>
+                <td className="tnum py-2 text-right text-ink">{whole(row.reconnects)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <ul className="mt-3 space-y-1 text-sm leading-relaxed text-ink-soft">
+        <li>{t("clinician.heelSlide.tech.batteryBasis")}</li>
+        <li>{t("clinician.heelSlide.tech.reconnectsBasis")}</li>
+      </ul>
+
       <dl className="mt-6 grid gap-x-8 gap-y-3 sm:grid-cols-2">
-        <Fact label={t("clinician.heelSlide.tech.pairs")} value={formatDecimal(view.pairing.pairs, locale, 0)} />
-        <Fact
-          label={t("clinician.heelSlide.tech.unpairedShank")}
-          value={formatDecimal(view.pairing.unpairedShank, locale, 0)}
-        />
+        <Fact label={t("clinician.heelSlide.tech.pairs")} value={whole(view.pairing.pairs)} />
+        <Fact label={t("clinician.heelSlide.tech.unpairedShank")} value={whole(view.pairing.unpairedShank)} />
         <Fact label={t("clinician.heelSlide.tech.medianSkew")} value={ms(view.pairing.medianSkewMs)} />
         <Fact label={t("clinician.heelSlide.tech.maxSkew")} value={ms(view.pairing.maxSkewMs)} />
-        <Fact
-          label={t("clinician.heelSlide.tech.pendingAtFinish")}
-          value={view.pendingAtFinish === null ? unknown : formatDecimal(view.pendingAtFinish, locale, 0)}
-        />
+        <Fact label={t("clinician.heelSlide.tech.framesConfirmed")} value={whole(view.telemetry.framesConfirmed)} />
+        <Fact label={t("clinician.heelSlide.tech.pendingAtFinish")} value={whole(view.telemetry.pendingAtFinish)} />
+        <Fact label={t("clinician.heelSlide.tech.sendErrors")} value={whole(view.telemetry.errors)} />
+        <Fact label={t("clinician.heelSlide.tech.framesDropped")} value={whole(view.telemetry.dropped)} />
         <Fact
           label={t("clinician.heelSlide.tech.thresholds")}
           value={t("clinician.heelSlide.tech.thresholdsValue", {
@@ -200,7 +312,9 @@ function Technical({ view, t }: { view: HeelSlideView; t: T }) {
             ms: formatDecimal(thresholds.minRepMs, locale, 0),
           })}
         />
+        <Fact label={t("clinician.heelSlide.tech.maxGap")} value={ms(view.recount.maxGapMs)} />
       </dl>
+      <p className="mt-3 text-sm leading-relaxed text-ink-soft">{t("clinician.heelSlide.tech.telemetryBasis")}</p>
     </div>
   );
 }
@@ -266,6 +380,14 @@ function SessionLinks({
   const shown = sessions.slice(0, SESSION_LINKS);
   const selected = sessions.find((item) => item.id === selectedId);
   if (selected && !shown.includes(selected)) shown.push(selected);
+  const backLink = (
+    <Link href="/clinician" className={cn(textLink, "mt-4 inline-block text-base")}>
+      {t("common.backToCaseload")}
+    </Link>
+  );
+
+  // The list did not load: there is nothing to switch between, only the way back.
+  if (!sessions.length) return backLink;
 
   return (
     <nav aria-labelledby="heel-slide-sessions-title">
@@ -303,9 +425,7 @@ function SessionLinks({
           {t("clinician.heelSlide.sessions.more", { n: sessions.length - shown.length })}
         </p>
       )}
-      <Link href="/clinician" className={cn(textLink, "mt-4 inline-block text-base")}>
-        {t("common.backToCaseload")}
-      </Link>
+      {backLink}
     </nav>
   );
 }
@@ -333,10 +453,12 @@ function durationLabel(durationMs: number | null, t: T): string {
     : t("clinician.heelSlide.durationSeconds", { s });
 }
 
-function rateLabel(rate: RateReadout, t: T): string {
+function rateLabel(rate: RateReadout, t: T, withRequested = true): string {
   if (rate.status === "unknown") return t("clinician.heelSlide.unknown");
   const requested =
-    rate.requestedHz === null ? "" : ` · ${t("clinician.heelSlide.tech.requestedHz", { hz: rate.requestedHz })}`;
+    !withRequested || rate.requestedHz === null
+      ? ""
+      : ` · ${t("clinician.heelSlide.tech.requestedHz", { hz: rate.requestedHz })}`;
   if (rate.status === "confirmed") return `${t("clinician.heelSlide.tech.rateConfirmed")}${requested}`;
   if (rate.status === "pending") return `${t("clinician.heelSlide.tech.ratePending")}${requested}`;
   const reason =

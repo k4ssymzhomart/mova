@@ -2,30 +2,45 @@
 
 // HeelSlideExercise — the exercise step of Heel Slide with real sensors.
 //
-//  - Start. The patient lies down with the leg straight and presses «Начать»; a three-second countdown lets the
-//    leg settle after the press. The zero is taken from the first half second after that, so it cannot be a
-//    sitting pose from the moment the page opened. Recording starts at the same instant, which keeps the stored
-//    series (the clinician view recounts from its first half second) on the same zero as the live count.
+//  - Nothing starts or finishes before the session's status has been read fresh. Back after finishing can restore
+//    this screen from the router cache for a session that is already completed; the fresh read sends it on to its
+//    check-in instead of letting «Начать» or «Закончить раньше» act on it. If the read itself fails the screen
+//    carries on, because the server holds the line too: finish_prescribed_session refuses a session that is not in
+//    progress (55000, handled as "already finished") and the telemetry RPC skips frames recorded after a session
+//    ended.
+//  - Start. The patient lies down with the leg straight and presses «Начать»; a three-second countdown lets the leg
+//    settle after the press, and focus moves to the instruction line, which is announced. The zero is taken from the
+//    first half second after that. The span it was taken over, on the latest start, goes into the summary as
+//    baseline_window_ms, so the clinician recount zeroes on the same frames even when an earlier start was abandoned
+//    or frames from before a reload are stored.
 //  - Every frame from all three sensors is recorded to session_frames (lib/ble/useBleSessionRecorder). Thigh and
 //    shank pitch are paired within 100 ms, turned into the relative orientation proxy, zeroed and oriented
 //    (lib/motion/flexion), then counted by the streaming hysteresis counter with the exercise's thresholds
 //    (lib/motion/reps). The proxy is not a knee angle: the patient sees a count, the phase in words and a drawing,
 //    never a degree number, and nothing is scored.
-//  - When a sensor stops streaming the connect panel appears in place. A full reload drops every Bluetooth
-//    connection, so after one the panel is the first thing shown. Counting resumes on the same zero once frames
-//    are back; the count itself lives in this page and starts again from zero after a reload.
-//  - Finishing stops the recorder and waits for the last rows, completes the session with a summary of what was
-//    counted and how, disconnects the sensors and opens the check-in.
+//  - Counting needs the thigh and shank sensors. While either is not streaming, a status line next to the count says
+//    counting is paused and names the sensor, and a rep left open by a pause of more than a second is dropped rather
+//    than counted after it (lib/motion/reps). The store reconnects a dropped sensor on its own; counting resumes on
+//    the same zero. A foot dropout does not pause counting, and a notice says its frames are not being saved.
+//  - A reload drops every Bluetooth connection and the count, which lives in this page. When the screen finds that
+//    the session recorded before it opened (this tab's flag, a stored frame, or rows waiting on the device), it tells
+//    the patient the count starts again from zero and that what was saved stays with the session; the summary
+//    records restarted_after_reload.
+//  - Finishing stops the recorder, which keeps trying to deliver for about ten seconds. Rows it could not deliver
+//    stay on the device, and the telemetry outbox (mounted in the app layout) keeps sending them while the app is
+//    open. The session is completed with finish_prescribed_session and the summary (heelSlideRecords.ts), then the
+//    sensors are disconnected and the check-in opens.
 //
 // Frames come only from the live Web Bluetooth store; the mock sensor source never produces any.
 
-import { CircleCheck, LoaderCircle, Play, TriangleAlert } from "lucide-react";
+import { CircleCheck, Info, LoaderCircle, Pause, Play, TriangleAlert } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useId, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 
-import { bodyText, card, primaryButton, secondaryButton, sectionTitle, tileLabel } from "@/components/app/recipes";
-import { disconnectAll, getSnapshot, subscribeFrames, useLiveSensors } from "@/lib/ble/liveSensors";
+import { bodyText, card, focusRing, primaryButton, secondaryButton, sectionTitle, tileLabel } from "@/components/app/recipes";
+import { disconnectAll, getSnapshot, setRequestedRate, subscribeFrames, useLiveSensors } from "@/lib/ble/liveSensors";
 import { SENSOR_ROLE_ORDER, type SensorRole } from "@/lib/ble/roles";
+import type { RecorderCounters } from "@/lib/ble/sessionRecorder";
 import { useBleSessionRecorder } from "@/lib/ble/useBleSessionRecorder";
 import type { ParsedWt901Frame } from "@/lib/ble/wt901ble68";
 import {
@@ -37,6 +52,7 @@ import {
   type ProxyPairer,
 } from "@/lib/motion/flexion";
 import {
+  MAX_REP_GAP_MS,
   createRepCounter,
   heelSlideThresholds,
   type RepCounter,
@@ -44,15 +60,32 @@ import {
   type RepThresholds,
 } from "@/lib/motion/reps";
 import { createClient } from "@/lib/supabase/client";
-import type { BufferCounters } from "@/lib/telemetry/buffer";
+import { drainTelemetryOutbox, pendingForSession } from "@/lib/telemetry/outbox";
 import { cn } from "@/lib/utils";
 import { useTranslation } from "@/locales/client";
 
+import { exerciseRouteFor, missingCountingRoles, pauseMessageKey, recordedFlagKey } from "./exerciseStatus";
+import {
+  batteryRecord,
+  buildHeelSlideSummary,
+  pendingAtFinish,
+  requestedHzFromDeviceInfo,
+  startSensorsFromDeviceInfo,
+  type SeenBattery,
+} from "./heelSlideRecords";
 import HeelSlideGuide from "./HeelSlideGuide";
-import SensorConnectPanel, { formatNumber, rateRecord, type RateRecord, type SavedDeviceRow } from "./SensorConnectPanel";
+import SensorConnectPanel, { type SavedDeviceRow } from "./SensorConnectPanel";
+import { formatNumber } from "./sensorReadout";
+import SensorTechnicalReadout from "./SensorTechnicalReadout";
 import { stepHref } from "./steps";
 
 const SETTLE_SECONDS = 3;
+
+/**
+ * After a reload the recorder never ran on this page, so rows from before may still be on their way through the
+ * outbox. Finishing gives that run this long before it reads what is still stored.
+ */
+const OUTBOX_WAIT_AT_FINISH_MS = 5000;
 
 /**
  * - waiting: before «Начать», or back here when the sensors dropped before the zero was taken.
@@ -62,6 +95,14 @@ const SETTLE_SECONDS = 3;
  */
 type Stage = "waiting" | "settling" | "baseline" | "counting";
 
+/**
+ * - checking: the fresh status read is under way, or it found the session is no longer in progress and the screen
+ *   is on its way out. Nothing may start or finish.
+ * - ok: the session is in progress.
+ * - unverified: the read failed; the screen carries on under the server's own guards.
+ */
+type SessionCheck = "checking" | "ok" | "unverified";
+
 interface Pipeline {
   pairer: ProxyPairer;
   orienter: ProxyOrienter;
@@ -69,24 +110,14 @@ interface Pipeline {
   thresholds: RepThresholds;
 }
 
-/** sessions.summary written when Heel Slide finishes. */
-interface HeelSlideSummary {
-  kind: "heel_slide_path.v1";
-  reps_counted_on_device: number;
-  target_reps: number | null;
-  /** Epoch ms of the browser receive times; peak in relative sensor-orientation degrees, not knee flexion. */
-  rep_segments: { start_ms: number; end_ms: number; peak_rel_deg: number }[];
-  proxy: { definition: string; calibrated: false; knee_flexion: false };
-  thresholds: { enter_deg: number; exit_deg: number; min_rep_ms: number };
-  delivered_hz: Record<SensorRole, number | null>;
-  rate: Record<SensorRole, RateRecord>;
-  telemetry: { frames_sent: number; errors: number; pending_at_finish: number; frames_dropped: number | null };
-}
+type BrowserClient = ReturnType<typeof createClient>;
 
 export interface HeelSlideExerciseProps {
   sessionId: string;
   targetReps: number | null;
   scoringRubric: unknown;
+  /** sessions.device_info as written when the session opened. */
+  deviceInfo: unknown;
   patientId: string;
   side: "left" | "right" | null;
   savedDevices: readonly SavedDeviceRow[];
@@ -96,6 +127,7 @@ export default function HeelSlideExercise({
   sessionId,
   targetReps,
   scoringRubric,
+  deviceInfo,
   patientId,
   side,
   savedDevices,
@@ -113,7 +145,7 @@ export default function HeelSlideExercise({
     pipelineRef.current = {
       pairer: createPairer(),
       orienter: createProxyOrienter(),
-      counter: createRepCounter(thresholds),
+      counter: createRepCounter({ ...thresholds, maxGapMs: MAX_REP_GAP_MS }),
       thresholds,
     };
   }
@@ -127,17 +159,29 @@ export default function HeelSlideExercise({
   const [finishing, setFinishing] = useState(false);
   const [finishFailed, setFinishFailed] = useState(false);
   const [recorderFailed, setRecorderFailed] = useState(false);
+  const [sessionCheck, setSessionCheck] = useState<SessionCheck>("checking");
+  const [restarted, setRestarted] = useState(false);
 
   const stageRef = useRef<Stage>("waiting");
   const armedRef = useRef(false);
   const recordingRef = useRef(false);
   const stoppedRef = useRef(false);
   const finishingRef = useRef(false);
+  const restartedRef = useRef(false);
   const latestProxyRef = useRef<number | null>(null);
   const shownRef = useRef<{ count: number; phase: RepPhase }>({ count: 0, phase: "rest" });
-  const allStreamingRef = useRef(live.allStreaming);
+  const countingLiveRef = useRef(false);
   const settleTimerRef = useRef<number | null>(null);
-  const finalCountersRef = useRef<BufferCounters | null>(null);
+  /** The recorder's final counters once stopped (null inside: it never recorded here), kept across finish retries. */
+  const stopResultRef = useRef<{ counters: RecorderCounters | null } | null>(null);
+  const firstSeenBatteryRef = useRef<Partial<Record<SensorRole, SeenBattery>>>({});
+  const stageStatusRef = useRef<HTMLParagraphElement>(null);
+  const focusStageRef = useRef(false);
+  const routerRef = useRef(router);
+  routerRef.current = router;
+
+  const startSensors = useMemo(() => startSensorsFromDeviceInfo(deviceInfo), [deviceInfo]);
+  const openedWithHz = requestedHzFromDeviceInfo(deviceInfo);
 
   const moveTo = useCallback((next: Stage) => {
     stageRef.current = next;
@@ -151,6 +195,55 @@ export default function HeelSlideExercise({
   }, []);
 
   useEffect(() => clearSettleTimer, [clearSettleTimer]);
+
+  const leaveFor = useCallback(
+    (status: string) => {
+      const route = exerciseRouteFor(status);
+      if (route === "checkIn") routerRef.current.replace(stepHref(sessionId, "checkIn"));
+      else if (route === "summary") routerRef.current.replace(stepHref(sessionId, "summary"));
+      else if (route === "refresh") routerRef.current.refresh();
+    },
+    [sessionId],
+  );
+
+  // The fresh status read, and whether this session recorded before the screen opened.
+  useEffect(() => {
+    let cancelled = false;
+    const supabase = createClient();
+    void readSessionStatus(supabase, sessionId).then((status) => {
+      if (cancelled) return;
+      if (status === null) setSessionCheck("unverified");
+      else if (exerciseRouteFor(status) === "stay") setSessionCheck("ok");
+      else leaveFor(status);
+    });
+    void recordedBefore(supabase, sessionId).then((before) => {
+      // Once this page records, its own frames would answer the question.
+      if (cancelled || !before || recordingRef.current) return;
+      restartedRef.current = true;
+      setRestarted(true);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [sessionId, leaveFor]);
+
+  // After a reload the store starts at 50 Hz; ask for the rate this session was opened with before anything connects.
+  useEffect(() => {
+    if (openedWithHz !== null) setRequestedRate(openedWithHz);
+  }, [openedWithHz]);
+
+  // The first battery reading seen from each device, for battery_start when the session opened without one.
+  useEffect(() => {
+    for (const role of SENSOR_ROLE_ORDER) {
+      const state = live.roles[role];
+      const record = batteryRecord(state.battery, state.batteryError);
+      if (!record || state.deviceId === null) continue;
+      const seen = firstSeenBatteryRef.current[role];
+      if (!seen || seen.deviceId !== state.deviceId) {
+        firstSeenBatteryRef.current[role] = { deviceId: state.deviceId, battery: record };
+      }
+    }
+  }, [live]);
 
   // Runs synchronously inside the Bluetooth event for every frame of every role, so it stays cheap and touches
   // React state only when the count or the phase changes.
@@ -176,23 +269,26 @@ export default function HeelSlideExercise({
 
   useEffect(() => subscribeFrames(onFrame), [onFrame]);
 
+  const missingForCounting = missingCountingRoles(live.roles);
+  const countingLive = missingForCounting.length === 0;
+
   useEffect(() => {
-    allStreamingRef.current = live.allStreaming;
-    if (live.allStreaming) return;
-    if (stageRef.current === "settling") {
+    countingLiveRef.current = countingLive;
+    if (stageRef.current === "settling" && !live.allStreaming) {
+      // Starting needs all three.
       clearSettleTimer();
       moveTo("waiting");
-    } else if (stageRef.current === "baseline") {
-      // A zero taken across a dropout is not trustworthy: start it again once the sensors are back.
+    } else if (stageRef.current === "baseline" && !countingLive) {
+      // A zero taken across a thigh or shank dropout is not trustworthy: start it again once they are back.
       armedRef.current = false;
       pipeline.pairer.reset();
       pipeline.orienter.reset();
       latestProxyRef.current = null;
       moveTo("waiting");
     }
-  }, [live.allStreaming, clearSettleTimer, moveTo, pipeline]);
+  }, [live.allStreaming, countingLive, clearSettleTimer, moveTo, pipeline]);
 
-  const readProxy = useCallback(() => (allStreamingRef.current ? latestProxyRef.current : null), []);
+  const readProxy = useCallback(() => (countingLiveRef.current ? latestProxyRef.current : null), []);
 
   const arm = useCallback(async () => {
     if (stageRef.current !== "settling" || stoppedRef.current) return;
@@ -210,6 +306,11 @@ export default function HeelSlideExercise({
       }
       recordingRef.current = true;
       setRecording(true);
+      try {
+        window.sessionStorage.setItem(recordedFlagKey(sessionId), String(Date.now()));
+      } catch {
+        // Storage can be unavailable (private mode); only the restart notice depends on it.
+      }
     }
     if (stageRef.current !== "settling" || stoppedRef.current) return;
     pipeline.pairer.reset();
@@ -219,9 +320,19 @@ export default function HeelSlideExercise({
     moveTo("baseline");
   }, [pipeline, sessionId, startRecorder, moveTo]);
 
+  // «Начать» unmounts when the countdown starts; focus goes to the instruction line instead of being lost.
+  useEffect(() => {
+    if (!focusStageRef.current) return;
+    focusStageRef.current = false;
+    stageStatusRef.current?.focus();
+  }, [stage]);
+
+  const sessionUsable = sessionCheck !== "checking";
+
   function begin() {
-    if (stageRef.current !== "waiting" || stoppedRef.current || !live.allStreaming) return;
+    if (stageRef.current !== "waiting" || stoppedRef.current || !live.allStreaming || !sessionUsable) return;
     setRecorderFailed(false);
+    focusStageRef.current = true;
     moveTo("settling");
     let remaining = SETTLE_SECONDS;
     setCountdown(remaining);
@@ -238,7 +349,7 @@ export default function HeelSlideExercise({
   }
 
   async function finish() {
-    if (finishingRef.current) return;
+    if (finishingRef.current || !sessionUsable) return;
     finishingRef.current = true;
     setFinishing(true);
     setFinishFailed(false);
@@ -248,69 +359,81 @@ export default function HeelSlideExercise({
     clearSettleTimer();
     armedRef.current = false;
 
-    let telemetry = finalCountersRef.current;
-    if (!telemetry) {
+    const supabase = createClient();
+    const status = await readSessionStatus(supabase, sessionId);
+    if (status !== null && exerciseRouteFor(status) !== "stay") {
+      leaveFor(status);
+      return;
+    }
+
+    if (!stopResultRef.current) {
+      let stoppedWith: RecorderCounters | null;
       try {
-        telemetry = (await stopRecorder()) ?? counters;
+        stoppedWith = await stopRecorder();
       } catch {
-        telemetry = counters;
+        stoppedWith = recordingRef.current ? counters : null;
       }
-      finalCountersRef.current = telemetry;
+      stopResultRef.current = { counters: stoppedWith };
     }
-
-    const snapshot = getSnapshot();
-    const { counter, thresholds } = pipeline;
-    const deliveredHz = {} as Record<SensorRole, number | null>;
-    const rate = {} as Record<SensorRole, RateRecord>;
-    for (const role of SENSOR_ROLE_ORDER) {
-      deliveredHz[role] = snapshot.roles[role].deliveredHz;
-      rate[role] = rateRecord(snapshot.roles[role].rate);
+    const finalCounters = stopResultRef.current.counters;
+    if (finalCounters === null) {
+      await Promise.race([drainTelemetryOutbox().catch(() => undefined), delay(OUTBOX_WAIT_AT_FINISH_MS)]);
     }
-    const summary: HeelSlideSummary = {
-      kind: "heel_slide_path.v1",
-      reps_counted_on_device: counter.count,
-      target_reps: targetReps,
-      rep_segments: counter.segments.map((segment) => ({
-        start_ms: segment.startMs,
-        end_ms: segment.endMs,
-        peak_rel_deg: Math.round(segment.peakValue * 10) / 10,
-      })),
-      proxy: { definition: PROXY_DEFINITION, calibrated: false, knee_flexion: false },
-      thresholds: { enter_deg: thresholds.enterDeg, exit_deg: thresholds.exitDeg, min_rep_ms: thresholds.minRepMs },
-      delivered_hz: deliveredHz,
-      rate,
-      telemetry: {
-        frames_sent: telemetry.framesSent,
-        errors: telemetry.errors,
-        pending_at_finish: telemetry.pending,
-        frames_dropped: telemetry.framesDropped ?? null,
-      },
-    };
+    // Read again on every attempt: the outbox may have sent rows since the last one.
+    const pending = await pendingAtFinish(finalCounters, () => pendingForSession(sessionId));
 
-    let failed: boolean;
+    const { counter, orienter, thresholds } = pipeline;
+    const summary = buildHeelSlideSummary({
+      repsCounted: counter.count,
+      segments: counter.segments,
+      targetReps,
+      proxyDefinition: PROXY_DEFINITION,
+      thresholds,
+      maxGapMs: MAX_REP_GAP_MS,
+      baselineWindow: orienter.baselineWindow,
+      restartedAfterReload: restartedRef.current,
+      roles: getSnapshot().roles,
+      startSensors,
+      firstSeenBattery: firstSeenBatteryRef.current,
+      telemetry: { counters: finalCounters, pending },
+    });
+
+    let outcome: "completed" | "alreadyEnded" | "failed";
     try {
-      const { error } = await createClient().rpc("finish_training_session", {
-        p_session: sessionId,
-        p_summary: summary,
-        p_metrics: {},
-      });
-      failed = Boolean(error);
+      const { error } = await supabase.rpc("finish_prescribed_session", { p_session: sessionId, p_summary: summary });
+      // 55000: the session is no longer in progress, finished from another screen or tab. Its check-in comes next.
+      outcome = !error ? "completed" : error.code === "55000" ? "alreadyEnded" : "failed";
     } catch {
-      failed = true;
+      outcome = "failed";
     }
-    if (failed) {
+    if (outcome === "failed") {
       finishingRef.current = false;
       setFinishing(false);
       setFinishFailed(true);
       return;
     }
     disconnectAll();
-    router.push(stepHref(sessionId, "checkIn"));
+    try {
+      window.sessionStorage.removeItem(recordedFlagKey(sessionId));
+    } catch {
+      // Nothing to clean up without storage.
+    }
+    router.replace(stepHref(sessionId, "checkIn"));
   }
 
   const done = targetReps !== null && reps.count >= targetReps;
   const counting = stage === "counting" || stage === "baseline";
   const showPanel = !live.allStreaming && !stopped;
+
+  // When the in-place panel closes with focus inside it, focus would fall to <body>; keep it on the instruction.
+  const panelShownRef = useRef(showPanel);
+  useEffect(() => {
+    const wasShown = panelShownRef.current;
+    panelShownRef.current = showPanel;
+    if (!wasShown || showPanel) return;
+    const active = document.activeElement;
+    if (!active || active === document.body) stageStatusRef.current?.focus();
+  }, [showPanel]);
 
   let stageText: string;
   if (finishing) stageText = t("flow.exercise.stage.finishing");
@@ -321,11 +444,27 @@ export default function HeelSlideExercise({
   else if (done) stageText = t("flow.exercise.stage.done");
   else stageText = t(`flow.exercise.stage.${reps.phase}`);
 
+  const pauseKey = stage === "counting" && !stopped ? pauseMessageKey(missingForCounting) : null;
+  const footMissing = counting && !stopped && live.roles.foot.link !== "streaming";
+
   const count = formatNumber(locale, reps.count);
   const total = targetReps !== null ? formatNumber(locale, targetReps) : null;
 
+  let beginReason: string | null = null;
+  if (!live.allStreaming) beginReason = t("flow.exercise.beginBlocked");
+  else if (!sessionUsable) beginReason = t("flow.exercise.checkingSession");
+
   return (
     <div className="space-y-6">
+      <div role="status" aria-atomic="true">
+        {restarted && !stopped && (
+          <div className={cn(card, "flex items-start gap-3 px-5 py-4")}>
+            <Info className="mt-0.5 size-5 shrink-0 text-signal-deep" strokeWidth={2} aria-hidden="true" />
+            <p className="text-base leading-relaxed text-ink">{t("flow.exercise.restarted")}</p>
+          </div>
+        )}
+      </div>
+
       {showPanel && (
         <section aria-labelledby="exercise-sensors" className="space-y-4">
           <div>
@@ -356,28 +495,54 @@ export default function HeelSlideExercise({
               {total !== null && <span className="text-ink-soft"> / {total}</span>}
             </span>
           </p>
-          <p className="mt-5 flex items-start gap-2 text-lg font-semibold leading-snug text-ink">
+
+          <div role="status" aria-atomic="true">
+            {pauseKey && (
+              <p className="mt-4 flex items-start gap-2 rounded-card border-2 border-amber-700 px-4 py-3 text-base font-semibold leading-snug text-ink">
+                <Pause className="mt-0.5 size-5 shrink-0 text-amber-700" strokeWidth={2} aria-hidden="true" />
+                {t(pauseKey)}
+              </p>
+            )}
+          </div>
+
+          <p
+            ref={stageStatusRef}
+            tabIndex={-1}
+            role="status"
+            aria-live="polite"
+            aria-atomic="true"
+            className={cn("mt-5 flex items-start gap-2 rounded-sm text-lg font-semibold leading-snug text-ink", focusRing)}
+          >
             {done && !stopped && (
               <CircleCheck className="mt-0.5 size-6 shrink-0 text-signal-deep" strokeWidth={2} aria-hidden="true" />
             )}
             {stageText}
           </p>
 
+          <div role="status" aria-atomic="true">
+            {footMissing && (
+              <p className="mt-4 flex items-start gap-2 text-base leading-relaxed text-ink-soft">
+                <Info className="mt-0.5 size-5 shrink-0" strokeWidth={2} aria-hidden="true" />
+                {t("flow.exercise.footMissing")}
+              </p>
+            )}
+          </div>
+
           {stage === "waiting" && !stopped && (
             <div className="mt-6 flex flex-col gap-3">
               <button
                 type="button"
                 onClick={begin}
-                disabled={!live.allStreaming}
-                aria-describedby={live.allStreaming ? undefined : beginReasonId}
+                disabled={!live.allStreaming || !sessionUsable}
+                aria-describedby={beginReason ? beginReasonId : undefined}
                 className={cn(primaryButton, "w-full sm:w-auto sm:self-start")}
               >
                 <Play className="size-5" strokeWidth={2} aria-hidden="true" />
                 {t("flow.exercise.begin")}
               </button>
-              {!live.allStreaming && (
+              {beginReason && (
                 <p id={beginReasonId} className={bodyText}>
-                  {t("flow.exercise.beginBlocked")}
+                  {beginReason}
                 </p>
               )}
               {recorderFailed && <ErrorLine>{t("flow.exercise.recordFailed")}</ErrorLine>}
@@ -395,7 +560,7 @@ export default function HeelSlideExercise({
         <p className="tnum mt-1 text-base text-ink-soft">
           {recording
             ? t("flow.exercise.saving.progress", {
-                sent: formatNumber(locale, counters.framesSent),
+                sent: formatNumber(locale, counters.framesConfirmed),
                 pending: formatNumber(locale, counters.pending),
               })
             : t("flow.exercise.saving.notStarted")}
@@ -405,16 +570,21 @@ export default function HeelSlideExercise({
             {t("flow.exercise.saving.errors", { n: formatNumber(locale, counters.errors) })}
           </p>
         )}
-        {(counters.framesDropped ?? 0) > 0 && (
+        {counters.framesDropped > 0 && (
           <p className="tnum mt-1 text-base text-ink-soft">
-            {t("flow.exercise.saving.dropped", { n: formatNumber(locale, counters.framesDropped ?? 0) })}
+            {t("flow.exercise.saving.dropped", { n: formatNumber(locale, counters.framesDropped) })}
+          </p>
+        )}
+        {finishing && recording && counters.pending > 0 && (
+          <p className="tnum mt-1 text-base text-ink-soft">
+            {t("flow.exercise.saving.finishingPending", { n: formatNumber(locale, counters.pending) })}
           </p>
         )}
       </section>
 
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-5">
         {done || targetReps === null || stopped ? (
-          <button type="button" onClick={finish} disabled={finishing} className={primaryButton}>
+          <button type="button" onClick={finish} disabled={finishing || !sessionUsable} className={primaryButton}>
             {finishing ? (
               <LoaderCircle className="size-5 animate-spin motion-reduce:animate-none" strokeWidth={2} aria-hidden="true" />
             ) : (
@@ -423,7 +593,7 @@ export default function HeelSlideExercise({
             {finishing ? t("flow.exercise.finishing") : t("flow.exercise.finish")}
           </button>
         ) : (
-          <button type="button" onClick={finish} disabled={finishing} className={secondaryButton}>
+          <button type="button" onClick={finish} disabled={finishing || !sessionUsable} className={secondaryButton}>
             {finishing && (
               <LoaderCircle className="size-5 animate-spin motion-reduce:animate-none" strokeWidth={2} aria-hidden="true" />
             )}
@@ -432,6 +602,8 @@ export default function HeelSlideExercise({
         )}
         {finishFailed && <ErrorLine>{t("flow.exercise.finishFailed")}</ErrorLine>}
       </div>
+
+      <SensorTechnicalReadout />
     </div>
   );
 }
@@ -443,4 +615,47 @@ function ErrorLine({ children }: { children: string }) {
       {children}
     </p>
   );
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
+}
+
+/** The session's status read fresh from the database; null when the read failed or returned nothing. */
+async function readSessionStatus(supabase: BrowserClient, sessionId: string): Promise<string | null> {
+  try {
+    const { data, error } = await supabase.from("sessions").select("status").eq("id", sessionId).maybeSingle();
+    if (error || !data) return null;
+    const status = (data as { status?: unknown }).status;
+    return typeof status === "string" ? status : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Whether this session recorded before the screen opened: this tab set its flag (it survives a reload), a frame is
+ * stored on the server, or rows for it are still waiting on the device. A read that fails is no evidence either way,
+ * so it never blocks the screen; the notice is then simply not shown.
+ */
+async function recordedBefore(supabase: BrowserClient, sessionId: string): Promise<boolean> {
+  try {
+    if (window.sessionStorage.getItem(recordedFlagKey(sessionId)) !== null) return true;
+  } catch {
+    // No storage: fall through to the other two.
+  }
+  const stored = (async () => {
+    try {
+      const { data, error } = await supabase.from("session_frames").select("seq").eq("session_id", sessionId).limit(1);
+      return !error && Array.isArray(data) && data.length > 0;
+    } catch {
+      return false;
+    }
+  })();
+  const waiting = pendingForSession(sessionId).then(
+    (rows) => rows > 0,
+    () => false,
+  );
+  const [onServer, onDevice] = await Promise.all([stored, waiting]);
+  return onServer || onDevice;
 }

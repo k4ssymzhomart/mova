@@ -9,9 +9,10 @@ import { getTranslation } from "@/locales/server";
 
 export const dynamic = "force-dynamic";
 
-// The Heel Slide result sits above the existing detail and is authorized on its own (care-team link, clinic admin
-// or platform admin, via the 0034 review RPCs). A linked clinician from another clinic can therefore see it even
-// when the clinic-scoped overview below finds no patient.
+// The Heel Slide result renders inside the page's main landmark, right after the patient's h1. It is authorized on
+// its own (care-team link, clinic admin or platform admin, via the 0034 review RPCs), so a linked clinician from
+// another clinic can see it even when the clinic-scoped overview finds no patient; the page then shows the result
+// under its own main and h1.
 export default async function PatientPage({
   params,
   searchParams,
@@ -47,10 +48,5 @@ export default async function PatientPage({
     );
   }
 
-  return (
-    <>
-      {section && <div className="mx-auto max-w-shell px-5 pt-8 sm:px-8">{section}</div>}
-      <PatientDetail patient={patient} />
-    </>
-  );
+  return <PatientDetail patient={patient} resultSlot={section} />;
 }

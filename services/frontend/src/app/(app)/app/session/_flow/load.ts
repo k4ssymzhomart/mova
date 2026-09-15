@@ -37,6 +37,11 @@ export interface FlowSessionExercise extends FlowSession {
    * positive whole number; the screen then counts without a target instead of inventing one.
    */
   targetReps: number | null;
+  /**
+   * sessions.device_info as written when the session opened (components/flow/heelSlideRecords.ts reads it): the
+   * rate the sensors were asked for and each sensor's battery at the start, for a screen opened again after a reload.
+   */
+  deviceInfo: unknown;
 }
 
 export interface FlowPrescription {
@@ -144,7 +149,7 @@ export const loadSessionExercise = cache(async (sessionId: string): Promise<Load
   const { data, error } = await supabase
     .from("sessions")
     .select(
-      "id, status, started_at, ended_at, exercise:exercises(name, slug, scoring_rubric, default_dose), prescription:prescriptions(dose)",
+      "id, status, started_at, ended_at, device_info, exercise:exercises(name, slug, scoring_rubric, default_dose), prescription:prescriptions(dose)",
     )
     .eq("id", sessionId)
     .eq("patient_id", patient.value)
@@ -168,6 +173,7 @@ export const loadSessionExercise = cache(async (sessionId: string): Promise<Load
       exerciseSlug: exercise?.slug ?? null,
       scoringRubric: exercise?.scoring_rubric ?? null,
       targetReps: doseReps(prescription?.dose) ?? doseReps(exercise?.default_dose),
+      deviceInfo: (data.device_info as unknown) ?? null,
     },
   };
 });

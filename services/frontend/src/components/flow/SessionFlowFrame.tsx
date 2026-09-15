@@ -6,13 +6,19 @@
 // The steps' contents belong to their owners (#21 sensors, #17 calibration, #22 exercise and check-in,
 // #23 scoring); this frame only holds their place. Earlier steps are shown as numbers, never as done: the frame
 // only knows the URL, not whether calibration or the check-in actually happened.
+//
+// The frame lives in the /app/session layout, so it stays mounted from the sensors step to the summary and unmounts
+// only when the patient leaves the flow (Stop, the app navigation, Back past the first step). Leaving disconnects
+// the sensors: nothing outside the flow uses them, and left connected they would keep streaming and draining
+// batteries on every other page.
 
 import { OctagonX } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import type { ReactNode } from "react";
+import { useEffect, type ReactNode } from "react";
 
 import { card, focusRing } from "@/components/app/recipes";
+import { disconnectAll } from "@/lib/ble/liveSensors";
 import { useSensorStatus } from "@/lib/sensors/useSensorStatus";
 import { cn } from "@/lib/utils";
 import { useTranslation } from "@/locales/client";
@@ -26,6 +32,8 @@ export default function SessionFlowFrame({ children }: { children: ReactNode }) 
   const { step } = flowLocation(pathname);
   const sensors = useSensorStatus();
   const { t } = useTranslation();
+
+  useEffect(() => () => disconnectAll(), []);
 
   const numbered = step && step !== "stop" ? step : null;
   const index = numbered ? FLOW_STEPS.indexOf(numbered) : -1;

@@ -1,6 +1,7 @@
 import { Inter } from "next/font/google";
 import { redirect } from "next/navigation";
 
+import TelemetryOutboxRunner from "@/components/flow/TelemetryOutboxRunner";
 import AppShell from "@/components/layout/AppShell";
 import { getPatientContext } from "@/lib/patient/context";
 import { createClient } from "@/lib/supabase/server";
@@ -36,6 +37,8 @@ export default async function PatientAppLayout({ children }: { children: React.R
 
   return (
     <div className={`${inter.variable} app-type`}>
+      {/* Sends sensor frames left on this device by an earlier recording, anywhere in the app. Renders nothing. */}
+      <TelemetryOutboxRunner />
       <AppShell name={name} context={context}>
         {children}
       </AppShell>

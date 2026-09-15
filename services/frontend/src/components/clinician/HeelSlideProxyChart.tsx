@@ -1,7 +1,9 @@
 // The stored Heel Slide proxy over time, as a plain server-rendered SVG: hairline axes, one line, and the reps the
-// recount accepted shaded behind it. The value is a relative orientation difference between two uncalibrated
-// sensors, so the y axis says exactly that and the caption says what it is not. The figure is already capped at
-// MAX_CHART_POINTS by the view; this component only maps it to pixels.
+// recount accepted shaded behind it. The value is the change in a relative orientation difference between two
+// uncalibrated sensors from the resting pose the count was zeroed on, bend direction positive, so the y axis says
+// exactly that and the caption says what it is not. Pairs from before the zero (an abandoned start, or reps done
+// before a reload) are drawn as a grey dashed line on the same zero and are not recounted. The figure is already
+// capped at MAX_CHART_POINTS by the view; this component only maps it to pixels.
 
 import { formatDecimal, niceTicks, type HeelSlideView } from "@/lib/clinic/heelSlideView";
 import { getTranslation } from "@/locales/server";
@@ -14,7 +16,7 @@ const PLOT_H = HEIGHT - MARGIN.top - MARGIN.bottom;
 
 export default function HeelSlideProxyChart({ chart }: { chart: HeelSlideView["chart"] }) {
   const { t, locale } = getTranslation();
-  const { points, segments, startMs, endMs, totalPoints } = chart;
+  const { points, beforeStart, segments, startMs, endMs, totalPoints } = chart;
 
   if (!points.length || startMs === null || endMs === null) {
     return <p className="text-base leading-relaxed text-ink-soft">{t("clinician.heelSlide.chart.empty")}</p>;
@@ -26,7 +28,7 @@ export default function HeelSlideProxyChart({ chart }: { chart: HeelSlideView["c
 
   let lo = 0;
   let hi = 0;
-  for (const { value } of points) {
+  for (const { value } of [...beforeStart, ...points]) {
     if (value < lo) lo = value;
     if (value > hi) hi = value;
   }
@@ -36,7 +38,10 @@ export default function HeelSlideProxyChart({ chart }: { chart: HeelSlideView["c
 
   const x = (tMs: number) => MARGIN.left + ((tMs - startMs) / 1000 / xMax) * PLOT_W;
   const y = (value: number) => MARGIN.top + (1 - (value - yMin) / (yMax - yMin)) * PLOT_H;
-  const line = points.map((p) => `${x(p.tMs).toFixed(1)},${y(p.value).toFixed(1)}`).join(" ");
+  const polyline = (samples: typeof points) =>
+    samples.map((p) => `${x(p.tMs).toFixed(1)},${y(p.value).toFixed(1)}`).join(" ");
+  const line = polyline(points);
+  const drawnPoints = points.length + beforeStart.length;
   const bottom = MARGIN.top + PLOT_H;
 
   return (
@@ -130,6 +135,17 @@ export default function HeelSlideProxyChart({ chart }: { chart: HeelSlideView["c
             strokeWidth={1}
           />
 
+          {beforeStart.length > 0 && (
+            <polyline
+              points={polyline(beforeStart)}
+              fill="none"
+              className="stroke-ink-faint"
+              strokeWidth={1.5}
+              strokeDasharray="4 3"
+              strokeLinejoin="round"
+              strokeLinecap="round"
+            />
+          )}
           <polyline
             points={line}
             fill="none"
@@ -149,10 +165,18 @@ export default function HeelSlideProxyChart({ chart }: { chart: HeelSlideView["c
           <span aria-hidden="true" className="inline-block h-3.5 w-5 rounded-sm border border-signal/40 bg-signal/15" />
           {t("clinician.heelSlide.chart.legendReps")}
         </p>
+        {beforeStart.length > 0 && (
+          <p className="flex items-center gap-2 text-sm text-ink-soft">
+            <svg aria-hidden="true" width="20" height="14" className="shrink-0">
+              <line x1="0" x2="20" y1="7" y2="7" className="stroke-ink-faint" strokeWidth={1.5} strokeDasharray="4 3" />
+            </svg>
+            {t("clinician.heelSlide.chart.legendBeforeStart")}
+          </p>
+        )}
         <p className="text-base font-medium leading-relaxed text-ink">{t("clinician.heelSlide.chart.caption")}</p>
-        {points.length < totalPoints && (
+        {drawnPoints < totalPoints && (
           <p className="text-sm text-ink-soft">
-            {t("clinician.heelSlide.chart.downsampled", { shown: points.length, total: totalPoints })}
+            {t("clinician.heelSlide.chart.downsampled", { shown: drawnPoints, total: totalPoints })}
           </p>
         )}
       </figcaption>

@@ -5,13 +5,17 @@
 // explicit. The patient picks the thigh sensor on the thigh row, and a device already bound to another role is
 // refused (lib/ble/liveSensors), never moved over silently.
 //
-// Each row reports what the transport knows and nothing more: the link, the advertised device name, whether the
-// sensor confirmed the 50 Hz rate when it was read back, and the rate actually delivered, measured from received
-// frames. There is no battery reading, because the data frame carries none. Used on the sensors step and, after a
-// reload dropped the connections, in place on the exercise step.
+// Each row reports what the transport knows and nothing more: the link (a dropped link the store is bringing back on
+// its own reads «Переподключение…», with the attempts so far), the advertised device name, whether the sensor
+// confirmed the requested rate when it was read back, the rate actually delivered, measured from received frames,
+// and a short battery percent from WitMotion's voltage table, only while the latest battery read succeeded. The full
+// numbers are in SensorTechnicalReadout. Used on the sensors step and, when a sensor stops streaming, in place on the
+// exercise step.
 //
-// Also exports the descriptors a session stores about its sensors (device_info, and the rate part of the
-// summary), so both steps write them in one shape.
+// A row's errors (a refused device, a failed or dropped connection) appear after the chooser has closed, so each row
+// keeps a live region that announces them, and the row's button is described by the error while it shows.
+//
+// What a session stores about its sensors (device_info, the summary) is in heelSlideRecords.ts.
 
 import { RefreshCw, TriangleAlert } from "lucide-react";
 import { useId, useMemo, useState, type ReactNode } from "react";
@@ -24,17 +28,15 @@ import {
   useLiveSensors,
   type LiveRoleState,
   type LiveSensorErrorInfo,
-  type LiveSensorsSnapshot,
-  type RateState,
 } from "@/lib/ble/liveSensors";
-import { SENSOR_ROLE_ORDER, type SensorRole } from "@/lib/ble/roles";
+import { SENSOR_ROLE_ORDER } from "@/lib/ble/roles";
 import { cn } from "@/lib/utils";
-import type { Locale } from "@/locales";
 import { useTranslation } from "@/locales/client";
 
+import { formatNumber, linkLabelKey, shortBatteryPercent } from "./sensorReadout";
 import { SensorLinkIcon } from "./SensorStatusRows";
 
-type Translate = (key: string, vars?: Record<string, string | number>) => string;
+type Translate = ReturnType<typeof useTranslation>["t"];
 
 /** A patient_ble_devices row as the page loaded it. `role` is the lateralized body site (r_thigh, …). */
 export interface SavedDeviceRow {
@@ -42,86 +44,6 @@ export interface SavedDeviceRow {
   device_id: string;
   device_name: string | null;
 }
-
-// — what a session stores about its sensors ——————————————————————————————————————
-
-/** The model printed on the sensors has not been checked against the datasheet yet (hardware checklist). */
-export const SENSOR_MODEL_LABEL = "WT901BLE68 (unverified)";
-
-/** One role's rate write and readback, as stored in sessions.device_info and the session summary. */
-export interface RateRecord {
-  status: "not_started" | "configuring" | "done";
-  requested_hz: number | null;
-  requested_code: number | null;
-  /** What the sensor reported from its rate register; null when it never answered or was not asked yet. */
-  readback_code: number | null;
-  /** null while unknown (not configured yet, or still configuring). */
-  confirmed: boolean | null;
-  attempts: number | null;
-  failure: "no_reply" | "mismatch" | "write_failed" | null;
-}
-
-export function rateRecord(rate: RateState): RateRecord {
-  if (rate.status === "done") {
-    const result = rate.result;
-    return {
-      status: "done",
-      requested_hz: result.requestedHz,
-      requested_code: result.requestedCode,
-      readback_code: result.readbackCode,
-      confirmed: result.confirmed,
-      attempts: result.attempts,
-      failure: result.failure,
-    };
-  }
-  return {
-    status: rate.status === "configuring" ? "configuring" : "not_started",
-    requested_hz: rate.status === "configuring" ? rate.requestedHz : null,
-    requested_code: null,
-    readback_code: null,
-    confirmed: null,
-    attempts: null,
-    failure: null,
-  };
-}
-
-export interface SensorRoleRecord {
-  device_id: string | null;
-  device_name: string | null;
-  rate: RateRecord;
-  /** Measured from received frames when the record was taken; null while unknown. */
-  delivered_hz: number | null;
-}
-
-export interface SensorDeviceInfo {
-  transport: "web-bluetooth";
-  model_label: string;
-  roles: Record<SensorRole, SensorRoleRecord>;
-}
-
-/** sessions.device_info for a session opened with the sensors in this snapshot. Hardware descriptors only. */
-export function sensorDeviceInfo(snapshot: LiveSensorsSnapshot): SensorDeviceInfo {
-  const roles = {} as Record<SensorRole, SensorRoleRecord>;
-  for (const role of SENSOR_ROLE_ORDER) {
-    const state = snapshot.roles[role];
-    roles[role] = {
-      device_id: state.deviceId,
-      device_name: state.deviceName,
-      rate: rateRecord(state.rate),
-      delivered_hz: state.deliveredHz,
-    };
-  }
-  return { transport: "web-bluetooth", model_label: SENSOR_MODEL_LABEL, roles };
-}
-
-const INTL_LOCALE: Record<Locale, string> = { ru: "ru-RU", kk: "kk-KZ", en: "en-GB" };
-
-/** A number in the patient's locale, at most `fractionDigits` decimals. */
-export function formatNumber(locale: Locale, value: number, fractionDigits = 0): string {
-  return new Intl.NumberFormat(INTL_LOCALE[locale], { maximumFractionDigits: fractionDigits }).format(value);
-}
-
-// — the panel ————————————————————————————————————————————————————————————————————
 
 export default function SensorConnectPanel({
   patientId,
@@ -186,8 +108,9 @@ function SensorRow({
   const titleId = useId();
   const connectId = useId();
   const retryId = useId();
-  // Covers the chooser and the GATT connection. After that the link state takes over, and the button is open
-  // again so a sensor that connected but never sends data can be picked afresh.
+  const errorId = useId();
+  // Covers the chooser and the GATT connection (or a pressed same-device reconnect). After that the link state
+  // takes over, and the button is open again so a sensor that connected but never sends data can be picked afresh.
   const [pending, setPending] = useState(false);
 
   async function connect() {
@@ -200,11 +123,12 @@ function SensorRow({
     }
   }
 
-  const { role, link, rate } = state;
+  const { role, link, rate, reconnect } = state;
   const hz = (value: number) => formatNumber(locale, value, 1);
   const attached = state.deviceId !== null && link !== "disconnected" && link !== "unsupported";
   const rateUnconfirmed = rate.status === "done" && !rate.result.confirmed;
-  const error = state.lastError ? errorText(t, state.lastError) : null;
+  const error = state.lastError ? errorText(t, state.lastError, reconnect.state === "reconnecting") : null;
+  const batteryPercent = attached ? shortBatteryPercent(state) : null;
 
   let device: string | null = null;
   if (state.deviceId !== null) {
@@ -229,6 +153,13 @@ function SensorRow({
   if (state.deliveredHz !== null) delivered = t("flow.sensors.delivered", { hz: hz(state.deliveredHz) });
   else if (link === "streaming") delivered = t("flow.sensors.deliveredMeasuring");
 
+  let reconnectLine: string | null = null;
+  if (reconnect.state === "reconnecting" && reconnect.attempts > 0) {
+    reconnectLine = t("flow.sensors.reconnectAttempts", { n: formatNumber(locale, reconnect.attempts) });
+  } else if (reconnect.state === "gave_up" && link === "lost") {
+    reconnectLine = t("flow.sensors.reconnectGaveUp");
+  }
+
   let persistence: string | null = null;
   if (attached) {
     const saved = state.persistence;
@@ -242,20 +173,34 @@ function SensorRow({
       <div className="flex min-w-0 items-start gap-4">
         <SensorLinkIcon link={link} className="mt-0.5 size-7" />
         <div className="min-w-0 space-y-1">
-          <div id={titleId} className="text-lg font-semibold text-ink">
-            {t(`sensors.role.${role}`)}
+          <div className="flex flex-wrap items-baseline gap-x-3">
+            <div id={titleId} className="text-lg font-semibold text-ink">
+              {t(`sensors.role.${role}`)}
+            </div>
+            {batteryPercent !== null && (
+              <span className="tnum text-base text-ink-soft">
+                <span aria-hidden="true">{t("flow.sensors.batteryShort", { n: formatNumber(locale, batteryPercent) })}</span>
+                <span className="sr-only">
+                  {t("flow.sensors.batteryShortSr", { n: formatNumber(locale, batteryPercent) })}
+                </span>
+              </span>
+            )}
           </div>
-          <div className="text-base text-ink-soft">{t(`sensors.link.${link}`)}</div>
+          <div className="text-base text-ink-soft">{t(linkLabelKey(state))}</div>
           {device && <Detail>{device}</Detail>}
+          {reconnectLine && <Detail>{reconnectLine}</Detail>}
           {rateLine && <Detail>{rateLine}</Detail>}
           {delivered && <Detail>{delivered}</Detail>}
           {persistence && <Detail>{persistence}</Detail>}
-          {error && (
-            <p className="flex items-start gap-2 pt-1 text-base text-red-800">
-              <TriangleAlert className="mt-0.5 size-5 shrink-0" strokeWidth={2} aria-hidden="true" />
-              {error}
-            </p>
-          )}
+          {/* Always in the DOM, so a message that appears after the chooser closes is announced. */}
+          <div id={errorId} role="alert" aria-atomic="true">
+            {error && (
+              <p key={state.lastError?.at} className="flex items-start gap-2 pt-1 text-base text-red-800">
+                <TriangleAlert className="mt-0.5 size-5 shrink-0" strokeWidth={2} aria-hidden="true" />
+                {error}
+              </p>
+            )}
+          </div>
         </div>
       </div>
 
@@ -266,6 +211,7 @@ function SensorRow({
           onClick={connect}
           disabled={pending || link === "unsupported"}
           aria-labelledby={`${connectId} ${titleId}`}
+          aria-describedby={error ? errorId : undefined}
           className={cn(link === "streaming" ? secondaryButton : primaryButton, "w-full sm:w-auto")}
         >
           {pending
@@ -295,8 +241,11 @@ function Detail({ children }: { children: ReactNode }) {
   return <p className="text-sm leading-relaxed text-ink-soft [overflow-wrap:anywhere]">{children}</p>;
 }
 
-/** Patient wording for the errors a row can carry. Codes that need no message (busy, cancelled) return null. */
-function errorText(t: Translate, error: LiveSensorErrorInfo): string | null {
+/**
+ * Patient wording for the errors a row can carry. Codes that need no message (busy, cancelled) return null. A drop
+ * the store is still bringing back says so instead of asking the patient to reconnect.
+ */
+function errorText(t: Translate, error: LiveSensorErrorInfo, reconnecting: boolean): string | null {
   const otherRole = error.otherRole ? t(`sensors.role.${error.otherRole}`) : "";
   switch (error.code) {
     case "request_failed":
@@ -308,7 +257,7 @@ function errorText(t: Translate, error: LiveSensorErrorInfo): string | null {
     case "connect_failed":
       return t("flow.sensors.error.connectFailed");
     case "connection_dropped":
-      return t("flow.sensors.error.connectionDropped");
+      return reconnecting ? t("flow.sensors.error.droppedReconnecting") : t("flow.sensors.error.connectionDropped");
     default:
       return null;
   }

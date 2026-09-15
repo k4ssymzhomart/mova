@@ -272,17 +272,23 @@
         "noTarget": "No repetition target is recorded.",
         "deviceMissing": "No count from the patient's device was saved.",
         "deviceSame": "Matches the count on the patient's device.",
-        "deviceDiffers": "Counted on the patient's device: {n}."
+        "deviceDiffers": "Counted on the patient's device: {n}.",
+        "windowEmpty": "Cannot recount: the saved window the count was zeroed on holds no paired thigh and shank frames.",
+        "cancelled": "Not counted because the data paused for longer than {ms} ms mid-repetition: {n}.",
+        "sinceLastStart": "The recount starts at the last press of Start, as the count on the device does. Paired frames before it: {n}; they are grey on the chart.",
+        "zeroFromFirstFrames": "The window the count was zeroed on was not saved, so the recount is zeroed on the first 0.5 s of stored frames.",
+        "restarted": "The patient's page reloaded during the session, and the count on the device started again."
       },
       "chart": {
         "title": "Sensor signal",
-        "yAxis": "Y axis: relative sensor orientation, shank pitch minus thigh pitch, °",
+        "yAxis": "Y axis: change in the shank-minus-thigh pitch difference from the resting pose the count was zeroed on, bend direction positive, °",
         "xAxis": "Time from the start of the chart, s",
         "caption": "This is not knee flexion: the sensors are not calibrated, and the value is not used for any score.",
         "legendReps": "Shaded: counted repetitions",
         "downsampled": "Showing {shown} of {total} points; each time slice keeps its minimum and maximum.",
         "empty": "There are no paired thigh and shank frames, so there is nothing to plot.",
-        "aria": "Relative sensor orientation chart: {points} points, counted repetitions shaded: {reps}"
+        "aria": "Relative sensor orientation chart: {points} points, counted repetitions shaded: {reps}",
+        "legendBeforeStart": "Grey dashed line: frames before the last start of counting, not recounted"
       },
       "tech": {
         "title": "Technical details",
@@ -310,7 +316,27 @@
         "maxSkew": "Largest thigh–shank skew",
         "pendingAtFinish": "Frames unsent at the end of the session",
         "thresholds": "Counting thresholds",
-        "thresholdsValue": "start {enter}°, end {exit}°, at least {ms} ms"
+        "thresholdsValue": "start {enter}°, end {exit}°, at least {ms} ms",
+        "deviceId": "ID …{id}",
+        "deviceAtStart": "At the start of the session: {device}",
+        "fromStart": "as recorded at the start of the session",
+        "rateChecks": "Rate checks",
+        "rateChecksNone": "not saved",
+        "checkAfterStart": "{time} after the start",
+        "checkBeforeStart": "{time} before the start",
+        "linkTitle": "Battery and reconnects",
+        "batteryStart": "Battery at start",
+        "batteryEnd": "Battery at finish",
+        "reconnects": "Reconnects",
+        "batteryValue": "{v} V (≈ {pct}% by the WitMotion table)",
+        "batteryVolts": "{v} V",
+        "batteryBasis": "Voltage is read from the sensor's register 0x64. The percentage comes from WitMotion's table, not a measured charge. “unknown” means the read failed or was not saved.",
+        "reconnectsBasis": "Reconnects: how many times the link to the same sensor came back since it was connected.",
+        "framesConfirmed": "Frames the server confirmed receiving",
+        "sendErrors": "Send errors",
+        "framesDropped": "Frames dropped on the device",
+        "maxGap": "Pause in the data that discards a repetition in progress",
+        "telemetryBasis": "Confirmed, unsent and dropped frames and send errors are the patient's device's own counts at finish. Frames sent later are not included; the first table shows how many frames are actually stored."
       },
       "checkIn": {
         "title": "Check-in answers",
@@ -349,7 +375,8 @@
         "noCheckIn": "no check-in",
         "current": "shown",
         "more": "Older sessions not listed: {n}"
-      }
+      },
+      "listError": "This patient's sessions could not be loaded. Refresh the page."
     }
   },
   "nav": {
@@ -482,8 +509,14 @@
         "boundToOtherRole": "This sensor is already connected as “{role}”. Choose another one.",
         "savedForOtherRole": "This sensor is assigned to “{role}”. Choose another one.",
         "connectFailed": "Couldn't connect to the sensor. Check that it's switched on and nearby, and try again.",
-        "connectionDropped": "The connection to the sensor dropped. Connect it again."
-      }
+        "connectionDropped": "The connection to the sensor dropped. Connect it again.",
+        "droppedReconnecting": "The connection to the sensor dropped. The app is trying to reconnect it on its own."
+      },
+      "reconnecting": "Reconnecting…",
+      "reconnectAttempts": "Reconnect attempts: {n}",
+      "reconnectGaveUp": "Couldn't reconnect automatically within two minutes. Connect the sensor again with the button in this row.",
+      "batteryShort": "≈ {n}%",
+      "batteryShortSr": "Battery about {n}% by WitMotion's table"
     },
     "pending": {
       "title": "This step isn't connected yet",
@@ -563,14 +596,15 @@
         "notAllowed": "We could not confirm that you are signed in. Refresh the page and try again.",
         "invalid": "Some answers did not pass the check. Review them and submit again.",
         "failed": "The answers could not be sent. Check your internet connection and submit again: your answers are still on the page."
-      }
+      },
+      "scaleRequired": "Choose a number from 0 to 10"
     },
     "exercise": {
       "lead": "Lying on your back, slowly slide your heel towards you and then straighten the leg again. Repetitions are counted from the sensors.",
       "connectTitle": "Connect the sensors",
       "connectBody": "All three sensors are needed to start. If the page reloaded, the connection to them dropped: connect them again.",
-      "interruptedTitle": "The sensors aren't sending data",
-      "interruptedBody": "Repetitions aren't counted while the connection is down. Connect the sensors again and counting will continue.",
+      "interruptedTitle": "Not all sensors are sending data",
+      "interruptedBody": "The app is trying to reconnect the sensor on its own. If that doesn't work, connect it with the button in that sensor's row. Repetitions aren't counted while the thigh or shin sends no data; counting then continues from the same starting position.",
       "repsTitle": "Repetitions",
       "repsSr": "Repetitions: {n} of {total}",
       "repsSrNoTarget": "Repetitions: {n}",
@@ -592,13 +626,61 @@
         "title": "Recording",
         "notStarted": "Recording starts once you press “Start”.",
         "progress": "Records sent: {sent}. Waiting to send: {pending}.",
-        "errors": "Sending errors: {n}. The app will retry on its own.",
-        "dropped": "Not saved because the internet was down for too long: {n}."
+        "errors": "Sending errors: {n}. Records that didn't go through are kept on this device, and the app keeps trying to send them while it's open.",
+        "dropped": "Not saved because the internet was down for too long: {n}.",
+        "finishingPending": "Sending the remaining records: {n}. This takes up to 10 seconds; anything left over the app sends later, while it's open."
       },
       "finish": "Finish",
       "finishEarly": "Finish early",
       "finishing": "Saving…",
-      "finishFailed": "Couldn't finish the session. Check your internet connection and try again."
+      "finishFailed": "Couldn't finish the session. Check your internet connection and try again.",
+      "checkingSession": "Checking that the session is still in progress…",
+      "restarted": "This session was already recording earlier, for example before the page reloaded, so the repetition count started again from zero. Records saved before that stay with the session. If you've already done some repetitions, don't do them again.",
+      "pause": {
+        "thigh": "Counting paused: no data from the thigh sensor.",
+        "shank": "Counting paused: no data from the shin sensor.",
+        "both": "Counting paused: no data from the thigh and shin sensors."
+      },
+      "footMissing": "The foot sensor isn't sending data, so its records aren't being saved right now. Counting continues: it uses the thigh and shin sensors."
+    },
+    "readout": {
+      "title": "Technical data",
+      "hint": "For hardware checks: what the sensors report and what the app measures from the data it receives. “—” means not known yet.",
+      "device": "Sensor",
+      "deviceValue": "{name}, ID …{id}",
+      "deviceUnnamed": "unnamed",
+      "notConnected": "not connected",
+      "link": "Link",
+      "requested": "Requested rate",
+      "hz": "{hz} Hz",
+      "readback": "Sensor's rate readback",
+      "readbackConfiguring": "setting {hz}…",
+      "readbackConfirmed": "confirmed, code {code}, attempts: {attempts}",
+      "readbackNotConfirmed": "not confirmed ({reason}), code in reply: {code}, attempts: {attempts}",
+      "codeNone": "none",
+      "history": "Rate setup history",
+      "historyEntry": "{time}: {hz}, {result}",
+      "delivered": "Delivered rate (over 2 s)",
+      "frames30": "Frames in the last 30 s",
+      "frames60": "Frames in the last 60 s",
+      "framesTotal": "Total frames",
+      "framesTotalValue": "{n} over {s} s connected",
+      "battery": "Battery",
+      "batteryValue": "{volts} V (≈ {percent}% by WitMotion's table)",
+      "batteryUnknown": "unknown: {reason}",
+      "batteryLast": "last good read {s} s ago: {volts} V (≈ {percent}% by WitMotion's table)",
+      "batteryUnread": "not read yet",
+      "batteryReason": {
+        "no_reply": "the sensor didn't reply",
+        "write_failed": "the command didn't reach the sensor",
+        "implausible_value": "the sensor sent an impossible value",
+        "unknown": "reason unknown"
+      },
+      "reconnects": "Reconnects",
+      "reconnectsValue": "attempts: {attempts}, succeeded: {succeeded}",
+      "reconnectNext": "reconnecting, next attempt in {s} s",
+      "reconnectRunning": "reconnect attempt in progress",
+      "reconnectGaveUp": "automatic reconnecting stopped"
     }
   },
   "today": {
