@@ -1,9 +1,9 @@
 # Heel Slide, end to end
 
 Runbook for the one exercise that goes all the way through with real sensors: a patient opens the app, sees
-Heel Slide on Today, straps on three WT901BLE68 sensors, does ten repetitions while the rep count and the live
-leg move, answers the check-in, and a clinician opens that session. §7 maps the hardware test protocol onto the
-screens.
+Heel Slide on Today, straps on three WitMotion sensors (the exact model is unverified, see §7), does ten
+repetitions while the rep count and the live leg move, answers the check-in, and a clinician opens that session. §7
+maps the hardware test protocol onto the screens.
 
 Seven links, each of which has to work on real hardware:
 
@@ -29,15 +29,16 @@ prescription builder, safety triage of the check-in answers.
 | IMU frames | Real. Raw accelerometer and gyroscope counts plus Euler roll / pitch / yaw, stored per frame in `session_frames.imu` with the role. The 20-byte `55 61` frame has no checksum, so every row says `validation_status: "unverified_checksum"`. |
 | Timestamps | `recorded_at` is the browser's receive time. The sensor sends no timestamp, so BLE transport jitter is inside every timing figure. |
 | Sample rate | 50 Hz (code `0x08`) by default, 100 Hz (`0x09`) when the sensors step is opened with `?rate=100`. The rate is written on every connect and reconnect and register `0x03` is read back. "Confirmed" means the read-back code equals the request, nothing more. The delivered rate is measured from received frames and is the figure to trust. |
-| Rep count | Real output of the hysteresis counter over the flexion proxy. A rep that is in progress when the data stops for more than 1 s is discarded, not counted after the gap. The clinician view recounts from the stored frames with the same rules and shows the on-device count next to it. |
-| Flexion proxy | `wrap(shank.pitch − thigh.pitch)`, zeroed on the first ~500 ms after the latest «Начать» (that span is saved in the session summary, so the recount uses the same zero) and oriented so the larger excursion is positive. It is a relative device-orientation difference, **not knee flexion**, not calibrated, and not used for any score. The patient sees no number; the clinician chart labels it as such. `FLEXION_GAIN` from Phoenix is not ported. |
+| Rep count | Real output of the hysteresis counter over the flexion proxy. A rep that is in progress when the data stops for more than 1 s is discarded, not counted after the gap. The clinician view recounts from the stored frames with the same rules. The device's own count is shown next to it and compared with the recount only when the session had one start: a reload starts the device count over, so after several starts it covers only the last one. |
+| Flexion proxy | `wrap(shank.pitch − thigh.pitch)`, zeroed on the first ~500 ms after each «Начать» and oriented so the larger excursion is positive. The span of every zero is saved in the session summary (`baseline_windows_ms`), so the recount counts each start from its own zero up to the next start and adds the counts. It is a relative device-orientation difference, **not knee flexion**, not calibrated, and not used for any score. The patient sees no number; the clinician chart labels it as such. `FLEXION_GAIN` from Phoenix is not ported. |
+| Sensor placement | Not checked. Counting pauses when the thigh or shank sensor stops sending (switched off, out of range, flat battery, link lost). A sensor that comes off the leg but stays switched on keeps sending, and the counter follows whatever it reports (§7, Test 4.1). |
 | Live leg drawing | Follows the proxy, clamped to 0–120 for drawing only, with a caption saying it is not a measurement. |
 | Score, target | None computed. The `target` in the exercise config (`knee_flexion_deg ≥ 90`) is draft engineering config and is not evaluated anywhere. |
 | Battery | Register `0x64` is read after the rate on every connect and reconnect and every 60 s while streaming. Volts are the register value ÷ 100. The percentage is WitMotion's interpolation table from its SDK, labelled as such, not a measured state of charge. A failed read shows as unknown, never as a guess. |
-| Reconnect | A sensor that drops without the app asking is retried on the same device, without the chooser, after 1, 2, 4 and 8 s, then every 10 s, for up to 120 s. The session, recording and zero are untouched. |
-| Frame delivery | Batched. At finish the app keeps trying for about 10 s; rows still unsent stay in the browser (IndexedDB) and are sent later: when the app opens, when the browser comes back online, and every 30 s while any remain. Rows recorded after the session ended are skipped by the server. |
-| Check-in | Real patient answers, stored once. Every question must be answered, and the three 0–10 scales start with nothing selected, so no preset value is ever stored as an answer. No triage is derived from them on this path. |
-| Device model | Shown as `WT901BLE68 (unverified)` until the label and datasheet are checked (§7). |
+| Reconnect | A sensor whose link drops without the app asking is retried on the same device, without the chooser, after 1, 2, 4 and 8 s, then every 10 s, for up to 120 s. The session, recording and zero are untouched. A press on «Подключить заново» during the outage tries the same sensor at once, taking over an automatic attempt that is running, and opens the chooser if that fails. |
+| Frame delivery | Batched. At finish the app keeps trying for about 10 s; rows still unsent stay in the browser (IndexedDB) and are sent later: when the app opens, when the browser comes back online, after signing in again, and every 30 s while any remain. Once a session has ended, the server stores rows recorded up to two minutes after its end and skips later ones. The device keeps a count of rows the server reported as skipped, but no screen shows it yet. |
+| Check-in | Real patient answers, stored once. Every question must be answered, and the three 0–10 scales start with nothing selected, so no preset value is ever stored as an answer. No triage is derived from them on this path. Answers cannot be changed: Back from the summary goes on to the summary again, and a second submit that differs shows the answers already stored. |
+| Device model | Unverified. No screen names a model; each session records `WT901BLE68 (unverified)` in `sessions.device_info.model_label` (the lookup query in §5 reads it). The label check is in §7. |
 | Device identity | The browser's Bluetooth `device.id` (its last six characters are shown as a short ID) plus the advertised name. Web Bluetooth never exposes the MAC address. |
 | Signal quality | Evaluated at most once per second and stored; not enforced. |
 | Catalog row | `heel-slide` is `is_published = false`, `approval_state: "draft"`. |
@@ -45,9 +46,10 @@ prescription builder, safety triage of the check-in answers.
 
 ## 2. Apply the migrations
 
-Hosted project `sbdtujkpklqyevaoxfph` has 0001–0022 applied, plus `0035_signup_role_hotfix.sql` (already live: a
-new account's role never comes from signup metadata, so nobody can sign up as a clinician or admin). This path
-needs two more, in order:
+Hosted project `sbdtujkpklqyevaoxfph` has 0001–0023, 0034 and `0035_signup_role_hotfix.sql` applied and recorded
+(checked 2026-09-15; its 0034 already has the two-minute grace). With 0035 a new account's role never comes from
+signup metadata, so nobody can sign up as a clinician or admin. A database without this path needs two migrations,
+in order:
 
 1. `supabase/migrations/0023_patient_ble_devices.sql` (from #25): per-patient role ↔ device binding.
 2. `supabase/migrations/0034_heel_slide_path.sql`:
@@ -62,8 +64,9 @@ needs two more, in order:
    - `finish_prescribed_session`: completes only an `in_progress` session (anything else raises 55000), stores the
      summary as given (a JSON object of at most 64 KB), never writes `session_metrics`;
    - redefines `flush_session_telemetry_batch`: still idempotent on `(session_id, recorded_at, seq)`; for a session
-     that is no longer in progress, frames and events after `ended_at` are skipped and counted instead of stored.
-     The camera SessionStudio uses this RPC too;
+     that is no longer in progress, frames recorded and events started more than two minutes after `ended_at` are
+     skipped and counted (`skipped`, `skipped_events` in its result) instead of stored. The two minutes absorb a
+     device clock running a little fast. The camera SessionStudio uses this RPC too;
    - creates `submit_session_check_in`, `clinician_patient_sessions` and `clinician_session_result` (the
      prescription and check-in in the result are tied to the session's own patient).
 
@@ -146,8 +149,8 @@ Among its 74 checks:
   patient's);
 - finishing works only on an in-progress session (55000 otherwise), validates the summary (22023), refuses
   another patient's session (42501) and writes no metrics;
-- telemetry stores and re-sends idempotently, and after the session ends, rows recorded later are skipped while
-  rows recorded before still land;
+- telemetry stores and re-sends idempotently, and after the session ends, rows recorded before the end or within
+  two minutes after it still land while later rows are skipped;
 - check-in is refused before the session is completed, every field is validated, `none` is stripped, the note is
   trimmed, a second submit returns the stored row unchanged; no direct insert / update / delete on
   `session_check_ins`;
@@ -244,7 +247,9 @@ mat.
    are binding. Press «Подключить» on the thigh row, pick the one unit listed, and note its short ID under
    «Технические данные». Power on the next unit and repeat for the shank, then the foot. Each row shows the rate
    result, the delivered Hz and a short battery figure («≈ N %»). A device already bound to another role is
-   refused. «Далее» unlocks once all three are streaming; an unconfirmed rate does not block.
+   refused. «Далее» unlocks once all three are streaming; an unconfirmed rate does not block. Only Heel Slide has
+   this step: a prescription for any other exercise shows «Этот шаг пока не подключён», with no sensor rows, and
+   opens no session.
 3. **Start.** «Далее» calls `start_prescribed_session` with the device descriptors (name, device id, rate
    read-back, battery) and opens `/app/session/<id>/exercise`. A session for the same prescription that was left in
    progress is marked aborted. The calibrate step is not on this path.
@@ -255,26 +260,38 @@ mat.
    effects (§7, limitations).
 5. **Ten heel slides.** Slide the heel toward the buttock and back. The `N / 10` counter and the phase text update,
    the leg drawing follows, and the saving line shows frames sent and pending. If the thigh or shank sensor stops
-   streaming, counting pauses and a line names the sensor; a rep in progress when the data stopped for more than
-   1 s is not counted. A dropped sensor reconnects by itself («Переподключение…»); if it has not come back after
-   120 s, press «Подключить заново».
+   sending (switched off, out of range, flat battery), counting pauses within about two seconds and a line names
+   the sensor; a rep in progress when the data stopped for more than 1 s is not counted. A sensor that slips off the
+   leg but keeps sending is not detected, and counting carries on (§7, Test 4.1). A dropped sensor reconnects by
+   itself («Переподключение…»); «Подключить заново» in its row tries it at once, and after 120 s without success
+   the row asks for that press.
 6. **Finish.** «Завершить» (or «Закончить раньше») stops recording, tries for about 10 s to deliver what is left,
    completes the session through `finish_prescribed_session` and opens the check-in. The summary it stores holds
-   the device's count and rep segments, the zero window, each sensor's rate checks, battery at finish and
-   reconnects, and the delivery counters. Rows still unsent stay in the browser and are sent the next time the app
-   is open and online.
+   the device's count and rep segments, the zero window of every «Начать» (`baseline_windows_ms`, the latest also
+   as `baseline_window_ms`), each sensor's rate checks, battery at finish and reconnects, and the delivery
+   counters. Rows still unsent stay in the browser and are sent the next time the app is open and online.
 7. **Check-in** (`/app/session/<id>/check-in`). Pain before and after and difficulty on 0–10 (nothing is
-   preselected), how the knee feels, new symptoms. Every question is required. Submitting opens the summary.
+   preselected), how the knee feels, new symptoms. Every question is required. Submitting opens the summary. The
+   answers are stored once: Back from the summary goes on to the summary again, and if a second submit differs, the
+   form says the earlier answers were kept, shows them and offers «К итогу занятия».
 8. **Clinician.** Sign in as the test clinician (`/signin?next=/clinician`), open the test patient
    (`/clinician/patient/<patientId>`). The Heel Slide section sits under the patient's name and shows:
-   - reps recounted from stored frames against the target, with the device's count next to it, reps discarded at a
-     pause, and frames from before the last start drawn grey and left out of the recount;
-   - the relative-orientation chart with its caption;
+   - reps recounted from stored frames against the target. When the session had more than one start that took a
+     zero (after a reload, or after leaving the exercise screen and coming back), each start is recounted from its
+     own zero, the counts are added, and each start's count is listed with its time. Reps discarded at a pause are
+     listed, and frames from before the first start are drawn grey and left out of the recount;
+   - the device's count. It is compared with the recount («Совпадает со счётом на устройстве пациента») only when
+     there was one start; with several it covers only the last one and is labelled so;
+   - the relative-orientation chart with its caption, and a vertical dashed line at each start when there were
+     several;
    - per sensor: frames stored, the rate computed from stored frames, the device at finish (and the one at start if
      it changed), and the latest rate check;
    - every rate check per sensor, battery at start and at finish, and reconnects;
-   - pairing skew, and the frames confirmed, unsent and dropped and the send errors as the device counted them at
-     finish;
+   - «Сдвиг между датчиками по времени приёма»: for every stored shank frame, the time to the nearest thigh frame,
+     with no cap, as median, 95th percentile and largest, with the number of frames compared (thigh and shank only);
+   - «Пары бедра и голени для пересчёта»: paired frames, shank frames without a pair, and the skew within pairs,
+     which the recount's 100 ms pairing tolerance caps, so it is not a measurement of skew;
+   - the frames confirmed, unsent and dropped and the send errors as the device counted them at finish;
    - the check-in answers.
 
    `?session=<id>` selects an older session.
@@ -283,6 +300,8 @@ Look up what was stored (SQL editor, as the project owner):
 
 ```sql
 select s.id, s.status, s.started_at, s.ended_at, s.device_info -> 'roles' as roles,
+       s.device_info ->> 'model_label' as model_label,
+       jsonb_array_length(coalesce(s.summary -> 'baseline_windows_ms', '[]'::jsonb)) as starts_with_zero,
        (select count(*) from public.session_frames f where f.session_id = s.id) as frames,
        exists (select 1 from public.session_check_ins c where c.session_id = s.id) as has_check_in
 from public.sessions s
@@ -312,7 +331,12 @@ where d.patient_id = p.id and p.clinic_id = c.id
   browser gives a new id, and the sensor has to be bound again.
 - A drop while the page stays open is reconnected automatically on the same device (§1). A full page reload, or
   leaving the app, drops every GATT connection for good; moving between flow steps inside the app keeps them.
-  After a reload the exercise step shows the connect panel again and the on-screen count starts over.
+  After a reload the exercise step shows the connect panel again, the on-screen count starts over from zero, and a
+  notice says so. What it asks next depends on whether this browser tab kept the zero of the earlier «Начать»
+  (sessionStorage survives a reload). If it did, the earlier reps stay with the session and are recounted for the
+  clinician, so the patient does only the remaining ones and presses «Закончить раньше». If it did not (storage
+  unavailable, or the earlier start was made in another tab), nothing ties the earlier reps to a zero, and the
+  notice asks for the whole set again.
 - GATT writes to a device are serialized and spaced about 150 ms apart, as in the WitMotion SDK; the battery read
   shares that queue with the rate write.
 - Rate codes: `FF AA 03 08 00` is 50 Hz and `FF AA 03 09 00` is 100 Hz; the WitMotion SDK table and issue #18
@@ -351,9 +375,14 @@ unlock bytes and the `ffe9` write characteristic are fixed in `src/lib/ble/witRe
 Sensors step, all three connected and streaming. After a minute, read **frames in the last 60 s** for each sensor
 in «Технические данные»; Hz is that count ÷ 60. Compare with Test 1.
 
-For the inter-sensor skew, start a session, run for at least a minute, finish, and read the median and largest
-thigh–shank skew in the clinician technical block, or run the skew query in §8 (swap `shank` for `foot` there for
-the foot). These are receive times, so they include BLE jitter.
+For the inter-sensor skew, press «Далее», then «Начать», keep all three streaming for at least a minute, finish,
+and open the session in the clinician view. Record «Сдвиг между датчиками по времени приёма» from the technical
+block: median, 95th percentile and largest, for every stored shank frame against the nearest thigh frame, with no
+cap. The clinician result carries no foot frame times, so for foot vs shank run the skew query in §8 with
+`('foot', 'shank')`; with `('shank', 'thigh')` the same query gives about the block's figures (the block leaves out
+frames without a pitch reading). Do **not** record the values under «Пары бедра и голени для пересчёта»
+(«Медианный сдвиг в парах», «Наибольший сдвиг в парах»): they come from the recount's pairing tolerance and can
+never exceed 100 ms. All of these are browser receive times, so they include BLE jitter.
 
 ### Test 3: the rep counter on a real leg
 
@@ -370,15 +399,29 @@ Exercise screen.
 
 ### Test 4: the honest failure modes
 
-1. **Pull a sensor off mid-set.** Thigh or shank: counting pauses and a line names the missing sensor. A rep in
-   progress when the data stopped for more than 1 s is not counted, and the clinician view lists it under reps not
-   counted because of a pause. Foot only: a notice says the foot sensor is disconnected and its frames are not
-   being saved; counting continues.
+1. **Pull a sensor off mid-set.** The app notices a sensor only when its data stops, not when it leaves the leg. Run
+   both variants and report each on its own:
+   - **(a) The sensor stops sending.** Switch the thigh or shank sensor off, or carry it out of range. Within about
+     two seconds counting pauses and a line names the sensor («Счёт на паузе: нет данных с датчика на голени.»),
+     and the sensor panel opens with that row showing «Связь потеряна» or «Переподключение…». A rep in progress
+     when the data stopped for more than 1 s is not counted, and the clinician view lists it under «Не засчитано
+     из-за паузы в данных…». Switch the sensor back on within two minutes: it reconnects by itself and counting
+     resumes on the same zero. Foot only: a notice says the foot sensor is not sending data and its records are not
+     being saved; counting continues.
+   - **(b) The sensor comes off the leg but stays on.** Unstrap the shank (or thigh) sensor mid-set and lay it on the
+     mattress, still switched on. It keeps sending, so the app cannot tell: no pause line appears, and the counter
+     and the guide carry on with whatever the loose sensor reports. Expect this variant to fail; it is a known
+     limitation (below). Record what the counter and the guide did, with the session id.
 2. **Walk out of range and come back.** The row shows «Переподключение…» and retries after 1, 2, 4 and 8 s, then
-   every 10 s, for up to 120 s. On return, the same session continues on the same zero; the rate is written again
-   and the battery re-read. Attempts show in «Технические данные», and successful reconnects in the clinician
-   technical block. Nothing is received while the sensor is out of range, so the stored series has a gap there.
-   After 120 s the row offers «Подключить заново».
+   every 10 s, for up to 120 s. While the sensor is not sending, its rate line is dated as the last check («В …
+   датчик подтвердил частоту 50 Гц. Сейчас он не передаёт данные, поэтому это могло измениться.»). On return, the
+   same session continues on the same zero; the rate is written again and the battery re-read. Attempts show in
+   «Технические данные», and successful reconnects in the clinician technical block. Nothing is received while the
+   sensor is out of range, so the stored series has a gap there. After 120 s the row says automatic reconnecting
+   stopped and asks for «Подключить заново». Also press «Подключить заново» once while the row still shows
+   «Переподключение…»: the button reads «Подключаем…» and the row says «Пробуем сразу подключить этот же датчик,
+   без списка датчиков.» If that 4-second try fails, the chooser opens, or the row asks you to try again and the
+   next press opens it. Report whether the press brought the sensor back.
 3. **Turn off Wi-Fi mid-set, do three reps, turn it back on.** The saving line shows unsent rows growing; the buffer
    holds about five minutes. After Wi-Fi returns, unsent falls back to 0. To confirm the rows landed, check that the
    clinician chart has no hole over those reps, or count the session's frames with the first query in §8. If you
@@ -396,7 +439,8 @@ battery query in §8). Extrapolate from the volts: the percentage is WitMotion's
 ### While the sensors are in your hand
 
 - **Model number.** What the label on each unit says, compared with the WT901BLECL datasheet (9-axis). Until this is
-  confirmed the app says `WT901BLE68 (unverified)`.
+  confirmed the model is unverified: no screen names it, and each session records `WT901BLE68 (unverified)` in
+  `device_info.model_label` (the lookup query in §5).
 - **Moving axis on the real mounting.** During heel slides, which Euler axis actually changes on the thigh and
   shank sensors (axis query in §8). The path assumes pitch (`euler_deg[1]`); Phoenix's live guide found roll moving
   on its mounting. If roll moves here, reps will not count: report it with a photo of the mounting rather than
@@ -413,12 +457,31 @@ battery query in §8). Extrapolate from the volts: the percentage is WitMotion's
 - **Test 3.3** cannot be settled by code (above).
 - **Pause judgement near 1 s.** The live and stored pairing can differ by up to about 100 ms at a dropout, so a pause
   very close to 1 s may be judged differently by the live count and the recount.
-- **Clocks.** Frame times come from the patient's device and the session end from the server. If the device clock
-  runs ahead, rows from the last seconds before finishing that arrive late are skipped.
+- **A sensor off the leg is not detected.** Counting pauses only when the thigh or shank sensor stops sending. A
+  sensor that comes off the leg but stays switched on keeps streaming, and the counter and the guide follow whatever
+  it reports. Detecting that needs a placement or signal check, which belongs with calibration (#17). Test 4.1 (b)
+  records what happens.
+- **Reloads.** Each start's zero is kept in the browser tab's sessionStorage. Starts made in another tab or on
+  another device are not in the summary; a tab that has no earlier zero asks for the whole set after a reload, and
+  the earlier reps are then grey on the clinician chart and not counted. The device's count covers only what the
+  last page counted after its own «Начать»: if the patient finished after a reload without pressing «Начать» again,
+  it is 0.
+- **A long outage from the start.** The recording buffer holds about five minutes of rows. An outage longer than
+  that which begins at «Начать» drops the oldest rows, the zero window among them. The clinician view then cannot
+  recount that start and draws its frames grey, zeroed on their own first half second.
+- **Clocks.** Frame times come from the patient's device and the session end from the server. After a session ends,
+  the server stores rows recorded up to two minutes after its end and skips later ones. Rows left for later delivery
+  were recorded at least about 10 s before finishing, so they are lost only when the device clock runs more than
+  about two minutes fast; the device counts them as skipped, but no screen shows that count yet. The same grace
+  means the server alone would accept up to two minutes of frames from a screen still recording after the finish;
+  the exercise screen's fresh status check stops that first.
 
 ### What to bring back
 
-- The frame counts from Tests 1 and 2: numbers, not impressions.
+- The frame counts from Tests 1 and 2: numbers, not impressions. For Test 2 also the inter-sensor skew (median,
+  95th percentile, largest) for thigh vs shank and for foot vs shank.
+- Test 4.1, both variants: whether counting paused and named the sensor when it stopped sending, and what the
+  counter did when it came off the leg while still on.
 - Whether the counter reached 10 / 10, and whether partials counted.
 - A short screen recording of the ten-rep test.
 - The model number on the label.
@@ -451,26 +514,33 @@ order by role;
 
 Packet loss per role is `1 − frames ÷ (seconds × requested Hz)`.
 
-Thigh ↔ shank skew (nearest shank frame on either side of each thigh frame):
+Skew between two sensors by receive time, with no cap: for every frame of the measured role, the time to the nearest
+frame of the reference role on either side. `('shank', 'thigh')` is the definition of «Сдвиг между датчиками по
+времени приёма» in the clinician view; `('foot', 'shank')` gives the foot, which the clinician view does not show.
+Unlike the recount's pairing, nothing here is dropped for being too far apart.
 
 ```sql
-select round(percentile_cont(0.5) within group (order by skew_ms)::numeric, 1) as median_skew_ms,
-       round(max(skew_ms), 1) as max_skew_ms,
-       count(*) as thigh_frames_paired
-from (
+with params (measured, reference) as (values ('shank', 'thigh')),   -- or ('foot', 'shank')
+offsets as (
   select least(
-           (select extract(epoch from t.recorded_at - s.recorded_at) * 1000
-              from public.session_frames s
-             where s.session_id = t.session_id and s.imu ->> 'role' = 'shank' and s.recorded_at <= t.recorded_at
-             order by s.recorded_at desc limit 1),
-           (select extract(epoch from s.recorded_at - t.recorded_at) * 1000
-              from public.session_frames s
-             where s.session_id = t.session_id and s.imu ->> 'role' = 'shank' and s.recorded_at >= t.recorded_at
-             order by s.recorded_at limit 1)
+           (select extract(epoch from m.recorded_at - r.recorded_at) * 1000
+              from public.session_frames r
+             where r.session_id = m.session_id and r.imu ->> 'role' = p.reference and r.recorded_at <= m.recorded_at
+             order by r.recorded_at desc limit 1),
+           (select extract(epoch from r.recorded_at - m.recorded_at) * 1000
+              from public.session_frames r
+             where r.session_id = m.session_id and r.imu ->> 'role' = p.reference and r.recorded_at >= m.recorded_at
+             order by r.recorded_at limit 1)
          ) as skew_ms
-  from public.session_frames t
-  where t.session_id = '<session id>' and t.imu ->> 'role' = 'thigh'
-) pairs;
+  from public.session_frames m
+  cross join params p
+  where m.session_id = '<session id>' and m.imu ->> 'role' = p.measured
+)
+select round(percentile_cont(0.5) within group (order by skew_ms)::numeric, 1) as median_skew_ms,
+       round(percentile_disc(0.95) within group (order by skew_ms)::numeric, 1) as p95_skew_ms,
+       round(max(skew_ms)::numeric, 1) as max_skew_ms,
+       count(skew_ms) as frames_compared
+from offsets;
 ```
 
 Battery, rate checks and reconnects per sensor, as the app recorded them at start and at finish:

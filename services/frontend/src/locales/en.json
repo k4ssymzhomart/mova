@@ -273,11 +273,17 @@
         "deviceMissing": "No count from the patient's device was saved.",
         "deviceSame": "Matches the count on the patient's device.",
         "deviceDiffers": "Counted on the patient's device: {n}.",
-        "windowEmpty": "Cannot recount: the saved window the count was zeroed on holds no paired thigh and shank frames.",
+        "windowEmpty": "Cannot recount: none of the saved windows the count was zeroed on holds paired thigh and shank frames. The stored pairs are drawn grey on the chart.",
         "cancelled": "Not counted because the data paused for longer than {ms} ms mid-repetition: {n}.",
         "sinceLastStart": "The recount starts at the last press of Start, as the count on the device does. Paired frames before it: {n}; they are grey on the chart.",
         "zeroFromFirstFrames": "The window the count was zeroed on was not saved, so the recount is zeroed on the first 0.5 s of stored frames.",
-        "restarted": "The patient's page reloaded during the session, and the count on the device started again."
+        "restarted": "The patient's page reloaded during the session, and the count on the device started again.",
+        "beforeFirstStart": "Paired frames before the first saved press of Start: {n}. They are not recounted; they are grey on the chart.",
+        "perStartTitle": "Sum over the presses of Start, each recounted from its own zero:",
+        "perStart": "Press {i} ({time}): {n} counted",
+        "perStartNoZero": "Press {i} ({time}): not recounted, the zero window holds no stored frames",
+        "perStartTooFew": "Press {i} ({time}): too few paired frames to count ({pairs})",
+        "deviceLastStartOnly": "Counted on the patient's device: {n}. That count covers only the last press of Start, so it is not compared with the sum."
       },
       "chart": {
         "title": "Sensor signal",
@@ -288,7 +294,9 @@
         "downsampled": "Showing {shown} of {total} points; each time slice keeps its minimum and maximum.",
         "empty": "There are no paired thigh and shank frames, so there is nothing to plot.",
         "aria": "Relative sensor orientation chart: {points} points, counted repetitions shaded: {reps}",
-        "legendBeforeStart": "Grey dashed line: frames before the last start of counting, not recounted"
+        "legendBeforeStart": "Grey dashed line: frames before the first press of Start, not recounted",
+        "legendNoZero": "Some grey frames are drawn from their own first 0.5 s: the window the count was zeroed on holds no stored frames, so they are not recounted",
+        "legendStarts": "Vertical dashed line: a press of Start; each press has its own zero"
       },
       "tech": {
         "title": "Technical details",
@@ -312,8 +320,8 @@
         "footHzUnavailable": "For the foot the result carries only a frame count, not frame times, so its rate cannot be computed.",
         "pairs": "Paired thigh and shank frames",
         "unpairedShank": "Shank frames without a pair",
-        "medianSkew": "Median thigh–shank skew",
-        "maxSkew": "Largest thigh–shank skew",
+        "medianSkew": "Median skew within pairs",
+        "maxSkew": "Largest skew within pairs",
         "pendingAtFinish": "Frames unsent at the end of the session",
         "thresholds": "Counting thresholds",
         "thresholdsValue": "start {enter}°, end {exit}°, at least {ms} ms",
@@ -336,7 +344,15 @@
         "sendErrors": "Send errors",
         "framesDropped": "Frames dropped on the device",
         "maxGap": "Pause in the data that discards a repetition in progress",
-        "telemetryBasis": "Confirmed, unsent and dropped frames and send errors are the patient's device's own counts at finish. Frames sent later are not included; the first table shows how many frames are actually stored."
+        "telemetryBasis": "Confirmed, unsent and dropped frames and send errors are the patient's device's own counts at finish. Frames sent later are not included; the first table shows how many frames are actually stored.",
+        "skewTitle": "Skew between sensors by receive time",
+        "skewMedian": "Median",
+        "skewP95": "95th percentile",
+        "skewMax": "Largest",
+        "skewFrames": "Shank frames compared",
+        "skewBasis": "For every stored shank frame, the time to the thigh frame received nearest to it, with no cap. Receive times are the browser's, so they include Bluetooth delays. Thigh and shank only: for the foot the result carries a frame count without frame times.",
+        "pairingTitle": "Thigh and shank pairs for the recount",
+        "pairingBasis": "A shank frame is paired with the nearest thigh frame only when they are at most {ms} ms apart, so skew within pairs is never more than {ms} ms. This is the recount's pairing tolerance, not the skew between sensors, which the block above shows."
       },
       "checkIn": {
         "title": "Check-in answers",
@@ -516,13 +532,18 @@
       "reconnectAttempts": "Reconnect attempts: {n}",
       "reconnectGaveUp": "Couldn't reconnect automatically within two minutes. Connect the sensor again with the button in this row.",
       "batteryShort": "≈ {n}%",
-      "batteryShortSr": "Battery about {n}% by WitMotion's table"
+      "batteryShortSr": "Battery about {n}% by WitMotion's table",
+      "connectPendingSameDevice": "Connecting…",
+      "pressSameDevice": "Trying this same sensor again right away, without the list of sensors.",
+      "rateLastConfirmed": "At {time} the sensor confirmed {hz} Hz. It isn't sending data now, so this may have changed.",
+      "rateLastNotConfirmed": "At {time}, {hz} Hz wasn't confirmed: {reason}."
     },
     "pending": {
       "title": "This step isn't connected yet",
       "calibrate": "Here the app will adjust the sensors to how they sit on your leg.",
       "exercise": "Here you'll do the exercise while the app follows your movement through the sensors.",
-      "checkIn": "Here, after the exercise, you'll answer a short questionnaire."
+      "checkIn": "Here, after the exercise, you'll answer a short questionnaire.",
+      "sensors": "Here you'll connect the sensors for this exercise. For now only one exercise runs with sensors in the app, so a session for this one won't start here."
     },
     "summary": {
       "detailsTitle": "About this session",
@@ -597,7 +618,14 @@
         "invalid": "Some answers did not pass the check. Review them and submit again.",
         "failed": "The answers could not be sent. Check your internet connection and submit again: your answers are still on the page."
       },
-      "scaleRequired": "Choose a number from 0 to 10"
+      "scaleRequired": "Choose a number from 0 to 10",
+      "kept": {
+        "title": "Answers to this check-in were already saved earlier",
+        "body": "They cannot be changed, so the new answers were not saved. This is what is saved for this session:",
+        "scale": "{n} of 10",
+        "note": "Your description",
+        "continue": "Go to the session summary"
+      }
     },
     "exercise": {
       "lead": "Lying on your back, slowly slide your heel towards you and then straighten the leg again. Repetitions are counted from the sensors.",
@@ -635,13 +663,14 @@
       "finishing": "Saving…",
       "finishFailed": "Couldn't finish the session. Check your internet connection and try again.",
       "checkingSession": "Checking that the session is still in progress…",
-      "restarted": "This session was already recording earlier, for example before the page reloaded, so the repetition count started again from zero. Records saved before that stay with the session. If you've already done some repetitions, don't do them again.",
+      "restarted": "This session was already recording earlier, for example before the page reloaded, so the count on this screen started again from zero. Repetitions you did before that stay with the session and will be recounted for your care team. Don't repeat them: do only the remaining ones, then press “Finish early”.",
       "pause": {
         "thigh": "Counting paused: no data from the thigh sensor.",
         "shank": "Counting paused: no data from the shin sensor.",
         "both": "Counting paused: no data from the thigh and shin sensors."
       },
-      "footMissing": "The foot sensor isn't sending data, so its records aren't being saved right now. Counting continues: it uses the thigh and shin sensors."
+      "footMissing": "The foot sensor isn't sending data, so its records aren't being saved right now. Counting continues: it uses the thigh and shin sensors.",
+      "restartedFullSet": "This session was already recording earlier, for example before the page reloaded, so the count on this screen started again from zero. Records saved before that stay with the session, but the repetitions in them may not be counted. So do the whole set again, from the first repetition."
     },
     "readout": {
       "title": "Technical data",
@@ -680,7 +709,8 @@
       "reconnectsValue": "attempts: {attempts}, succeeded: {succeeded}",
       "reconnectNext": "reconnecting, next attempt in {s} s",
       "reconnectRunning": "reconnect attempt in progress",
-      "reconnectGaveUp": "automatic reconnecting stopped"
+      "reconnectGaveUp": "automatic reconnecting stopped",
+      "readbackLast": "last check at {time}: {result}. The sensor isn't sending data now, so this may have changed"
     }
   },
   "today": {
