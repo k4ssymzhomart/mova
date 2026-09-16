@@ -1,6 +1,7 @@
 import Link from "next/link";
 
 import FogEventsFeed from "@/components/clinician/FogEventsFeed";
+import InvitePatientButton from "@/components/clinician/InvitePatientButton";
 import { RiskChip } from "@/components/clinician/RiskChip";
 import { caseloadSummary, computeCaseMetrics } from "@/lib/clinic/metrics";
 import { fetchRoster } from "@/lib/clinic/realData";
@@ -42,8 +43,13 @@ export default async function ClinicOverview() {
 
   return (
     <main className="mx-auto max-w-shell px-5 py-10 sm:px-8">
-      <div className="text-[11px] font-medium uppercase tracking-[0.22em] text-ink-faint">{t("clinician.eyebrow")}</div>
-      <h1 className="mt-2 text-5xl leading-[1.05] text-ink">{t("clinician.title")}</h1>
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <div className="text-[11px] font-medium uppercase tracking-[0.22em] text-ink-faint">{t("clinician.eyebrow")}</div>
+          <h1 className="mt-2 text-5xl leading-[1.05] text-ink">{t("clinician.title")}</h1>
+        </div>
+        <InvitePatientButton />
+      </div>
 
       {/* caseload rollup */}
       <div className="mt-8 grid grid-cols-2 gap-px overflow-hidden rounded-card border border-line bg-line md:grid-cols-4">
