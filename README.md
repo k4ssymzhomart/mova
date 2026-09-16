@@ -101,7 +101,7 @@ sensors work in any browser.
 
 ### Presenting the Heel Slide demo
 
-1. `git pull` on `main`, then `npm ci` in `services/frontend`.
+1. `git pull` on `main`, then `npm ci` in `services/frontend` (on Windows PowerShell type `npm.cmd` instead of `npm`).
 2. `.env.local` with the two Supabase values and the two test passwords.
 3. `npm run demo`, then open http://127.0.0.1:3000/signin and press «Войти как тестовый пациент». Today shows Heel
    Slide with «Начать». For the clinician side, go back to `/signin` and press «Войти как тестовый врач».

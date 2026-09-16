@@ -25,20 +25,25 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const args = process.argv.slice(2);
+// A pasted "# comment" arrives as arguments: zsh without interactivecomments (the macOS default) and cmd.exe do not
+// treat # as a comment, and npm hands the words to the script.
+const rawArgs = process.argv.slice(2);
+const commentAt = rawArgs.findIndex((a) => a.startsWith("#"));
+const args = commentAt >= 0 ? rawArgs.slice(0, commentAt) : rawArgs;
 const KNOWN = new Set(["--check", "--lan", "--port", "--help", "-h"]);
 
-function usage(code) {
-  console.log("Usage: npm run demo [-- --check] [-- --port <n>] [-- --lan]");
+function usage(code, problem) {
+  if (problem) console.error(`demo: ${problem}`);
+  console.log("Usage: npm run demo [-- --check] [-- --port <n>] [-- --lan]   (Windows PowerShell: npm.cmd run demo)");
   process.exit(code);
 }
 for (let i = 0; i < args.length; i += 1) {
-  if (!KNOWN.has(args[i])) usage(2);
+  if (!KNOWN.has(args[i])) usage(2, `unknown argument ${JSON.stringify(args[i])}.`);
   if (args[i] === "--port") i += 1;
 }
 if (args.includes("--help") || args.includes("-h")) usage(0);
 
-const CHECK_ONLY = args.includes("--check");
+const CHECK_ONLY = args.includes("--check") || process.env.npm_config_check === "true";
 const LAN = args.includes("--lan");
 const portAt = args.indexOf("--port");
 const port = portAt >= 0 ? args[portAt + 1] : process.env.PORT || "3000";

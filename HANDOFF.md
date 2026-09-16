@@ -8,10 +8,14 @@ Everything is on `main`: the Heel Slide path (PR #26), the exercise library, the
 Follow "Running it" in [`README.md`](README.md). The short version:
 
 ```bash
-git pull                      # on main
-cd services/frontend && npm ci
-npm run demo                  # development server + simulated sensors → http://127.0.0.1:3000/signin
+git checkout main
+git pull
+cd services/frontend
+npm ci
+npm run demo
 ```
+
+Then open http://127.0.0.1:3000/signin. On Windows PowerShell type `npm.cmd` instead of `npm`.
 
 `services/frontend/.env.local` needs four values from Kassymzhomart, sent privately: `NEXT_PUBLIC_SUPABASE_URL`,
 `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `HEEL_SLIDE_PATIENT_PASSWORD`, `HEEL_SLIDE_CLINICIAN_PASSWORD`. Not the service-role
