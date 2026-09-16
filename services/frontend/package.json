@@ -14,7 +14,7 @@
     "typecheck": "tsc --noEmit",
     "models:sync": "node scripts/fetch-models.mjs",
     "i18n:check": "node scripts/check-locales.mjs",
-    "test:unit": "node --test \"src/!(lib)/**/*.test.ts\" \"src/lib/!(ble|telemetry)/**/*.test.ts\"",
+    "test:unit": "node --test \"src/!(lib)/**/*.test.ts\" \"src/lib/!(ble|telemetry|scoring)/**/*.test.ts\"",
     "test": "vitest run",
     "test:all": "npm run -s test:unit && npm run -s test",
     "seed:heel-slide": "node scripts/seed-heel-slide.mjs"

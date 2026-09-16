@@ -77,7 +77,8 @@ const DEFAULT_PATIENT_EMAIL = "heel-slide-patient@mova.test";
 const DEFAULT_CLINICIAN_EMAIL = "heel-slide-clinician@mova.test";
 const TEST_EMAIL = /^[^@\s]+@mova\.test$/;
 
-// Where app.handle_new_user puts every new account (0017, 0035).
+// Where app.handle_new_user put every new account before 0036 (0017, 0035). Since 0036 each signup gets its own
+// "self-<id>" clinic instead, so an account created then and never seeded classifies as "movable" below.
 const MOVA_PERSONAL_CLINIC_ID = "00000000-0000-0000-0000-0000000000a1";
 const PRIVILEGED_ROLES = new Set(["admin", "clinic_admin"]);
 
