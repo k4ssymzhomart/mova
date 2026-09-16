@@ -253,7 +253,30 @@ export default function SessionStudio({ sessionId, userId }: { sessionId: string
       await supabase.rpc("finish_training_session", {
         p_session: sessionId,
         p_summary: { source: "session-studio", mode: m, side: sideRef.current, duration_s: durationSec },
-        p_metrics: { reps: m === "gait" ? g.steps : reach.score, quality_score: quality, fog_risk: fogRiskMean, adherence: 1 },
+        p_metrics: {
+          reps: m === "gait" ? g.steps : reach.score,
+          quality_score: quality,
+          fog_risk: fogRiskMean,
+          adherence: 1,
+          // Full detail so the real (Supabase-backed) progress-screen read path — patient_session_history,
+          // 0024_patient_session_history.sql — can reconstruct the same SessionRecord shape the on-device
+          // localStorage mirror used to be the only source of. Without these, extras would carry just the
+          // four fields above and Progress would show real-but-nearly-empty rows once it stops reading
+          // localStorage.
+          reaches: record.reaches,
+          attempts: record.attempts,
+          reach_ms_mean: record.reachMs.mean,
+          reach_ms_best: record.reachMs.best,
+          gait_steps: record.gait?.steps ?? null,
+          gait_beats: record.gait?.beats ?? null,
+          gait_cadence_spm: record.gait?.cadenceSpm ?? null,
+          gait_rhythm_pct: record.gait?.rhythmPct ?? null,
+          gait_best_streak: record.gait?.bestStreak ?? null,
+          fog_series: record.fogSeries ?? null,
+          fog_valid: record.fogValid,
+          har_top: record.harTop,
+          inference_count: record.inferenceCount,
+        },
       });
       const { data } = await supabase.rpc("award_session_rewards", { p_session: sessionId });
       if (data) setReward(data as SessionRewardData);

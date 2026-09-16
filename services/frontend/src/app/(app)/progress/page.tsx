@@ -1,17 +1,14 @@
 import type { Metadata } from "next";
 
-import { createClient } from "@/lib/supabase/server";
+import { loadRealSessions } from "@/lib/insights/realStore";
 
 import ProgressClient from "./ProgressClient";
 
 export const metadata: Metadata = { title: "Progress · Mova" };
 
-// Server wrapper: resolves the signed-in user so the client reads ONLY this user's on-device history
-// (the local store is namespaced by user id — no cross-account bleed).
+// Server wrapper: reads the signed-in patient's real, Supabase-backed session history
+// (patient_session_history, self-scoped to the caller) instead of an on-device localStorage mirror.
 export default async function ProgressPage() {
-  const supabase = createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  return <ProgressClient userId={user?.id ?? ""} />;
+  const sessions = await loadRealSessions();
+  return <ProgressClient sessions={sessions} />;
 }

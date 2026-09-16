@@ -1,8 +1,10 @@
 "use client";
 
-// ProgressClient — the patient's longitudinal read, scoped to THEIR on-device history (userId-namespaced
-// store). Deliberately chart-free: progress is communicated through large editorial numerals, plain-language
-// deltas, and lucide trend glyphs — no systematic graphs. Data comes from the same engine the coach uses.
+// ProgressClient — the patient's longitudinal read. Sessions are fetched server-side (progress/page.tsx)
+// from the real, Supabase-backed session history (patient_session_history) — no on-device localStorage
+// mirror, no fixtures. Deliberately chart-free: progress is communicated through large editorial numerals,
+// plain-language deltas, and lucide trend glyphs — no systematic graphs. Data comes from the same engine
+// the coach uses.
 
 import {
   Activity,
@@ -17,19 +19,15 @@ import {
   Waves,
 } from "lucide-react";
 import Link from "next/link";
-import { useEffect, useState } from "react";
 
 import { CountUp } from "@/components/site/primitives";
 import { computeInsights, summarize } from "@/lib/insights/engine";
-import { loadSessions } from "@/lib/insights/store";
 import type { Insight, SessionRecord } from "@/lib/insights/types";
 import { useTranslation } from "@/locales/client";
 import { cn } from "@/lib/utils";
 
-export default function ProgressClient({ userId }: { userId: string }) {
+export default function ProgressClient({ sessions }: { sessions: SessionRecord[] }) {
   const { t } = useTranslation();
-  const [sessions, setSessions] = useState<SessionRecord[] | null>(null);
-  useEffect(() => setSessions(loadSessions(userId)), [userId]);
 
   return (
     <div className="space-y-8">
@@ -38,13 +36,7 @@ export default function ProgressClient({ userId }: { userId: string }) {
         <h1 className="mt-2 max-w-2xl text-4xl leading-[1.05] text-ink sm:text-5xl">{t("progress.title")}</h1>
       </header>
 
-      {sessions === null ? (
-        <LoadingSkeleton />
-      ) : sessions.length === 0 ? (
-        <Empty />
-      ) : (
-        <Body sessions={sessions} />
-      )}
+      {sessions.length === 0 ? <Empty /> : <Body sessions={sessions} />}
     </div>
   );
 }
@@ -250,23 +242,6 @@ function InsightCard({ ins }: { ins: Insight }) {
       {ins.clinical && (
         <p className="mt-3 border-t border-line pt-3 text-[11px] leading-relaxed text-ink-faint">{ins.clinical}</p>
       )}
-    </div>
-  );
-}
-
-function LoadingSkeleton() {
-  return (
-    <div className="space-y-10">
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        {Array.from({ length: 4 }).map((_, i) => (
-          <div key={i} className="h-[104px] animate-pulse rounded-lg border border-line bg-paper-soft/60" />
-        ))}
-      </div>
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        {Array.from({ length: 3 }).map((_, i) => (
-          <div key={i} className="h-[132px] animate-pulse rounded-lg border border-line bg-paper-soft/60" />
-        ))}
-      </div>
     </div>
   );
 }
