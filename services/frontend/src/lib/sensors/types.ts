@@ -28,10 +28,14 @@ export interface SensorState {
   lastSampleAt: number | null;
 }
 
-export type SensorSource = "none" | "mock" | "ble";
+/**
+ * - simulated: the development simulation stands in for Web Bluetooth (lib/ble/simulation.ts, `next dev` with
+ *   NEXT_PUBLIC_SENSOR_SIMULATION=1). Its frames are made by the program; it is announced by SimulatedSensorBanner.
+ */
+export type SensorSource = "none" | "mock" | "ble" | "simulated";
 
 export interface SensorStatusSnapshot {
-  /** "mock" must always be visible to the patient (see MockSensorBanner). */
+  /** "mock" and "simulated" must always be visible to the patient (MockSensorBanner, SimulatedSensorBanner). */
   source: SensorSource;
   sensors: Record<SensorRole, SensorState>;
   /** True only when all three roles are streaming (НТЗ AC-03). */

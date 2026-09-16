@@ -30,6 +30,10 @@
 //
 // Frames are dispatched synchronously to subscribeFrames listeners. The snapshot for React (useSyncExternalStore)
 // is republished on state changes and on a 250 ms tick while connected or reconnecting, never per frame.
+//
+// With the development simulation on (simulation.ts: `next dev` and NEXT_PUBLIC_SENSOR_SIMULATION=1) the browser
+// store takes its devices from simulatedWt901 instead of the chooser: a press connects that role's simulated sensor
+// through the same connectWt901Device, and its binding is never saved (persistence says "simulated").
 
 import { useSyncExternalStore } from "react";
 
@@ -45,6 +49,7 @@ import {
 } from "./connectSensor";
 import { SENSOR_ROLE_ORDER, bodySiteForRole, type SensorRole, type Side } from "./roles";
 import { TARGET_SAMPLE_RATE_HZ, type SampleRateResult } from "./sampleRate";
+import { SIMULATION_ENABLED, requestSimulatedDevice } from "./simulation";
 import type { SupportedRateHz } from "./witRegister";
 import type { ParsedWt901Frame } from "./wt901ble68";
 
@@ -351,7 +356,7 @@ export type BindingPersistence =
   | { status: "idle" }
   | { status: "saving" }
   | { status: "saved" }
-  | { status: "session_only"; reason: "side_unknown" | "no_patient" }
+  | { status: "session_only"; reason: "side_unknown" | "no_patient" | "simulated" }
   | { status: "failed"; detail: string };
 
 export interface LiveRoleState {
@@ -422,7 +427,8 @@ export interface BindingRow {
 /** Everything the store touches outside itself, injectable for tests. */
 export interface LiveSensorsDeps {
   isSupported(): boolean;
-  requestDevice(): Promise<BluetoothDevice>;
+  /** The chooser for a press on `role`; the simulation hands back that role's simulated sensor instead. */
+  requestDevice(role: SensorRole): Promise<BluetoothDevice>;
   connectDevice(
     device: BluetoothDevice,
     handlers: SensorConnectionHandlers,
@@ -438,6 +444,8 @@ export interface LiveSensorsDeps {
   now(): number;
   setInterval(callback: () => void, ms: number): unknown;
   clearInterval(handle: unknown): void;
+  /** The devices are the development simulation's: a binding is never saved. */
+  simulated?: boolean;
 }
 
 export interface LiveSensorsStore {
@@ -858,6 +866,11 @@ export function createLiveSensorsStore(deps: LiveSensorsDeps): LiveSensorsStore 
     replaces: readonly SavedSensorBinding[],
   ): Promise<void> {
     const { patientId, side } = options;
+    if (deps.simulated) {
+      entry.persistence = { status: "session_only", reason: "simulated" };
+      publish();
+      return;
+    }
     if (!patientId || (side !== "left" && side !== "right")) {
       entry.persistence = { status: "session_only", reason: patientId ? "side_unknown" : "no_patient" };
       publish();
@@ -1083,7 +1096,7 @@ export function createLiveSensorsStore(deps: LiveSensorsDeps): LiveSensorsStore 
     publish();
     let device: BluetoothDevice;
     try {
-      device = await deps.requestDevice();
+      device = await deps.requestDevice(role);
     } catch (error) {
       if (entry.generation !== requestGeneration) throw new LiveSensorError(role, makeError("cancelled"));
       entry.requesting = false;
@@ -1217,8 +1230,8 @@ export function createLiveSensorsStore(deps: LiveSensorsDeps): LiveSensorsStore 
 let supabase: ReturnType<typeof createClient> | null = null;
 
 const store = createLiveSensorsStore({
-  isSupported: () => typeof navigator !== "undefined" && Boolean(navigator.bluetooth),
-  requestDevice: requestWt901Device,
+  isSupported: () => SIMULATION_ENABLED || (typeof navigator !== "undefined" && Boolean(navigator.bluetooth)),
+  requestDevice: (role) => (SIMULATION_ENABLED ? requestSimulatedDevice(role) : requestWt901Device()),
   connectDevice: connectWt901Device,
   persistBinding: async (row, replacedRoles) => {
     supabase ??= createClient();
@@ -1242,6 +1255,7 @@ const store = createLiveSensorsStore({
   now: () => Date.now(),
   setInterval: (callback, ms) => setInterval(callback, ms),
   clearInterval: (handle) => clearInterval(handle as ReturnType<typeof setInterval>),
+  simulated: SIMULATION_ENABLED,
 });
 
 const SERVER_SNAPSHOT: LiveSensorsSnapshot = {

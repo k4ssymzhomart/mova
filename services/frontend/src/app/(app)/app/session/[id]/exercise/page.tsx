@@ -1,4 +1,5 @@
-// Step 3 of the exercise flow (Упражнение). Heel Slide runs here with real sensors (HeelSlideExercise). Any other
+// Step 3 of the exercise flow (Упражнение). Heel Slide runs here with real sensors (HeelSlideExercise), or with the
+// development simulation's, which the flow frame announces and the session records as simulated. Any other
 // exercise keeps the placeholder: this path covers one exercise. The frame above already shows the three sensor
 // statuses on this step.
 //

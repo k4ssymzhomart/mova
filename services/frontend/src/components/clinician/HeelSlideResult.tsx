@@ -4,8 +4,11 @@
 // only as a labelled aside, the proxy chart, the technical facts a hardware check needs (per-sensor frames and rates,
 // the rate checks, battery at start and finish, reconnects, the skew between sensors kept apart from the recount's
 // pairing tolerance, what the device confirmed sending), and the patient's check-in answers. No score and no knee
-// angle: the proxy is shown only on the chart, under its honest label.
+// angle: the proxy is shown only on the chart, under its honest label. A session recorded on the simulated transport
+// carries a notice above everything that cannot be dismissed, and says so again in the session list, the chart
+// caption and the technical block, so no part of it can be read as sensor data.
 
+import { TriangleAlert } from "lucide-react";
 import Link from "next/link";
 
 import LocalDateTime from "@/components/app/LocalDateTime";
@@ -39,6 +42,7 @@ export default function HeelSlideResult({ section }: { section: Visible }) {
   const { t } = getTranslation();
   const selectedId =
     section.kind === "ok" ? section.view.session.id : section.kind === "error" ? section.selectedId : null;
+  const simulated = section.kind === "ok" && section.view.session.simulated;
 
   let problem: string | null = null;
   if (section.kind === "error") {
@@ -49,6 +53,15 @@ export default function HeelSlideResult({ section }: { section: Visible }) {
 
   return (
     <section aria-labelledby="heel-slide-result-title" className={cn(card, "p-5 shadow-soft sm:p-6")}>
+      {simulated && (
+        <p
+          role="note"
+          className="mb-6 flex items-start gap-2 rounded-card border-2 border-amber-700 bg-amber-50 px-4 py-3 text-lg font-semibold leading-snug text-ink"
+        >
+          <TriangleAlert className="mt-0.5 size-6 shrink-0 text-amber-700" strokeWidth={2} aria-hidden="true" />
+          {t("clinician.heelSlide.simulated.notice")}
+        </p>
+      )}
       <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_320px]">
         <div className="min-w-0 space-y-8">
           {section.kind === "ok" ? (
@@ -67,7 +80,13 @@ export default function HeelSlideResult({ section }: { section: Visible }) {
 
         <aside className="space-y-8">
           {section.kind === "ok" && <CheckIn answers={section.view.checkIn} t={t} />}
-          <SessionLinks patientId={section.patientId} sessions={section.sessions} selectedId={selectedId} t={t} />
+          <SessionLinks
+            patientId={section.patientId}
+            sessions={section.sessions}
+            selectedId={selectedId}
+            simulatedId={simulated ? selectedId : null}
+            t={t}
+          />
         </aside>
       </div>
     </section>
@@ -108,7 +127,7 @@ function SessionResult({ view, t }: { view: HeelSlideView; t: T }) {
       <div>
         <h3 className={cardTitle}>{t("clinician.heelSlide.chart.title")}</h3>
         <div className="mt-4">
-          <HeelSlideProxyChart chart={view.chart} />
+          <HeelSlideProxyChart chart={view.chart} simulated={session.simulated} />
         </div>
       </div>
 
@@ -219,6 +238,12 @@ function Technical({ view, t }: { view: HeelSlideView; t: T }) {
   return (
     <div>
       <h3 className={cardTitle}>{t("clinician.heelSlide.tech.title")}</h3>
+      {view.session.simulated && (
+        <p className="mt-2 flex items-start gap-2 text-base font-semibold leading-relaxed text-ink">
+          <TriangleAlert className="mt-0.5 size-5 shrink-0 text-amber-700" strokeWidth={2} aria-hidden="true" />
+          {t("clinician.heelSlide.simulated.technical")}
+        </p>
+      )}
       <div className="mt-4 overflow-x-auto">
         <table className="w-full min-w-[640px] border-collapse text-left text-base">
           <thead>
@@ -405,15 +430,21 @@ function CheckIn({ answers, t }: { answers: CheckInAnswers | null; t: T }) {
   );
 }
 
+/**
+ * `simulatedId` is the session on screen when it was simulated. The list RPC carries no device record, so a
+ * simulated session is marked here once it is opened.
+ */
 function SessionLinks({
   patientId,
   sessions,
   selectedId,
+  simulatedId,
   t,
 }: {
   patientId: string;
   sessions: ReviewSessionItem[];
   selectedId: string | null;
+  simulatedId: string | null;
   t: T;
 }) {
   const shown = sessions.slice(0, SESSION_LINKS);
@@ -449,6 +480,12 @@ function SessionLinks({
                 <span className={cn("text-ink", current && "font-semibold")}>
                   {item.startedAt ? <LocalDateTime iso={item.startedAt} format="dateTime" /> : t("clinician.heelSlide.unknown")}
                 </span>
+                {item.id === simulatedId && (
+                  <span className="inline-flex w-fit items-center gap-1.5 rounded-pill border-2 border-amber-700 bg-amber-50 px-2 text-sm font-semibold text-ink">
+                    <TriangleAlert className="size-4 shrink-0 text-amber-700" strokeWidth={2} aria-hidden="true" />
+                    {t("clinician.heelSlide.simulated.listLabel")}
+                  </span>
+                )}
                 <span className="text-sm text-ink-soft">
                   {statusLabel(item.status, t)} ·{" "}
                   {item.hasCheckIn ? t("clinician.heelSlide.sessions.hasCheckIn") : t("clinician.heelSlide.sessions.noCheckIn")}

@@ -14,6 +14,8 @@ export interface ToFrameRowOptions {
    * evaluation tick (at most once a second), so 150 rows/s do not each repeat the same report.
    */
   attachReport?: boolean;
+  /** The frame came from the development simulation (simulation.ts): the row says `imu.origin: "simulated"`. */
+  simulated?: boolean;
 }
 
 /**
@@ -34,7 +36,7 @@ export function toFrameRow(
   role: SensorRole,
   frame: ParsedWt901Frame,
   seq: number,
-  { recordedAt = new Date(), quality = null, attachReport = false }: ToFrameRowOptions = {},
+  { recordedAt = new Date(), quality = null, attachReport = false, simulated = false }: ToFrameRowOptions = {},
 ): FrameRow {
   const imu: Record<string, unknown> = {
     role,
@@ -47,6 +49,7 @@ export function toFrameRow(
     euler_deg: frame.eulerDegrees,
     validation_status: "unverified_checksum",
   };
+  if (simulated) imu.origin = "simulated";
   if (attachReport && quality) imu.signal_quality = quality;
   return {
     recorded_at: recordedAt.toISOString(),

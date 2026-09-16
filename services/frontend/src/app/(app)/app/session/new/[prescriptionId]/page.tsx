@@ -1,6 +1,7 @@
 // Step 1 of the exercise flow (Датчики). Loads the prescription the patient started from Today and what connecting
 // sensors needs (the patient, the side bindings are saved under, the saved bindings), then hands over to
-// SensorsStep. There is no session row yet: SensorsStep creates it once three real sensors are streaming.
+// SensorsStep. There is no session row yet: SensorsStep creates it once three real sensors are streaming (or, on
+// `next dev` with NEXT_PUBLIC_SENSOR_SIMULATION=1, three simulated ones, and the session is stamped as simulated).
 //
 // Only Heel Slide runs on this path. For any other exercise the step stays the honest placeholder it was before:
 // no sensor panel, nothing connected or saved, and no session opened, because nothing after this step could finish

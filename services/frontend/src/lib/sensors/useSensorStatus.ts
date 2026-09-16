@@ -10,6 +10,9 @@
 //  - "mock": NEXT_PUBLIC_SENSOR_MOCK=1, for walking through the flow without hardware. Refused on the
 //    production Vercel deployment, and always announced on screen by MockSensorBanner. Battery stays null:
 //    a mock never invents device readings. The live store is not consulted while the mock is on.
+//  - "simulated": in place of "ble" and "none" while the development simulation runs the live store
+//    (lib/ble/simulation.ts: `next dev` with NEXT_PUBLIC_SENSOR_SIMULATION=1), connected or not, so the screen can
+//    say so from the start. The mock, when also on, still wins.
 
 import { useSyncExternalStore } from "react";
 
@@ -18,6 +21,7 @@ import {
   subscribe as subscribeLive,
   type LiveSensorsSnapshot,
 } from "@/lib/ble/liveSensors";
+import { SIMULATION_ENABLED } from "@/lib/ble/simulation";
 
 import {
   SENSOR_ROLES,
@@ -66,7 +70,7 @@ function fromLive(live: LiveSensorsSnapshot): SensorStatusSnapshot {
     sensors[role] = { role, link: state.link, batteryPct: null, lastSampleAt: state.lastSampleAt };
   }
   bleSource = live;
-  bleSnapshot = { source: "ble", sensors, allStreaming: live.allStreaming };
+  bleSnapshot = { source: SIMULATION_ENABLED ? "simulated" : "ble", sensors, allStreaming: live.allStreaming };
   return bleSnapshot;
 }
 
@@ -75,8 +79,8 @@ function getSnapshot(): SensorStatusSnapshot {
   const live = getLiveSnapshot();
   if (live.active) return fromLive(live);
   if (!noneSnapshot) {
-    const link: SensorLink = "bluetooth" in navigator ? "disconnected" : "unsupported";
-    noneSnapshot = build("none", { thigh: link, shank: link, foot: link });
+    const link: SensorLink = SIMULATION_ENABLED || "bluetooth" in navigator ? "disconnected" : "unsupported";
+    noneSnapshot = build(SIMULATION_ENABLED ? "simulated" : "none", { thigh: link, shank: link, foot: link });
   }
   return noneSnapshot;
 }

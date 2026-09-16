@@ -24,6 +24,7 @@ import { cn } from "@/lib/utils";
 import { useTranslation } from "@/locales/client";
 
 import MockSensorBanner from "./MockSensorBanner";
+import SimulatedSensorBanner from "./SimulatedSensorBanner";
 import { SensorStatusStrip } from "./SensorStatusRows";
 import { FLOW_STEPS, flowLocation } from "./steps";
 
@@ -93,6 +94,7 @@ export default function SessionFlowFrame({ children }: { children: ReactNode }) 
       </div>
 
       <MockSensorBanner />
+      <SimulatedSensorBanner />
       {(step === "calibrate" || step === "exercise") && <SensorStatusStrip snapshot={sensors} />}
 
       {children}

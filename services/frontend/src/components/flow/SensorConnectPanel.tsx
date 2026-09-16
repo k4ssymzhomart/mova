@@ -16,6 +16,10 @@
 // link is down or silent the row shows the last check with its time and says it may have changed (sensorReadout
 // rateView), and the store checks again after a reconnect.
 //
+// With the development simulation on (lib/ble/simulation.ts), each row is marked «Симуляция», a press connects the
+// role's simulated sensor without the chooser, and the rate lines say the readback came from the simulation, not from
+// a sensor.
+//
 // A row's errors (a refused device, a failed or dropped connection) appear after the chooser has closed, so each row
 // keeps a live region that announces them, and the row's button is described by the error while it shows. A press
 // on a dropped sensor first tries the same sensor again, taking over an automatic attempt that may be running; the
@@ -36,11 +40,12 @@ import {
   type LiveSensorErrorInfo,
 } from "@/lib/ble/liveSensors";
 import { SENSOR_ROLE_ORDER } from "@/lib/ble/roles";
+import { SIMULATION_ENABLED } from "@/lib/ble/simulation";
 import { cn } from "@/lib/utils";
 import { useTranslation } from "@/locales/client";
 
 import { formatClockTime, formatNumber, linkLabelKey, rateView, shortBatteryPercent } from "./sensorReadout";
-import { SensorLinkIcon } from "./SensorStatusRows";
+import { SensorLinkIcon, SimulatedMark } from "./SensorStatusRows";
 
 type Translate = ReturnType<typeof useTranslation>["t"];
 
@@ -139,6 +144,8 @@ function SensorRow({
   // The store's press outlives this row when the exercise screen closes and reopens the panel mid-press.
   const pressing = pending || state.press !== null;
   const sameDeviceTry = state.press === "same_device";
+  // Lines about what the sensor reported name the simulation instead when it stands in for the sensors.
+  const says = SIMULATION_ENABLED ? "flow.sensors.simulated" : "flow.sensors";
 
   let device: string | null = null;
   if (state.deviceId !== null) {
@@ -156,18 +163,18 @@ function SensorRow({
     const reason = t(`flow.sensors.rateReason.${result.failure ?? "unknown"}`);
     if (rateNow.kind === "current") {
       rateLine = result.confirmed
-        ? t("flow.sensors.rateConfirmed", { hz: hz(result.requestedHz) })
-        : t("flow.sensors.rateNotConfirmed", { hz: hz(result.requestedHz), reason });
+        ? t(`${says}.rateConfirmed`, { hz: hz(result.requestedHz) })
+        : t(`${says}.rateNotConfirmed`, { hz: hz(result.requestedHz), reason });
     } else {
       const time = formatClockTime(locale, rateNow.atMs);
       rateLine = result.confirmed
-        ? t("flow.sensors.rateLastConfirmed", { time, hz: hz(result.requestedHz) })
-        : t("flow.sensors.rateLastNotConfirmed", { time, hz: hz(result.requestedHz), reason });
+        ? t(`${says}.rateLastConfirmed`, { time, hz: hz(result.requestedHz) })
+        : t(`${says}.rateLastNotConfirmed`, { time, hz: hz(result.requestedHz), reason });
     }
   }
 
   let delivered: string | null = null;
-  if (state.deliveredHz !== null) delivered = t("flow.sensors.delivered", { hz: hz(state.deliveredHz) });
+  if (state.deliveredHz !== null) delivered = t(`${says}.delivered`, { hz: hz(state.deliveredHz) });
   else if (link === "streaming") delivered = t("flow.sensors.deliveredMeasuring");
 
   let reconnectLine: string | null = null;
@@ -194,6 +201,7 @@ function SensorRow({
             <div id={titleId} className="text-lg font-semibold text-ink">
               {t(`sensors.role.${role}`)}
             </div>
+            {SIMULATION_ENABLED && <SimulatedMark />}
             {batteryPercent !== null && (
               <span className="tnum text-base text-ink-soft">
                 <span aria-hidden="true">{t("flow.sensors.batteryShort", { n: formatNumber(locale, batteryPercent) })}</span>

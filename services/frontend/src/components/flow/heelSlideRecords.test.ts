@@ -126,6 +126,15 @@ test("device_info records each role's device, rate, delivered rate and battery",
   assert.equal(info.roles.foot.rate.requested_hz, 100);
 });
 
+test("device_info of a simulated session says simulated for transport and model, with the same role records", () => {
+  const live = { roles: roles() };
+  const info = sensorDeviceInfo(live, true);
+  assert.equal(info.transport, "simulated");
+  assert.equal(info.model_label, "simulated");
+  assert.deepEqual(info.roles, sensorDeviceInfo(live).roles);
+  assert.equal(sensorDeviceInfo(live, false).transport, "web-bluetooth");
+});
+
 test("device_info reads back: start devices, batteries and the requested rate", () => {
   const info = sensorDeviceInfo({ roles: roles({ shank: { requestedHz: 100, batteryError: "implausible_value" } }) });
   const start = startSensorsFromDeviceInfo(JSON.parse(JSON.stringify(info)));
@@ -184,6 +193,13 @@ test("the summary has exactly the heel_slide_path.v1 keys", () => {
     "reconnects",
   ]);
   assert.deepEqual(summary.telemetry, { frames_confirmed: 9000, pending_at_finish: 0, errors: 0, dropped: 0 });
+});
+
+test("a simulated session's summary adds simulated: true; a real one has no such key", () => {
+  const simulated = buildHeelSlideSummary(summaryInput({ simulated: true }));
+  assert.equal(simulated.simulated, true);
+  assert.equal(Object.keys(simulated).at(-1), "simulated");
+  assert.equal("simulated" in buildHeelSlideSummary(summaryInput({ simulated: false })), false);
 });
 
 test("sensors in the summary carry the rate history, battery and the reconnects that worked", () => {

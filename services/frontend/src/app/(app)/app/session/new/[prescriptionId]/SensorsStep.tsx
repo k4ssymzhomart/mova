@@ -1,9 +1,14 @@
 "use client";
 
 // The live part of the sensors step (НТЗ AC-03): the three sensors connected one by one over Web Bluetooth, then
-// «Далее». «Далее» opens only when all three are streaming over the real transport. With the mock on it stays
-// disabled and says why next to it: a simulated sensor must never start a real session. An unconfirmed sample rate
+// «Далее». «Далее» opens only when all three are streaming over the real transport (sensorsReady.ts). With the mock
+// on it stays disabled and says why next to it: the mock must never start a session. An unconfirmed sample rate
 // does not block. The row shows it and the session records it; the delivered rate is the figure that counts.
+//
+// The one exception is the development simulation (lib/ble/simulation.ts: `next dev` with
+// NEXT_PUBLIC_SENSOR_SIMULATION=1), whose simulated sensors stand in for the real ones and do produce the session's
+// frames. It may open a session, which is then stamped as simulated in device_info, and the frame's banner says so
+// on screen the whole time.
 //
 // The rate the sensors are asked for comes from the page (`?rate=`, 50 Hz unless 100) and is handed to the sensor
 // store before anything connects; the store writes it on every connect and reconnect. The closed «Технические
@@ -25,9 +30,11 @@ import { useEffect, useId, useRef, useState } from "react";
 import { primaryButton } from "@/components/app/recipes";
 import { sensorDeviceInfo } from "@/components/flow/heelSlideRecords";
 import SensorConnectPanel, { type SavedDeviceRow } from "@/components/flow/SensorConnectPanel";
+import { sensorsStepReady } from "@/components/flow/sensorsReady";
 import SensorTechnicalReadout from "@/components/flow/SensorTechnicalReadout";
 import { stepHref } from "@/components/flow/steps";
 import { getSnapshot, setRequestedRate, useLiveSensors } from "@/lib/ble/liveSensors";
+import { SIMULATION_ENABLED } from "@/lib/ble/simulation";
 import type { SupportedRateHz } from "@/lib/ble/witRegister";
 import { useSensorStatus } from "@/lib/sensors/useSensorStatus";
 import { createClient } from "@/lib/supabase/client";
@@ -60,7 +67,7 @@ export default function SensorsStep({
     setRequestedRate(requestedHz);
   }, [requestedHz]);
 
-  const ready = snapshot.source === "ble" && live.allStreaming;
+  const ready = sensorsStepReady(snapshot.source, live.allStreaming, SIMULATION_ENABLED);
   const reason = ready
     ? null
     : snapshot.source === "mock"
@@ -80,7 +87,7 @@ export default function SensorsStep({
     try {
       const { data, error } = await createClient().rpc("start_prescribed_session", {
         p_prescription: prescriptionId,
-        p_device_info: sensorDeviceInfo(getSnapshot()),
+        p_device_info: sensorDeviceInfo(getSnapshot(), snapshot.source === "simulated"),
       });
       const id = (data as { id?: unknown } | null)?.id;
       if (!error && typeof id === "string") sessionId = id;

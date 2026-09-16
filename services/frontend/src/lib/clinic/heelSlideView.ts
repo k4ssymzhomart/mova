@@ -18,7 +18,8 @@
 //
 // Honesty: the charted value is the flexion proxy, a relative orientation difference between two uncalibrated
 // sensors. It is not knee flexion and nothing here turns it into a score. Anything the payload does not carry is
-// null and is shown as unknown, never filled in.
+// null and is shown as unknown, never filled in. A session recorded on the simulated transport is flagged, so the page
+// can say on every part of it that the data came from the program and not from sensors.
 
 import type { SensorRole } from "@/lib/ble/roles";
 import type {
@@ -93,6 +94,17 @@ function record(value: unknown): JsonRecord {
 /** Ids reach the page from the URL; anything that is not a uuid cannot name a row. */
 export function isUuid(value: unknown): value is string {
   return typeof value === "string" && UUID.test(value);
+}
+
+/**
+ * Whether the session ran on the simulated sensor transport (a development server started with
+ * NEXT_PUBLIC_SENSOR_SIMULATION=1, for recording the path without hardware): the start record says
+ * device_info.transport "simulated", or the finish record says summary.simulated true. Either one is enough, because
+ * a session that never finished has only the start record. Its frames were made by the program, not by sensors.
+ */
+export function isSimulatedSession(session: unknown): boolean {
+  if (!isRecord(session)) return false;
+  return record(session.device_info).transport === "simulated" || record(session.summary).simulated === true;
 }
 
 // --- session list ---------------------------------------------------------------------------------------------
@@ -507,6 +519,8 @@ export interface HeelSlideView {
     startedAt: string | null;
     endedAt: string | null;
     durationMs: number | null;
+    /** Recorded on the simulated transport: no frame came from a sensor. See isSimulatedSession. */
+    simulated: boolean;
   };
   exerciseName: string | null;
   /** Prescribed reps, else the exercise's default dose. */
@@ -773,6 +787,7 @@ export function buildHeelSlideView(
       startedAt,
       endedAt,
       durationMs: durationBetween(startedAt, endedAt),
+      simulated: isSimulatedSession(session),
     },
     exerciseName: exercise ? str(exercise.name) : null,
     targetReps: positiveInt(dose.reps) ?? positiveInt(defaultDose.reps),

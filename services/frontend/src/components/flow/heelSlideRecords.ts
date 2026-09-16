@@ -6,7 +6,9 @@
 //    read by the clinician view.
 //
 // A record says what the transport and the counter reported, nothing more: an unknown value is stored as null,
-// never as a default. Only types come from lib/ble and lib/motion, so this module has no runtime imports.
+// never as a default. A session run on the development simulation (lib/ble/simulation.ts) says so in both records:
+// device_info.transport and model_label are "simulated", and the summary carries simulated: true. Only types come
+// from lib/ble and lib/motion, so this module has no runtime imports.
 
 import type { BatteryReading, LiveRoleState, LiveSensorsSnapshot, RateState } from "@/lib/ble/liveSensors";
 import type { SensorRole } from "@/lib/ble/roles";
@@ -19,6 +21,9 @@ export const SENSOR_ROLES: readonly SensorRole[] = ["thigh", "shank", "foot"];
 
 /** The model printed on the sensors has not been checked against the datasheet yet (hardware checklist). */
 export const SENSOR_MODEL_LABEL = "WT901BLE68 (unverified)";
+
+/** transport and model_label of a session whose sensors were the development simulation. */
+export const SIMULATED_TRANSPORT = "simulated";
 
 type RateFailure = "no_reply" | "mismatch" | "write_failed";
 
@@ -95,13 +100,16 @@ export interface SensorRoleRecord {
 }
 
 export interface SensorDeviceInfo {
-  transport: "web-bluetooth";
+  transport: "web-bluetooth" | typeof SIMULATED_TRANSPORT;
   model_label: string;
   roles: Record<SensorRole, SensorRoleRecord>;
 }
 
-/** sessions.device_info for a session opened with the sensors in this snapshot. Hardware descriptors only. */
-export function sensorDeviceInfo(snapshot: Pick<LiveSensorsSnapshot, "roles">): SensorDeviceInfo {
+/**
+ * sessions.device_info for a session opened with the sensors in this snapshot. Hardware descriptors only; `simulated`
+ * when the sensors were the development simulation.
+ */
+export function sensorDeviceInfo(snapshot: Pick<LiveSensorsSnapshot, "roles">, simulated = false): SensorDeviceInfo {
   const roles = {} as Record<SensorRole, SensorRoleRecord>;
   for (const role of SENSOR_ROLES) {
     const state = snapshot.roles[role];
@@ -113,6 +121,7 @@ export function sensorDeviceInfo(snapshot: Pick<LiveSensorsSnapshot, "roles">): 
       battery: batteryRecord(state.battery, state.batteryError),
     };
   }
+  if (simulated) return { transport: SIMULATED_TRANSPORT, model_label: SIMULATED_TRANSPORT, roles };
   return { transport: "web-bluetooth", model_label: SENSOR_MODEL_LABEL, roles };
 }
 
@@ -208,6 +217,8 @@ export interface SummarySensorRecord {
  *  - sensors describe the device bound to each role at finish; battery_start is that device's first known reading.
  *  - telemetry counters are this page's recorder's, null when it never recorded; pending_at_finish is the rows
  *    still stored on the device for this session, null when that could not be read.
+ *  - simulated is present, and true, only when the sensors were the development simulation: the reps, segments and
+ *    frames were made by the program, not measured.
  */
 export interface HeelSlideSummary {
   kind: typeof HEEL_SLIDE_SUMMARY_KIND;
@@ -226,6 +237,7 @@ export interface HeelSlideSummary {
     errors: number | null;
     dropped: number | null;
   };
+  simulated?: true;
 }
 
 /** The first battery reading the exercise screen saw for a role, with the device it came from. */
@@ -267,6 +279,8 @@ export interface HeelSlideSummaryInput {
   startSensors: Record<SensorRole, StartSensor>;
   firstSeenBattery: Partial<Record<SensorRole, SeenBattery>>;
   telemetry: FinishTelemetry;
+  /** The sensors were the development simulation. */
+  simulated?: boolean;
 }
 
 /**
@@ -346,6 +360,7 @@ export function buildHeelSlideSummary(input: HeelSlideSummaryInput): HeelSlideSu
       errors: telemetry.counters ? telemetry.counters.errors : null,
       dropped: telemetry.counters ? telemetry.counters.framesDropped : null,
     },
+    ...(input.simulated ? { simulated: true as const } : {}),
   };
 }
 

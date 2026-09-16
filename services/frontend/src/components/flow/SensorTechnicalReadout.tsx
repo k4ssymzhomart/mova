@@ -11,6 +11,10 @@
 // WitMotion's interpolation table for the voltage and is labelled so; a failed read is shown as unknown, with the
 // last good reading dated rather than passed off as current. The rate readback is dated the same way while the
 // sensor is not streaming: the rate lives in the sensor's RAM, so a past confirmation is shown as the last check.
+//
+// With the development simulation on (lib/ble/simulation.ts) the block says first that the frames and the rate
+// readback come from the simulation, labels the readback as the simulation's, and gives the battery as unknown
+// because the simulation reports none.
 
 import { ChevronRight } from "lucide-react";
 import { Fragment, useId, type ReactNode } from "react";
@@ -19,6 +23,7 @@ import { card, focusRing } from "@/components/app/recipes";
 import { useLiveSensors, type LiveRoleState, type RateHistoryEntry } from "@/lib/ble/liveSensors";
 import { SENSOR_ROLE_ORDER } from "@/lib/ble/roles";
 import type { SampleRateResult } from "@/lib/ble/sampleRate";
+import { SIMULATION_ENABLED } from "@/lib/ble/simulation";
 import { cn } from "@/lib/utils";
 import type { Locale } from "@/locales";
 import { useTranslation } from "@/locales/client";
@@ -61,6 +66,9 @@ export default function SensorTechnicalReadout() {
         {t("flow.readout.title")}
       </summary>
       <div className="space-y-6 border-t border-line px-5 py-5">
+        {SIMULATION_ENABLED && (
+          <p className="text-sm font-semibold leading-relaxed text-ink">{t("flow.readout.simulatedHint")}</p>
+        )}
         <p className="text-sm leading-relaxed text-ink-soft">{t("flow.readout.hint")}</p>
         {SENSOR_ROLE_ORDER.map((role) => (
           <RoleReadout key={role} state={live.roles[role]} t={t} locale={locale} nowMs={nowMs} />
@@ -142,6 +150,7 @@ function RoleReadout({
   } else {
     batteryValue = t("flow.readout.batteryUnread");
   }
+  if (SIMULATION_ENABLED && state.deviceId !== null) batteryValue = t("flow.readout.batterySimulated");
 
   const { reconnect } = state;
   const nextIn = secondsUntil(reconnect.nextAttemptAtMs, nowMs);
@@ -168,7 +177,7 @@ function RoleReadout({
     },
     { label: t("flow.readout.link"), value: t(linkLabelKey(state)) },
     { label: t("flow.readout.requested"), value: hz(state.requestedHz) },
-    { label: t("flow.readout.readback"), value: readback },
+    { label: t(SIMULATION_ENABLED ? "flow.readout.readbackSimulated" : "flow.readout.readback"), value: readback },
     { label: t("flow.readout.history"), value: history },
     { label: t("flow.readout.delivered"), value: state.deliveredHz === null ? UNKNOWN : hz(state.deliveredHz) },
     { label: t("flow.readout.frames30"), value: count(state.framesLast30s) },

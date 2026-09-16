@@ -43,6 +43,7 @@ prescription builder, safety triage of the check-in answers.
 | Signal quality | Evaluated at most once per second and stored; not enforced. |
 | Catalog row | `heel-slide` is `is_published = false`, `approval_state: "draft"`. |
 | Accounts | `@mova.test` test accounts in an isolated clinic, `heel-slide-test`. |
+| Simulated sessions | Only from a local development server started with `NEXT_PUBLIC_SENSOR_SIMULATION=1`, for recording the path without hardware (§4, Recorded walkthrough). The frames are made by the program. The session is marked simulated in the database, on the sensors step, on the exercise screen and in the clinician's Heel Slide result. |
 
 ## 2. Apply the migrations
 
@@ -234,6 +235,48 @@ Production has no password form, and the other sign-in routes cannot reach these
 `.test` address is never delivered (the hosted project has no custom SMTP either, so its built-in mailer sends only
 to members of the project's organisation, two emails an hour), and Google sign-in cannot produce a `@mova.test`
 account.
+
+### Recorded walkthrough (simulated)
+
+For recording the whole path (sign-in, Today, sensors, exercise to 10 / 10, check-in, summary, clinician view) when
+no sensors are at hand. It writes one real session for the test patient to the hosted database, and that session
+is simulated.
+
+```bash
+cd services/frontend
+# HEEL_SLIDE_PATIENT_PASSWORD and HEEL_SLIDE_CLINICIAN_PASSWORD in .env.local or the shell, as for the seed
+NEXT_PUBLIC_SENSOR_SIMULATION=1 npx next dev
+```
+
+Use `npx next dev`, not `npm run dev` (that script runs `next start`). `NEXT_PUBLIC_` values are compiled in when the
+server starts, so set the flag before starting it.
+
+- **Sign-in.** `/signin` shows «Войти как тестовый пациент» and «Войти как тестовый врач» when test sign-in is
+  allowed (a local development server or a Vercel preview, the same rule as the password form) and both passwords
+  are set in the server environment. Each button posts to `/api/dev/test-login`, which signs in with the password
+  from the server environment and lands on `/app` or `/clinician`. No password is typed, shown, logged or sent to
+  the browser. Elsewhere the buttons are not rendered and the route answers 404. To switch to the clinician, press
+  the clinician button; it replaces the patient's session in that browser.
+- **Simulated transport.** It exists only when `NODE_ENV` is `development` and `NEXT_PUBLIC_SENSOR_SIMULATION` is
+  `1`, so a production build never has it. It drives the sensors step and the exercise screen with frames the
+  program makes, and «Далее» opens on it.
+- **Marked everywhere.** The session is stored with `device_info.transport = "simulated"` and
+  `summary.simulated = true`, and every stored frame carries `imu.origin = "simulated"`. The sensors step and the
+  exercise screen say it is simulated. In the clinician view a notice that cannot be dismissed opens the Heel Slide result («Симулированное занятие: данные созданы программой,
+  не датчиками»), the session list marks the session on screen as simulated, and the chart caption and the
+  technical block say so again. The legacy "recent sessions" table lower on the patient page (from 0022) does not
+  mark it.
+- **The mock is unchanged.** `NEXT_PUBLIC_SENSOR_MOCK` still only shows sensor states for review: with it on,
+  «Далее» stays closed and no session is started, in every build. Leave it unset for the walkthrough.
+
+The walkthrough adds one session. Find simulated sessions afterwards with:
+
+```sql
+select id, started_at, status, device_info ->> 'transport' as transport, summary -> 'simulated' as simulated
+from public.sessions
+where device_info ->> 'transport' = 'simulated' or summary ->> 'simulated' = 'true'
+order by started_at desc;
+```
 
 ## 5. Hardware walk-through
 

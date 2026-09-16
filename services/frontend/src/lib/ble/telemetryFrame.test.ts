@@ -69,6 +69,11 @@ describe("toFrameRow", () => {
     expect(between.imu).not.toHaveProperty("signal_quality");
   });
 
+  it("marks a simulated frame's imu with origin simulated, and a real one not at all", () => {
+    expect(toFrameRow("thigh", FRAME, 0, { simulated: true }).imu).toMatchObject({ origin: "simulated", role: "thigh" });
+    expect(toFrameRow("thigh", FRAME, 0).imu).not.toHaveProperty("origin");
+  });
+
   it("keeps pitch at euler index 1", () => {
     const row = toFrameRow("shank", FRAME, 0);
     expect((row.imu as { euler_deg: number[] }).euler_deg[1]).toBe(-3.25);

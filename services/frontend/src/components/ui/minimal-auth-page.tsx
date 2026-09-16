@@ -14,10 +14,20 @@ type Provider = "google";
 // Password sign-in for the seeded test accounts (docs/heel-slide-path.md): a tester on a Vercel preview signs in
 // as the test patient or clinician without a mailbox. Real accounts sign in with Google or an email link and have
 // no password, and the form refuses any address outside the test domain. The sign-in page decides whether to show
-// it (development and previews only); it is never rendered in production.
+// it (development and previews only); it is never rendered in production. Next to it, one button per test account
+// signs in through /api/dev/test-login, which keeps the password in the server environment, so nothing is typed or
+// shown on a recording. The sign-in page shows the buttons only where that route works and both passwords are set.
 const TEST_EMAIL_DOMAIN = "@mova.test";
 
-export function MinimalAuthPage({ testPasswordLogin = false }: { testPasswordLogin?: boolean }) {
+type TestAccount = "patient" | "clinician";
+
+export function MinimalAuthPage({
+  testPasswordLogin = false,
+  testAccountButtons = false,
+}: {
+  testPasswordLogin?: boolean;
+  testAccountButtons?: boolean;
+}) {
   const { t } = useTranslation();
   const [supabase] = React.useState(() => createClient());
   const [email, setEmail] = React.useState("");
@@ -92,6 +102,38 @@ export function MinimalAuthPage({ testPasswordLogin = false }: { testPasswordLog
       return;
     }
     window.location.assign(nextParam());
+  }
+
+  // One request, no retry. The route answers only { ok, next }; any failure gets the same message.
+  async function testAccountButtonLogin(account: TestAccount) {
+    setBusy(`test-${account}`);
+    setMsg(null);
+    let next: string | null = null;
+    try {
+      const response = await fetch("/api/dev/test-login", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ account }),
+      });
+      const body: unknown = response.ok ? await response.json() : null;
+      const candidate = body !== null && typeof body === "object" ? (body as { ok?: unknown; next?: unknown }) : null;
+      if (
+        candidate?.ok === true &&
+        typeof candidate.next === "string" &&
+        candidate.next.startsWith("/") &&
+        !candidate.next.startsWith("//")
+      ) {
+        next = candidate.next;
+      }
+    } catch {
+      next = null;
+    }
+    if (next === null) {
+      setBusy(null);
+      setMsg({ kind: "error", text: t("auth.testLogin.accountFailed") });
+      return;
+    }
+    window.location.assign(next);
   }
 
   async function testAccountLogin(e: React.FormEvent) {
@@ -209,6 +251,25 @@ export function MinimalAuthPage({ testPasswordLogin = false }: { testPasswordLog
             >
               {busy === "dev" ? "Signing in…" : "Dev auto-login · dev@mova.local"}
             </button>
+          )}
+
+          {testAccountButtons && (
+            <div className="space-y-2.5">
+              {(["patient", "clinician"] as const).map((account) => (
+                <Button
+                  key={account}
+                  type="button"
+                  variant="secondary"
+                  size="lg"
+                  className="h-12 w-full"
+                  disabled={busy !== null}
+                  onClick={() => testAccountButtonLogin(account)}
+                >
+                  {busy === `test-${account}` ? <Loader2 className="me-2 size-4 animate-spin" /> : null}
+                  {t(account === "patient" ? "auth.testLogin.asPatient" : "auth.testLogin.asClinician")}
+                </Button>
+              ))}
+            </div>
           )}
 
           {testPasswordLogin && (

@@ -59,6 +59,17 @@ describe("BleSessionRecorder", () => {
     expect(recorder.framesRecorded).toBe(3);
   });
 
+  it("marks every row as simulated when recording the development simulation", async () => {
+    const { created, createBuffer } = fakeBuffers();
+    const recorder = new BleSessionRecorder({ createBuffer, simulated: true });
+    await recorder.start("session-1");
+    const t0 = Date.UTC(2026, 8, 15, 10, 0, 0);
+    for (const role of ["thigh", "shank", "foot"] as const) recorder.recordFrame(role, FRAME, t0);
+    for (let i = 0; i < 1500; i += 1) recorder.recordFrame("thigh", FRAME, t0 + i * 20);
+
+    expect(created[0].rows.every((row) => (row.imu as { origin?: string }).origin === "simulated")).toBe(true);
+  });
+
   it("evaluates quality at most once a second and attaches the report only at that tick", async () => {
     const { created, createBuffer } = fakeBuffers();
     const recorder = new BleSessionRecorder({ createBuffer });

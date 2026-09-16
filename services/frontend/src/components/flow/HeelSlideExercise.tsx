@@ -34,7 +34,10 @@
 //    open. The session is completed with finish_prescribed_session and the summary (heelSlideRecords.ts), then the
 //    sensors are disconnected and the check-in opens.
 //
-// Frames come only from the live Web Bluetooth store; the mock sensor source never produces any.
+// Frames come only from the live Web Bluetooth store; the mock sensor source never produces any. With the development
+// simulation on (lib/ble/simulation.ts: `next dev` with NEXT_PUBLIC_SENSOR_SIMULATION=1) that store runs on simulated
+// sensors: the screen starts their scripted heel slides when counting starts, and the summary and every recorded frame
+// are marked simulated.
 
 import { CircleCheck, Info, LoaderCircle, Pause, Play, TriangleAlert } from "lucide-react";
 import { useRouter } from "next/navigation";
@@ -44,6 +47,7 @@ import { bodyText, card, focusRing, primaryButton, secondaryButton, sectionTitle
 import { disconnectAll, getSnapshot, setRequestedRate, subscribeFrames, useLiveSensors } from "@/lib/ble/liveSensors";
 import { SENSOR_ROLE_ORDER, type SensorRole } from "@/lib/ble/roles";
 import type { RecorderCounters } from "@/lib/ble/sessionRecorder";
+import { SIMULATION_ENABLED, startSimulatedMovement } from "@/lib/ble/simulation";
 import { useBleSessionRecorder } from "@/lib/ble/useBleSessionRecorder";
 import type { ParsedWt901Frame } from "@/lib/ble/wt901ble68";
 import {
@@ -302,6 +306,7 @@ export default function HeelSlideExercise({
       if (stageRef.current === "baseline") {
         moveTo("counting");
         keepBaselineWindow();
+        startSimulatedMovement();
       }
       const shown = shownRef.current;
       if (state.count !== shown.count || state.phase !== shown.phase) {
@@ -441,6 +446,7 @@ export default function HeelSlideExercise({
       startSensors,
       firstSeenBattery: firstSeenBatteryRef.current,
       telemetry: { counters: finalCounters, pending },
+      simulated: SIMULATION_ENABLED,
     });
 
     let outcome: "completed" | "alreadyEnded" | "failed";

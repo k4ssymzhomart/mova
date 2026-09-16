@@ -79,6 +79,8 @@ export interface BleSessionRecorderOptions {
   onCounters?: (counters: RecorderCounters) => void;
   /** Test seam; defaults to a real TelemetryBuffer. */
   createBuffer?: (sessionId: string, onUpdate: (counters: BufferCounters) => void) => RecorderBuffer;
+  /** Frames come from the development simulation: every row is marked `imu.origin: "simulated"`. */
+  simulated?: boolean;
 }
 
 export class BleSessionRecorder {
@@ -91,9 +93,11 @@ export class BleSessionRecorder {
   private lifecycle: Promise<unknown> = Promise.resolve();
   private readonly onCounters?: (counters: RecorderCounters) => void;
   private readonly createBuffer: NonNullable<BleSessionRecorderOptions["createBuffer"]>;
+  private readonly simulated: boolean;
 
-  constructor({ onCounters, createBuffer }: BleSessionRecorderOptions = {}) {
+  constructor({ onCounters, createBuffer, simulated = false }: BleSessionRecorderOptions = {}) {
     this.onCounters = onCounters;
+    this.simulated = simulated;
     this.createBuffer = createBuffer ?? ((sessionId, onUpdate) => new TelemetryBuffer(sessionId, onUpdate));
   }
 
@@ -147,7 +151,12 @@ export class BleSessionRecorder {
       this.lastEvaluatedAt = receivedAtMs;
     }
     buffer.pushFrame(
-      toFrameRow(role, frame, this.seq, { recordedAt: new Date(receivedAtMs), quality: this.quality, attachReport: tick }),
+      toFrameRow(role, frame, this.seq, {
+        recordedAt: new Date(receivedAtMs),
+        quality: this.quality,
+        attachReport: tick,
+        simulated: this.simulated,
+      }),
     );
     this.seq += 1;
     this.recorded += 1;

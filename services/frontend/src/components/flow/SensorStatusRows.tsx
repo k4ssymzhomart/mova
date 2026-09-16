@@ -1,7 +1,8 @@
 "use client";
 
 // The three sensor statuses shown before an exercise can start (НТЗ AC-03): one row per role, each with an
-// icon and a status word, never colour alone. Also exports the compact strip used on later steps.
+// icon and a status word, never colour alone. Also exports the compact strip used on later steps, where each role
+// says «Симуляция» while the sensors are the development simulation.
 
 import {
   BluetoothOff,
@@ -24,6 +25,16 @@ const LINK_ICON: Record<SensorLink, { icon: LucideIcon; className: string }> = {
   lost: { icon: CircleX, className: "text-red-700" },
   unsupported: { icon: BluetoothOff, className: "text-amber-700" },
 };
+
+/** The per-role mark for a simulated sensor: a word in an amber outline, not colour alone. */
+export function SimulatedMark() {
+  const { t } = useTranslation();
+  return (
+    <span className="inline-flex items-center rounded-pill border-2 border-amber-700 bg-amber-50 px-2 text-sm font-semibold text-ink">
+      {t("sensors.simulatedRow")}
+    </span>
+  );
+}
 
 export function SensorLinkIcon({ link, className }: { link: SensorLink; className?: string }) {
   const { icon: Icon, className: tone } = LINK_ICON[link];
@@ -72,6 +83,7 @@ export function SensorStatusStrip({ snapshot }: { snapshot: SensorStatusSnapshot
             <SensorLinkIcon link={sensor.link} className="size-4" />
             <span className="font-semibold text-ink">{t(`sensors.role.${role}`)}</span>
             <span className="text-ink-soft">{t(`sensors.link.${sensor.link}`)}</span>
+            {snapshot.source === "simulated" && <SimulatedMark />}
           </li>
         );
       })}

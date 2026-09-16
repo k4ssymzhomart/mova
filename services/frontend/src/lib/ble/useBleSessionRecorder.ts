@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import type { SensorRole } from "./roles";
 import { BleSessionRecorder, ZERO_COUNTERS, type RecorderCounters } from "./sessionRecorder";
+import { SIMULATION_ENABLED } from "./simulation";
 import type { SignalQualityReport } from "./signalQuality";
 import type { ParsedWt901Frame } from "./wt901ble68";
 
@@ -30,12 +31,14 @@ export interface UseBleSessionRecorderResult {
  * holds). The recorder lives for the component's lifetime; unmounting stops it,
  * which still tries to deliver what is queued and leaves the rest in IndexedDB
  * for the outbox, so leaving the screen without calling `stop()` does not strand
- * frames in memory.
+ * frames in memory. With the development simulation on, every row is marked as simulated.
  */
 export function useBleSessionRecorder(): UseBleSessionRecorderResult {
   const [counters, setCounters] = useState<RecorderCounters>(ZERO_COUNTERS);
   const recorderRef = useRef<BleSessionRecorder | null>(null);
-  if (!recorderRef.current) recorderRef.current = new BleSessionRecorder({ onCounters: setCounters });
+  if (!recorderRef.current) {
+    recorderRef.current = new BleSessionRecorder({ onCounters: setCounters, simulated: SIMULATION_ENABLED });
+  }
   const recorder = recorderRef.current;
 
   useEffect(

@@ -11,6 +11,7 @@ import {
   downsampleMinMax,
   formatDecimal,
   hexCode,
+  isSimulatedSession,
   isUuid,
   type MotionDeps,
   nearestOffsetStats,
@@ -733,6 +734,25 @@ test("missing dose and summary stay unknown; the default dose is the fallback ta
   assert.equal(view.session.durationMs, null);
   assert.deepEqual(view.roles.map((r) => r.rate.status), ["unknown", "unknown", "unknown"]);
   assert.deepEqual(view.roles.map((r) => r.deviceSource), [null, null, null]);
+});
+
+test("a session is simulated when the start record's transport or the finish record says so, and only then", () => {
+  assert.equal(isSimulatedSession({ device_info: { transport: "simulated" }, summary: null }), true);
+  assert.equal(isSimulatedSession({ device_info: null, summary: { simulated: true } }), true);
+  assert.equal(isSimulatedSession({ device_info: { transport: "simulated" }, summary: { simulated: false } }), true);
+  assert.equal(isSimulatedSession({ device_info: { transport: "web-bluetooth" }, summary: { simulated: true } }), true);
+  assert.equal(isSimulatedSession({ device_info: { transport: "web-bluetooth" }, summary: { kind: "heel_slide_path.v1" } }), false);
+  assert.equal(isSimulatedSession({ device_info: { transport: "Simulated" }, summary: { simulated: "true" } }), false);
+  assert.equal(isSimulatedSession({ device_info: { roles: {} } }), false);
+  assert.equal(isSimulatedSession({}), false);
+  assert.equal(isSimulatedSession(null), false);
+  assert.equal(isSimulatedSession("simulated"), false);
+
+  assert.equal(buildHeelSlideView(resultPayload(), MOTION)?.session.simulated, false);
+  assert.equal(buildHeelSlideView(resultPayload({}, { simulated: true }), MOTION)?.session.simulated, true);
+  const payload = resultPayload();
+  const started = { ...payload.session, device_info: { transport: "simulated", roles: {} }, summary: null, ended_at: null };
+  assert.equal(buildHeelSlideView({ ...payload, session: started }, MOTION)?.session.simulated, true);
 });
 
 test("a payload that is not this patient's session result gives no view", () => {

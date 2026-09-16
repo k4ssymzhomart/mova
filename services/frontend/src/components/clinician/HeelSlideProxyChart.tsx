@@ -5,7 +5,8 @@
 // grey dashed line: those before the first press of «Начать» (on that start's zero), and those of a start whose zero
 // window holds no stored frame (on their own first half second, since there is no zero to use). With more than one
 // start, a vertical dashed line marks where each start's zero was taken. The figure is already capped at
-// MAX_CHART_POINTS by the view; this component only maps it to pixels.
+// MAX_CHART_POINTS by the view; this component only maps it to pixels. For a simulated session the caption says first
+// that the lines come from the program and not from sensors.
 
 import { formatDecimal, niceTicks, type HeelSlideView } from "@/lib/clinic/heelSlideView";
 import { getTranslation } from "@/locales/server";
@@ -18,14 +19,27 @@ const PLOT_H = HEIGHT - MARGIN.top - MARGIN.bottom;
 
 type Line = HeelSlideView["chart"]["counted"][number];
 
-export default function HeelSlideProxyChart({ chart }: { chart: HeelSlideView["chart"] }) {
+export default function HeelSlideProxyChart({
+  chart,
+  simulated = false,
+}: {
+  chart: HeelSlideView["chart"];
+  simulated?: boolean;
+}) {
   const { t, locale } = getTranslation();
   const { counted, uncounted, segments, startMarksMs, startMs, endMs, totalPoints } = chart;
   const lines = [...counted, ...uncounted];
 
   // Only when nothing was paired at all; stored pairs that could not be recounted are still drawn below.
   if (!lines.length || startMs === null || endMs === null) {
-    return <p className="text-base leading-relaxed text-ink-soft">{t("clinician.heelSlide.chart.empty")}</p>;
+    return (
+      <div className="space-y-2">
+        {simulated && (
+          <p className="text-base font-semibold leading-relaxed text-ink">{t("clinician.heelSlide.simulated.chart")}</p>
+        )}
+        <p className="text-base leading-relaxed text-ink-soft">{t("clinician.heelSlide.chart.empty")}</p>
+      </div>
+    );
   }
 
   const durationS = (endMs - startMs) / 1000;
@@ -50,6 +64,7 @@ export default function HeelSlideProxyChart({ chart }: { chart: HeelSlideView["c
   const drawnPoints = lines.reduce((sum, line) => sum + line.length, 0);
   const bottom = MARGIN.top + PLOT_H;
   const plotRight = MARGIN.left + PLOT_W;
+  const ariaTitle = t("clinician.heelSlide.chart.aria", { points: totalPoints, reps: segments.length });
 
   return (
     <figure className="space-y-3">
@@ -62,7 +77,7 @@ export default function HeelSlideProxyChart({ chart }: { chart: HeelSlideView["c
           aria-labelledby="heel-slide-chart-title"
         >
           <title id="heel-slide-chart-title">
-            {t("clinician.heelSlide.chart.aria", { points: totalPoints, reps: segments.length })}
+            {simulated ? `${t("clinician.heelSlide.simulated.chart")} ${ariaTitle}` : ariaTitle}
           </title>
 
           {segments.map((segment) => (
@@ -181,6 +196,9 @@ export default function HeelSlideProxyChart({ chart }: { chart: HeelSlideView["c
         </svg>
       </div>
       <figcaption className="space-y-2">
+        {simulated && (
+          <p className="text-base font-semibold leading-relaxed text-ink">{t("clinician.heelSlide.simulated.chart")}</p>
+        )}
         {counted.length > 0 && (
           <p className="flex items-center gap-2 text-sm text-ink-soft">
             <span aria-hidden="true" className="inline-block h-3.5 w-5 shrink-0 rounded-sm border border-signal/40 bg-signal/15" />
