@@ -92,6 +92,51 @@ export function PillButton({
   );
 }
 
+/**
+ * Labeled range slider — promoted from a private copy in components/clinician/PrescriptionEditor.tsx
+ * (and a third, inlined-raw copy in the pre-rebuild SessionStudio.tsx cadence control) into one shared
+ * primitive, per the "reuse existing primitives, don't invent new ones" rule for every new panel in this
+ * directory.
+ */
+export function Slider({
+  label,
+  value,
+  min,
+  max,
+  step,
+  display,
+  dim = false,
+  onChange,
+}: {
+  label: string;
+  value: number;
+  min: number;
+  max: number;
+  step: number;
+  display: string;
+  dim?: boolean;
+  onChange: (value: number) => void;
+}) {
+  return (
+    <div className={cn(dim && "opacity-50")}>
+      <div className="flex items-baseline justify-between gap-3">
+        <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-ink-faint">{label}</span>
+        <span className="tnum font-mono text-sm text-ink">{display}</span>
+      </div>
+      <input
+        type="range"
+        min={min}
+        max={max}
+        step={step}
+        value={value}
+        onChange={(e) => onChange(Number(e.target.value))}
+        className="mt-2 w-full accent-signal"
+        aria-label={label}
+      />
+    </div>
+  );
+}
+
 export function Toggle({ label, on, onClick }: { label: string; on: boolean; onClick: () => void }) {
   return (
     <button

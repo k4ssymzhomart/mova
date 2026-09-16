@@ -15,7 +15,7 @@ import SessionInsightsCoach from "@/components/session/SessionInsightsCoach";
 import PoseStage, { type SessionMode, type StageStats } from "@/components/session/PoseStage";
 import SessionReward, { type SessionRewardData } from "@/components/gamification/SessionReward";
 import SessionTelemetry from "@/components/session/SessionTelemetry";
-import { Metric, Panel, PillButton, Toggle } from "@/components/session/ui";
+import { Metric, Panel, PillButton, Slider, Toggle } from "@/components/session/ui";
 import { POSE_LANDMARKS, type Landmark } from "@/lib/cv/landmarks";
 import { VirtualImuPipeline } from "@/lib/cv/imuWindow";
 import { useMediaPipePose } from "@/lib/cv/useMediaPipePose";
@@ -467,22 +467,15 @@ export default function SessionStudio({ sessionId, userId }: { sessionId: string
               </div>
 
               {mode === "gait" && (
-                <div>
-                  <div className="mb-1.5 flex items-baseline justify-between">
-                    <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-ink-faint">{t("session.cadenceTarget")}</span>
-                    <span className="tnum font-mono text-sm text-ink">{tempoSpm} spm</span>
-                  </div>
-                  <input
-                    type="range"
-                    min={40}
-                    max={110}
-                    step={1}
-                    value={tempoSpm}
-                    onChange={(e) => setTempoSpm(Number(e.target.value))}
-                    aria-label="Cadence target"
-                    className="w-full accent-signal"
-                  />
-                </div>
+                <Slider
+                  label={t("session.cadenceTarget")}
+                  value={tempoSpm}
+                  min={40}
+                  max={110}
+                  step={1}
+                  display={`${tempoSpm} spm`}
+                  onChange={setTempoSpm}
+                />
               )}
 
               <Toggle label={t("session.showCamera")} on={showVideo} onClick={() => setShowVideo((v) => !v)} />

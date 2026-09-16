@@ -152,7 +152,7 @@ export default async function ProgramPage() {
             )}
           </div>
           <Link
-            href="/app/session/new"
+            href={primaryEx ? `/app/session/new?exercise=${primaryEx.slug}` : "/app/session/new"}
             prefetch={false}
             className="inline-flex shrink-0 items-center gap-2 rounded-pill bg-signal px-6 py-3 text-sm font-medium text-white transition-colors hover:bg-signal-bright"
           >
@@ -236,6 +236,14 @@ export default async function ProgramPage() {
                       <span>{p.clinician_note}</span>
                     </div>
                   )}
+                  <Link
+                    href={`/app/session/new?exercise=${ex.slug}`}
+                    prefetch={false}
+                    className="mt-4 inline-flex items-center gap-1.5 text-[13px] font-medium text-signal-deep transition-colors hover:underline"
+                  >
+                    {t("program.startTodaysSession")}
+                    <ArrowRight className="size-3.5" strokeWidth={2} />
+                  </Link>
                 </article>
               );
             })}

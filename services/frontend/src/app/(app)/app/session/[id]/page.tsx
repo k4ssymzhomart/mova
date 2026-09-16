@@ -1,8 +1,12 @@
 import { notFound } from "next/navigation";
 import { ChevronLeft } from "lucide-react";
 
+import { EXERCISE_CONFIGS } from "@/lib/scoring/exerciseConfigs";
+import type { ExerciseSlug } from "@/lib/scoring/types";
+import { roleFromBodySite, type SensorRole } from "@/lib/ble/roles";
 import { createClient } from "@/lib/supabase/server";
 
+import ExerciseStudio from "./ExerciseStudio";
 import SessionStudio from "./SessionStudio";
 
 type Metrics = {
@@ -16,12 +20,16 @@ type Metrics = {
   fog_risk: number | null;
 } | null;
 
+function isKneeRehabSlug(slug: string | null | undefined): slug is ExerciseSlug {
+  return !!slug && slug in EXERCISE_CONFIGS;
+}
+
 export default async function SessionDetail({ params }: { params: { id: string } }) {
   const supabase = createClient();
   const [{ data: session }, { data: auth }] = await Promise.all([
     supabase
       .from("sessions")
-      .select("id, status, started_at, ended_at, session_metrics(*)")
+      .select("id, status, started_at, ended_at, session_metrics(*), exercise:exercises(slug, name, demo_video_url)")
       .eq("id", params.id)
       .maybeSingle(),
     supabase.auth.getUser(),
@@ -29,9 +37,41 @@ export default async function SessionDetail({ params }: { params: { id: string }
 
   if (!session) notFound();
 
-  // In-progress sessions get the full training studio (camera + ONNX + telemetry + rewards).
-  // The user id scopes the on-device profile + history stores so accounts never cross-contaminate.
+  const exercise = (Array.isArray(session.exercise) ? session.exercise[0] : session.exercise) as
+    | { slug: string; name: string; demo_video_url: string | null }
+    | null;
+
+  // In-progress sessions get the full training studio. Knee-rehab exercises (the 8 in
+  // lib/scoring/exerciseConfigs.ts) get the real BLE-driven ExerciseStudio; every other exercise pack
+  // (reach/gait, for stroke/Parkinson's patients) keeps the existing camera + ONNX + telemetry flow.
   if (session.status !== "completed") {
+    if (isKneeRehabSlug(exercise?.slug)) {
+      const { data: patient } = await supabase.from("patients").select("id, affected_side").maybeSingle();
+      const { data: pairedRows } = patient
+        ? await supabase.from("patient_ble_devices").select("role, device_name").eq("patient_id", patient.id)
+        : { data: null };
+      const pairedDeviceNames: Partial<Record<SensorRole, string | null>> = {};
+      for (const row of pairedRows ?? []) {
+        const role = roleFromBodySite(row.role as string);
+        if (role) pairedDeviceNames[role] = row.device_name as string | null;
+      }
+      const affectedSide = patient?.affected_side as string | null;
+      const config = EXERCISE_CONFIGS[exercise.slug];
+
+      return (
+        <ExerciseStudio
+          sessionId={session.id}
+          exerciseSlug={exercise.slug}
+          exerciseName={exercise.name}
+          demoVideoUrl={exercise.demo_video_url}
+          patientId={patient?.id ?? null}
+          affectedSide={affectedSide === "left" || affectedSide === "right" ? affectedSide : null}
+          pairedDeviceNames={pairedDeviceNames}
+          prescribedRepsPerSet={config.prescribedRepsDefault}
+          totalSets={3}
+        />
+      );
+    }
     return <SessionStudio sessionId={session.id} userId={auth.user?.id ?? ""} />;
   }
 
