@@ -4,16 +4,16 @@
 // A FIXED, solid, un-rounded sidebar rail on the left (its own panel, flush to the viewport edge), with
 // the page content flowing on an open canvas to the right — no single rounded container wrapping the
 // whole page, so nothing feels "boxed in". Individual cards inside each page provide the spatial depth.
-// On small screens the rail becomes a hamburger drawer. Collapse state persists; the streak is derived
-// from the signed-in user's own on-device history (scoped by user id).
+// On small screens the rail becomes a hamburger drawer. Collapse state persists on-device; the streak is
+// the server-authoritative value from the `streaks` table (fetched in layout.tsx, same source
+// achievements/page.tsx reads) — there is exactly one streak computation in the app, not two that can
+// disagree.
 
 import { Menu, X } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { type ReactNode, useEffect, useState } from "react";
 
-import { loadSessions } from "@/lib/insights/store";
-import type { SessionRecord } from "@/lib/insights/types";
 import { cn } from "@/lib/utils";
 
 import SidebarNav from "./SidebarNav";
@@ -23,24 +23,24 @@ const COLLAPSE_KEY = "mova.sidebar.collapsed";
 export default function AppShell({
   name,
   email: _email,
-  userId,
+  userId: _userId,
+  streak,
   children,
 }: {
   name: string;
   email: string;
   userId: string;
+  streak: number;
   children: ReactNode;
 }) {
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
-  const [streak, setStreak] = useState(0);
   const pathname = usePathname();
 
-  // Hydrate persisted UI state + derive the streak from this user's own local history.
+  // Hydrate persisted UI state (sidebar collapse only — the streak comes from the server as a prop).
   useEffect(() => {
     setCollapsed(window.localStorage.getItem(COLLAPSE_KEY) === "1");
-    setStreak(computeStreak(loadSessions(userId)));
-  }, [userId]);
+  }, []);
 
   // Close the mobile drawer whenever the route changes.
   useEffect(() => {
@@ -146,18 +146,4 @@ export default function AppShell({
       </div>
     </div>
   );
-}
-
-/** Consecutive-day streak ending today (or yesterday) from the local session history. */
-function computeStreak(sessions: SessionRecord[]): number {
-  if (sessions.length === 0) return 0;
-  const days = new Set(sessions.map((s) => new Date(s.startedAt).toDateString()));
-  const cursor = new Date();
-  if (!days.has(cursor.toDateString())) cursor.setDate(cursor.getDate() - 1);
-  let streak = 0;
-  while (days.has(cursor.toDateString())) {
-    streak += 1;
-    cursor.setDate(cursor.getDate() - 1);
-  }
-  return streak;
 }
