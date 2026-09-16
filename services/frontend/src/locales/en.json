@@ -353,7 +353,7 @@
         "skewP95": "95th percentile",
         "skewMax": "Largest",
         "skewFrames": "Shank frames compared",
-        "skewBasis": "For every stored shank frame, the time to the thigh frame received nearest to it, with no cap. Receive times are the browser's, so they include Bluetooth delays. Thigh and shank only: for the foot the result carries a frame count without frame times.",
+        "skewBasis": "For every stored shank frame, the time to the thigh frame received nearest to it, with no cap. These are gaps between the two streams by browser receive time: they show gaps in the thigh data, but they cannot measure the latency of one Bluetooth link. Thigh and shank only: for the foot the result carries a frame count without frame times.",
         "pairingTitle": "Thigh and shank pairs for the recount",
         "pairingBasis": "A shank frame is paired with the nearest thigh frame only when they are at most {ms} ms apart, so skew within pairs is never more than {ms} ms. This is the recount's pairing tolerance, not the skew between sensors, which the block above shows."
       },
