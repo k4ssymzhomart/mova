@@ -12,7 +12,7 @@ import { type PointerEvent, useEffect, useRef, useState } from "react";
 
 import { useTranslation } from "@/locales/client";
 
-import { hasFineHoverPointer, prefersReducedMotion } from "./media";
+import { clipObjectPosition, hasFineHoverPointer, prefersReducedMotion } from "./media";
 
 export default function ExerciseCardMedia({
   video,
@@ -85,6 +85,7 @@ export default function ExerciseCardMedia({
           disablePictureInPicture
           disableRemotePlayback
           className="absolute inset-0 size-full object-cover"
+          style={{ objectPosition: clipObjectPosition(video) }}
         />
       ) : poster ? (
         // eslint-disable-next-line @next/next/no-img-element
@@ -96,6 +97,7 @@ export default function ExerciseCardMedia({
           loading="lazy"
           decoding="async"
           className="absolute inset-0 size-full object-cover"
+          style={{ objectPosition: clipObjectPosition(video) }}
         />
       ) : null}
       <button

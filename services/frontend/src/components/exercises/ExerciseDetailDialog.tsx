@@ -31,7 +31,7 @@ import {
   startActionFor,
   textIn,
 } from "./library";
-import { prefersReducedMotion } from "./media";
+import { clipObjectPosition, prefersReducedMotion } from "./media";
 import SensorChips from "./SensorChips";
 import StartControl from "./StartControl";
 
@@ -298,6 +298,7 @@ function DetailVideo({ video, poster, name }: { video: string; poster: string | 
         disablePictureInPicture
         disableRemotePlayback
         className="size-full object-cover"
+        style={{ objectPosition: clipObjectPosition(video) }}
       />
       <button
         type="button"
