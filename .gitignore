@@ -92,3 +92,5 @@ supabase/.temp/
 
 # Vercel CLI link/state
 .vercel
+
+CLAUDE.md
