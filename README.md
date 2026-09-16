@@ -5,272 +5,140 @@
 </p>
 
 <p align="left">
-  <a href="#license">
-    <img alt="MIT License" src="https://img.shields.io/badge/License-MIT-black.svg?style=for-the-badge" />
-  </a>
   <a href="https://nextjs.org/">
     <img alt="Next.js" src="https://img.shields.io/badge/Next.js-14-000000.svg?style=for-the-badge&logo=nextdotjs&logoColor=white" />
   </a>
   <a href="https://supabase.com/">
     <img alt="Supabase" src="https://img.shields.io/badge/Supabase-3ECF8E.svg?style=for-the-badge&logo=supabase&logoColor=white" />
   </a>
-  <a href="https://onnxruntime.ai/">
-    <img alt="ONNX Runtime" src="https://img.shields.io/badge/ONNX_Runtime-WebAssembly%20%2F%20WebGPU-5C2D91.svg?style=for-the-badge&logo=onnx&logoColor=white" />
-  </a>
   <a href="https://www.typescriptlang.org/">
     <img alt="TypeScript" src="https://img.shields.io/badge/TypeScript-3178C6.svg?style=for-the-badge&logo=typescript&logoColor=white" />
   </a>
-  <a href="#contributing">
-    <img alt="PRs Welcome" src="https://img.shields.io/badge/PRs-welcome-brightgreen.svg?style=for-the-badge" />
-  </a>
 </p>
 
-**MOVA is now a rehabilitation app for patients after total knee arthroplasty (TKA), measuring knee movement
-with three wearable IMUs on the thigh, shank and foot.** Start with [`SUBMISSION.md`](SUBMISSION.md): what is built,
-what is real, what is deliberately not claimed, and what has not been verified. The hardware protocol is in
-[`HARDWARE-TEST.md`](HARDWARE-TEST.md).
+MOVA is a rehabilitation app for patients after primary total knee arthroplasty (TKA). It measures knee movement
+with three wearable IMUs (WitMotion, on the thigh, shank and foot) connected straight to the browser over Bluetooth,
+and it is built to a clinical technical specification (НТЗ) written by an orthopaedic surgeon, plus a scoring
+specification for eight exercises.
 
-> Everything below the table of contents describes the **earlier camera-based prototype** for Parkinson's disease
-> and stroke (June 2026). It is kept for reference and is not the current product. Figures in it, such as the
-> 50 Hz stream, were design targets of that prototype, not measurements.
+**Start with [`SUBMISSION.md`](SUBMISSION.md)**: what is built, what is real, what is deliberately not claimed, and what
+has not been verified. The hardware protocol is [`HARDWARE-TEST.md`](HARDWARE-TEST.md); notes for teammates are in
+[`HANDOFF.md`](HANDOFF.md).
 
-## Table of Contents
+## What works today
 
-- [Project Overview](#project-overview)
-- [Core Features](#core-features)
-- [System Architecture](#system-architecture)
-- [Getting Started](#getting-started)
-- [Environment Setup & Deployment](#environment-setup--deployment)
-- [Gamification Ecosystem](#gamification-ecosystem)
-- [Contributing](#contributing)
-- [License](#license)
-- [Author](#author)
-- [Further Reading](#further-reading)
+- **Heel Slide, end to end.** A patient sees the exercise on Today, connects three sensors, does ten repetitions while
+  the count and a drawing of the leg follow the movement, answers a check-in, and a clinician opens that session. The
+  runbook is [`docs/heel-slide-path.md`](docs/heel-slide-path.md); the recording is
+  [`docs/walkthrough/heel-slide-walkthrough-1920.mp4`](docs/walkthrough/heel-slide-walkthrough-1920.mp4).
+- **Sensor rate configuration.** The app writes the output rate to the sensor and reads it back, instead of leaving
+  it at the default.
+- **Exercise library** at `/exercises`: the twelve exercises from the НТЗ and the scoring spec, with the
+  clinician-recorded reference videos on the seven exercises a clip is confirmed to show
+  ([screenshots](docs/exercise-library/)).
 
-## Project Overview
+What it does not do, stated in full in `SUBMISSION.md`:
 
-MOVA is built to bring motion intelligence out of the lab and into the patient's daily environment.
-Its operating premise is simple: if the model can understand movement on-device, the platform can
-deliver feedback, scoring, and progression in the same session in which therapy happens.
+- **No knee angle in degrees.** The sensors give a relative orientation reading that is not calibrated to the knee,
+  so the patient screen shows no number and the clinician chart says what the reading is.
+- **No scores.** The scoring engine for the eight exercises is in `services/frontend/src/lib/scoring` with its tests,
+  but no screen uses it yet.
+- **Not run on physical sensors.** The recording uses a simulated sensor transport that exists only in local
+  development and is marked «Симуляция» on screen.
 
-The result is a rehabilitation stack that is:
-
-- **Camera-optional**: the system can operate with webcam-guided pose, IMU-assisted sensing, or both.
-- **Privacy absolute**: raw video stays on the patient device; only derived pose, telemetry, and session
-  artifacts are persisted.
-- **Clinically legible**: kinematic signals are translated into ROM trends, freezing-of-gait indicators,
-  adherence measures, and clinician-facing summaries.
-- **Real-time by design**: the browser computes and buffers telemetry at a fixed **50 Hz**, giving the
-  downstream models a stable stream for inference and reporting.
-
-This repository combines the public-facing product surfaces, Supabase schema and security layer, motion
-telemetry contracts, and the supporting research documentation that grounds the system in rehabilitation
-and human motion science.
-
-## Core Features
-
-| Surface | What it does | Clinical value |
-|---|---|---|
-| Patient App | Rhythmic stepping gamification, real-time FoG scoring, CV-guided ROM baseline capture, and the `SessionInsightsCoach` session analysis layer. | Keeps therapy engaging while quantifying gait quality and range-of-motion in-session. |
-| Clinician Portal | Secure mock FHIR data, real-time patient progression tracking, prescription editor, and PDF outcome reports. | Lets clinicians review progress, adjust programs, and export evidence-ready summaries. |
-| On-Device Motion Stack | MediaPipe pose estimation, `poseToImu` virtual sensors, and ONNX Runtime Web inference. | Maintains privacy while producing low-latency movement telemetry in the browser. |
-| Supabase Core | Auth, RLS, Edge Functions, typed RPCs, and clinic-scoped storage. | Keeps patient data isolated and auditable while supporting a fast product workflow. |
-
-## System Architecture
+## Architecture
 
 ```mermaid
 flowchart LR
-  A[Patient Webcam] --> B[MediaPipe Pose]
-  B --> C[poseToImu Virtual Sensors]
-  C --> D[ONNX Engine]
-  D --> E[Streaming Telemetry Buffer]
-  E --> F[Supabase DB]
-  F --> G[Clinician Portal]
-  F --> H[Patient Progress / Reports]
+  S[3 × WitMotion IMU] -- Web Bluetooth --> B[Browser app<br/>rate write + readback<br/>rep counter, leg guide]
+  B -- batched frames, offline outbox --> D[(Supabase<br/>Postgres + RLS)]
+  B -- check-in --> D
+  D -- care-team-gated RPCs --> C[Clinician view<br/>server-side recount]
 ```
 
-The architecture keeps the inference path close to the user. Pose estimation and the first stage of
-kinematic derivation happen in the browser; telemetry is normalized into a stable stream; and only then
-does it reach the persistence and clinician review layer in Supabase.
+- `services/frontend` — the Next.js 14 app (App Router, TypeScript, Tailwind): patient app, clinician portal, library.
+  - `src/lib/ble` — Bluetooth client, sensor roles, rate register, session recorder, dev-only simulation.
+  - `src/lib/telemetry` — frame buffer, durable queue and outbox.
+  - `src/lib/motion` — repetition logic and the leg-guide geometry.
+  - `src/lib/scoring` — the scoring engine (not wired to a screen).
+  - `src/lib/exercises` — the static exercise catalogue; videos in `public/exercises`.
+- `supabase/migrations` — the database schema, row-level security and RPCs; `supabase/tests` — SQL tests.
+- `docs` — the IA ([`docs/ia.md`](docs/ia.md)), the runbook, the walkthrough and research notes.
 
-## Getting Started
+Everything else in the repository (`services/api`, the Python `src` and ML tooling, `benchmark`, `data_manifests`,
+most of `docs`, and the camera session screens still in the frontend) belongs to the earlier camera-based prototype
+for Parkinson's disease and stroke (June–August 2026). It is kept for reference and is not the current product;
+figures in its documents were that prototype's design targets, not measurements of this app.
 
-### Prerequisites
+## Running it
 
-Before you start, install:
-
-- Node.js 18+ or 20+
-- npm
-- Supabase CLI
-
-If you plan to run the local backend stack, also make sure Docker is available for the Supabase tooling.
-
-### Installation
+The app uses the hosted Supabase project. **Nothing needs to be installed for the database**: no Supabase CLI, no
+Docker, no local Supabase. You need Node.js 20+ and network access to `*.supabase.co`.
 
 ```bash
-git clone <your-repo-url>
-cd mova
 cd services/frontend
-npm install
+npm ci
 ```
 
-### Model Sync
-
-The frontend expects browser-ready ML assets to be present before the session experience is used.
-Sync them with:
+Create `services/frontend/.env.local` (git-ignored) with the project's public values:
 
 ```bash
-npm run models:sync
+NEXT_PUBLIC_SUPABASE_URL=<project URL>
+NEXT_PUBLIC_SUPABASE_ANON_KEY=<anon public key>
 ```
 
-### Environment Variables
+| Variable | Needed for |
+|---|---|
+| `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY` | The app. Required. |
+| `SUPABASE_SERVICE_ROLE_KEY` | Only `npm run seed:heel-slide`. Server-side only; bypasses row-level security. |
+| `NEXT_PUBLIC_SITE_URL` | The public origin behind a proxy, for sign-in redirects. |
+| `NEXT_PUBLIC_SENSOR_SIMULATION=1` | Simulated sensors, and only under `next dev`. A production build contains no simulator. |
+| `HEEL_SLIDE_PATIENT_PASSWORD`, `HEEL_SLIDE_CLINICIAN_PASSWORD` | The test sign-in buttons, shown only under `next dev` and on Vercel previews. |
 
-The web app reads its configuration from `services/frontend/.env.local`. See
-[Environment Setup & Deployment](#environment-setup--deployment) for the full template and the list of
-required keys. The root [.env.example](.env.example) documents optional backend and deployment variables.
-
-### Run the App
+Run it:
 
 ```bash
-npm run dev
+npx next dev            # development, http://localhost:3000
+npx next build && npx next start -p 3000   # production build
 ```
 
-The frontend runs at http://localhost:3000.
+`npm run dev` is mapped to `next start`, so use `npx next dev` for development. A production build shows only
+Google and e-mail link sign-in; the password form and test buttons for the `@mova.test` accounts exist only in
+development and on Vercel previews. Web Bluetooth needs Chrome or Edge on desktop or Android; Safari and iOS do not
+have it.
 
-### Optional Local Supabase
-
-If you want the database and auth layer running locally as well, use the Supabase project in the repo root:
+### Checks
 
 ```bash
-supabase start
+npx tsc --noEmit
+npm run test:unit     # node:test — everything except BLE, telemetry and scoring
+npm test              # vitest — BLE, telemetry and scoring
+npm run i18n:check    # ru and en keys match; kk is a subset
+npx next build
 ```
 
-## Environment Setup & Deployment
+## Database
 
-### `.env.local` template
+Migrations `0001`–`0023` and `0034`–`0036` are applied to the hosted project. `0024`–`0033` are unused here on
+purpose: other branches use those numbers. `0037`–`0040` are in the repository but **not applied**; `0038` and `0040`
+say in their headers what to resolve first. Do not run `supabase db push` against the hosted project until those are
+decided.
 
-The web app reads its runtime configuration from `services/frontend/.env.local`. Create the file and
-populate it with the values from **your own** Supabase project (Project Settings → API). Never commit
-real keys — `.env.local` is git-ignored, and only placeholders belong in this document.
+- `0035` closed a hole where anyone could sign up as an administrator.
+- `0036` closed a hole where any account in the shared self-serve clinic, patients included, could list every
+  patient in it through the clinician-portal functions. Each new signup now gets its own clinic, and portal reads
+  require a platform admin, the patient's clinic admin, or an active care-team link.
 
-```bash
-# services/frontend/.env.local
+## Deployment
 
-# Public — safe to expose to the browser
-NEXT_PUBLIC_SUPABASE_URL=<YOUR_SUPABASE_URL>
-NEXT_PUBLIC_SUPABASE_ANON_KEY=<YOUR_SUPABASE_ANON_KEY>
-
-# Server-only — bypasses Row-Level Security, must never reach the client
-SUPABASE_SERVICE_ROLE_KEY=<YOUR_SUPABASE_SERVICE_ROLE_KEY>
-
-# Public origin of this deployment. Optional locally; required behind a proxy so the auth
-# callback redirects to the public host instead of the internal bind address.
-NEXT_PUBLIC_SITE_URL=<YOUR_SITE_URL>               # e.g. https://mova.vercel.app
-
-# Live inference backend (services/api). Set ONE of these; unset falls back to a simulated readout.
-NEXT_PUBLIC_BACKEND_HTTP_URL=<YOUR_API_ORIGIN>     # serverless hosts, e.g. https://mova-api-seven.vercel.app
-NEXT_PUBLIC_BACKEND_WS_URL=<YOUR_BACKEND_WS_URL>   # long-lived hosts, e.g. wss://mova-api.onrender.com
-```
-
-| Variable | Scope | Where to find it |
-|---|---|---|
-| `NEXT_PUBLIC_SUPABASE_URL` | Public | Supabase → Project Settings → API → Project URL |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Public | Supabase → Project Settings → API → `anon` public key |
-| `SUPABASE_SERVICE_ROLE_KEY` | Server only | Supabase → Project Settings → API → `service_role` key |
-| `NEXT_PUBLIC_SITE_URL` | Public | The deployment's own public origin, used for OAuth redirects |
-| `NEXT_PUBLIC_BACKEND_HTTP_URL` | Public | Origin of the deployed `services/api`; the session posts each window to `…/api/v1/predict/fog`. Takes precedence over the WS variable |
-| `NEXT_PUBLIC_BACKEND_WS_URL` | Public | Origin of the deployed `services/api` when it runs on a host that keeps sockets open (`…/api/v1/predict/fog/stream`) |
-
-> ⚠️ The `service_role` key has full database privileges and bypasses RLS. Keep it server-side only and
-> never expose it through a `NEXT_PUBLIC_*` variable.
-
-### Database migrations (Supabase CLI)
-
-To run database migrations locally, install the [Supabase CLI](https://supabase.com/docs/guides/cli),
-authenticate, and link this project:
-
-```bash
-supabase login
-supabase link --project-ref sbdtujkpklqyevaoxfph
-supabase db push   # apply the local migrations to the linked project
-```
-
-### Deployment (Vercel — primary)
-
-Both services deploy to Vercel as two projects out of this one repository. See
-[`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) for the full runbook; the shape is:
-
-| Project | Root directory | Serves |
-|---|---|---|
-| `mova` | `services/frontend` | The Next.js patient + clinician app |
-| `mova-api` | `services/api` | The FastAPI inference gateway, as a Python Serverless Function |
-
-Vercel routes FastAPI projects to the ASGI app itself, so `services/api/api/index.py` only fixes
-`sys.path` and re-exports the same app the Dockerfile runs — and `vercel.json` deliberately declares
-**no rewrites** (one would make the function see the rewrite destination instead of the requested
-path, 404-ing every route). Serverless functions cannot hold a socket open, so on Vercel the frontend
-talks to `POST /api/v1/predict/fog` (`NEXT_PUBLIC_BACKEND_HTTP_URL`) instead of the streaming socket —
-`useLiveInference` implements both transports behind one interface and picks whichever is configured.
-
-Vercel blocks a deployment whose commit author email does not belong to a member of the Vercel team,
-so set `git config user.email` to the address on your Vercel account. A GitHub-only address is not
-enough: the `@users.noreply.github.com` alias is rejected with "Git author … must have access to the
-team".
-
-### Deployment (Render — alternative)
-
-The root [`render.yaml`](render.yaml) Blueprint provisions the same two services on Render, where the
-API runs from its Dockerfile under uvicorn and the WebSocket transport
-(`NEXT_PUBLIC_BACKEND_WS_URL`) is available. Create a new **Blueprint** pointed at this repo, then set
-the three Supabase variables above on the `mova-frontend` service (they are declared with
-`sync: false`, so Render prompts for them and they stay out of version control).
-
-## Gamification Ecosystem
-
-MOVA's gamification layer is not decorative. It is part of the clinical workflow and is implemented so
-that patient-facing rewards remain consistent with the database rules.
-
-XP, streaks, and badges are managed through `SECURITY DEFINER` RPCs in Supabase. That means the database
-executes the reward logic with controlled privileges, validates the caller's identity and clinic scope,
-and writes only the approved rows to `xp_ledger`, `streaks`, and related tables. The client never gets
-direct write access to the reward tables; it can only invoke narrow, audited functions.
-
-This design keeps the reward system secure, deterministic, and easy to reason about while still allowing
-the patient app to show immediate feedback after a completed session.
-
-## Contributing
-
-Contributions are welcome, especially from developers, clinicians, and researchers who want to improve
-motion telemetry, rehabilitation UX, or the surrounding documentation.
-
-Please keep pull requests focused and include verification for any code or schema changes. Good starting
-areas include:
-
-- Patient and clinician UI improvements
-- Supabase schema, RLS, or RPC hardening
-- ONNX / MediaPipe inference improvements
-- Documentation, benchmarks, and research references
-
-If you are opening a substantial change, describe the clinical or product behavior it affects and include
-the validation steps you ran locally.
+The app deploys to Vercel from `services/frontend`; see [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md). Vercel rejects a
+deployment whose commit author e-mail is not a member of the Vercel team.
 
 ## License
 
-MOVA is intended to be released under the MIT License.
-
-If you are publishing the repository, add a root-level `LICENSE` file with the MIT text so the badge and
-the source-of-truth license file stay aligned.
+MOVA is intended to be released under the MIT License. There is no `LICENSE` file in the repository yet.
 
 ## Author
 
-**Kassymzhomart Shubay**  
+**Kassymzhomart Shubay**
 Nazarbayev University
-
-## Further Reading
-
-- [MOVA Master Document](docs/MOVA_MASTER_DOCUMENT.md)
-- [System & Training Architecture](docs/03_architecture.md)
-- [Product Master Plan](docs/04_product_master_plan.md)
-- [Thesis Proposal](docs/00_thesis_proposal.md)
-- [Dataset Guide](docs/01_datasets.md)
-- [Reading List](docs/02_reading_list.md)
