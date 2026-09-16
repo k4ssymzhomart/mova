@@ -1,15 +1,27 @@
 "use client";
 
-// useSensorStatus — the one hook the UI reads for the three sensor roles. What sits behind it today:
-//  - "none": there is no transport yet, so every role reads "disconnected", or "unsupported" in browsers
-//    without Web Bluetooth (Safari and every iOS browser).
+// useSensorStatus — the one hook the UI reads for the three sensor roles. What sits behind it:
+//  - "ble": the real Web Bluetooth store (lib/ble/liveSensors) as soon as any role is connecting (which includes
+//    reconnecting), streaming or lost. batteryPct stays null: the store does read the supply voltage, but its
+//    percent comes from WitMotion's interpolation table, not from the device, and this field is never estimated.
+//    Screens that show the table's figure read it from useLiveSensors(), labelled as such.
+//  - "none": nothing connected yet, so every role reads "disconnected", or "unsupported" in browsers without
+//    Web Bluetooth (Safari and every iOS browser).
 //  - "mock": NEXT_PUBLIC_SENSOR_MOCK=1, for walking through the flow without hardware. Refused on the
 //    production Vercel deployment, and always announced on screen by MockSensorBanner. Battery stays null:
-//    a mock never invents device readings.
-//
-// TODO(#21): replace the "none" branch with the real Web Bluetooth transport, behind the same snapshot.
+//    a mock never invents device readings. The live store is not consulted while the mock is on.
+//  - "simulated": in place of "ble" and "none" while the development simulation runs the live store
+//    (lib/ble/simulation.ts: `next dev` with NEXT_PUBLIC_SENSOR_SIMULATION=1), connected or not, so the screen can
+//    say so from the start. The mock, when also on, still wins.
 
 import { useSyncExternalStore } from "react";
+
+import {
+  getSnapshot as getLiveSnapshot,
+  subscribe as subscribeLive,
+  type LiveSensorsSnapshot,
+} from "@/lib/ble/liveSensors";
+import { SIMULATION_ENABLED } from "@/lib/ble/simulation";
 
 import {
   SENSOR_ROLES,
@@ -32,6 +44,10 @@ const SERVER_SNAPSHOT = build("none", { thigh: "disconnected", shank: "disconnec
 
 let noneSnapshot: SensorStatusSnapshot | null = null;
 
+// Derived once per live snapshot, so useSyncExternalStore sees a stable object between store updates.
+let bleSource: LiveSensorsSnapshot | null = null;
+let bleSnapshot: SensorStatusSnapshot | null = null;
+
 const MOCK_CYCLE: readonly SensorLink[] = ["streaming", "connecting", "lost", "disconnected", "unsupported"];
 let mockLinks: Record<SensorRole, SensorLink> = { thigh: "streaming", shank: "streaming", foot: "streaming" };
 let mockSnapshot = build("mock", mockLinks);
@@ -39,16 +55,32 @@ const listeners = new Set<() => void>();
 
 function subscribe(listener: () => void) {
   listeners.add(listener);
+  const unsubscribeLive = SENSOR_MOCK_ENABLED ? null : subscribeLive(listener);
   return () => {
     listeners.delete(listener);
+    unsubscribeLive?.();
   };
+}
+
+function fromLive(live: LiveSensorsSnapshot): SensorStatusSnapshot {
+  if (live === bleSource && bleSnapshot) return bleSnapshot;
+  const sensors = {} as SensorStatusSnapshot["sensors"];
+  for (const role of SENSOR_ROLES) {
+    const state = live.roles[role];
+    sensors[role] = { role, link: state.link, batteryPct: null, lastSampleAt: state.lastSampleAt };
+  }
+  bleSource = live;
+  bleSnapshot = { source: SIMULATION_ENABLED ? "simulated" : "ble", sensors, allStreaming: live.allStreaming };
+  return bleSnapshot;
 }
 
 function getSnapshot(): SensorStatusSnapshot {
   if (SENSOR_MOCK_ENABLED) return mockSnapshot;
+  const live = getLiveSnapshot();
+  if (live.active) return fromLive(live);
   if (!noneSnapshot) {
-    const link: SensorLink = "bluetooth" in navigator ? "disconnected" : "unsupported";
-    noneSnapshot = build("none", { thigh: link, shank: link, foot: link });
+    const link: SensorLink = SIMULATION_ENABLED || "bluetooth" in navigator ? "disconnected" : "unsupported";
+    noneSnapshot = build(SIMULATION_ENABLED ? "simulated" : "none", { thigh: link, shank: link, foot: link });
   }
   return noneSnapshot;
 }

@@ -25,17 +25,14 @@
   </a>
 </p>
 
-**MOVA** is an edge-AI tele-rehabilitation platform for Parkinson's disease and stroke recovery.
-It pairs a Next.js patient and clinician experience with on-device pose estimation, browser-native
-ONNX inference, and Supabase-backed clinical workflows so rehabilitation can be measured in real time
-without compromising privacy.
+**MOVA is now a rehabilitation app for patients after total knee arthroplasty (TKA), measuring knee movement
+with three wearable IMUs on the thigh, shank and foot.** Start with [`SUBMISSION.md`](SUBMISSION.md): what is built,
+what is real, what is deliberately not claimed, and what has not been verified. The hardware protocol is in
+[`HARDWARE-TEST.md`](HARDWARE-TEST.md).
 
-> Camera-optional, privacy absolute.
-
-It is designed to stream kinematics at **50 Hz**, compute clinically meaningful feedback on the patient
-device, and preserve only the minimum telemetry needed for treatment, review, and outcomes reporting.
-That makes MOVA suitable for home rehabilitation, low-connectivity settings, and privacy-sensitive care
-models where raw video should never leave the client.
+> Everything below the table of contents describes the **earlier camera-based prototype** for Parkinson's disease
+> and stroke (June 2026). It is kept for reference and is not the current product. Figures in it, such as the
+> 50 Hz stream, were design targets of that prototype, not measurements.
 
 ## Table of Contents
 

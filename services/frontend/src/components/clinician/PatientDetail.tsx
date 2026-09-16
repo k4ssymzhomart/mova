@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { type ReactNode, useMemo, useState } from "react";
 
 import FogEventsFeed from "@/components/clinician/FogEventsFeed";
 import PrescriptionEditor from "@/components/clinician/PrescriptionEditor";
@@ -16,7 +16,11 @@ import { useTranslation } from "@/locales/client";
 
 const HAR = (s: string | null) => (s ? s.replace(/_/g, " ") : "—");
 
-export default function PatientDetail({ patient }: { patient: ClinicPatient }) {
+/**
+ * `resultSlot` is server-rendered content (the Heel Slide result) placed inside this page's main landmark, right
+ * after the patient header, so it sits under the patient's h1 rather than ahead of it.
+ */
+export default function PatientDetail({ patient, resultSlot }: { patient: ClinicPatient; resultSlot?: ReactNode }) {
   const { t } = useTranslation();
   const [rx, setRx] = useState<Prescription>(patient.prescription);
 
@@ -68,6 +72,8 @@ export default function PatientDetail({ patient }: { patient: ClinicPatient }) {
           {packLabel[rx.pack]} · {rx.weeklyDoseSessions}/{t("clinician.card.wk")}
         </span>
       </header>
+
+      {resultSlot && <div className="mt-6">{resultSlot}</div>}
 
       <div className="mt-6 grid gap-6 lg:grid-cols-[1fr_360px]">
         {/* main column */}

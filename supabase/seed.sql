@@ -63,6 +63,9 @@ on conflict (id) do nothing;
 -- ============================================================================
 -- Demo accounts (auth.users -> handle_new_user trigger creates profiles)
 -- ============================================================================
+-- The trigger creates every profile as a patient in Mova Personal and never reads a role from
+-- signup metadata (0035_signup_role_hotfix.sql), so the metadata below carries names only and the
+-- demo roles are granted explicitly further down.
 insert into auth.users (
   instance_id, id, aud, role, email, encrypted_password, email_confirmed_at,
   raw_app_meta_data, raw_user_meta_data, created_at, updated_at
@@ -70,15 +73,15 @@ insert into auth.users (
   ('00000000-0000-0000-0000-000000000000', '22222222-2222-2222-2222-222222222222', 'authenticated', 'authenticated',
    'clinician@mova.dev', extensions.crypt('Mova-Demo-1234', extensions.gen_salt('bf')), now(),
    '{"provider":"email","providers":["email"]}'::jsonb,
-   '{"full_name":"Dr. Dana Park","role":"clinician"}'::jsonb, now(), now()),
+   '{"full_name":"Dr. Dana Park"}'::jsonb, now(), now()),
   ('00000000-0000-0000-0000-000000000000', '33333333-3333-3333-3333-333333333333', 'authenticated', 'authenticated',
    'patient@mova.dev', extensions.crypt('Mova-Demo-1234', extensions.gen_salt('bf')), now(),
    '{"provider":"email","providers":["email"]}'::jsonb,
-   '{"full_name":"Alex Patient","role":"patient"}'::jsonb, now(), now()),
+   '{"full_name":"Alex Patient"}'::jsonb, now(), now()),
   ('00000000-0000-0000-0000-000000000000', '44444444-4444-4444-4444-444444444444', 'authenticated', 'authenticated',
    'admin@mova.dev', extensions.crypt('Mova-Demo-1234', extensions.gen_salt('bf')), now(),
    '{"provider":"email","providers":["email"]}'::jsonb,
-   '{"full_name":"Casey Admin","role":"clinic_admin"}'::jsonb, now(), now())
+   '{"full_name":"Casey Admin"}'::jsonb, now(), now())
 on conflict (id) do nothing;
 
 insert into auth.identities (provider_id, user_id, identity_data, provider, last_sign_in_at, created_at, updated_at) values
@@ -90,13 +93,18 @@ insert into auth.identities (provider_id, user_id, identity_data, provider, last
    '{"sub":"44444444-4444-4444-4444-444444444444","email":"admin@mova.dev"}'::jsonb, 'email', now(), now(), now())
 on conflict (provider_id, provider) do nothing;
 
--- Bind profiles to the clinic (trigger already set role + full_name).
-update public.profiles set clinic_id = '11111111-1111-1111-1111-111111111111', timezone = 'Asia/Almaty'
-where id in (
-  '22222222-2222-2222-2222-222222222222',
-  '33333333-3333-3333-3333-333333333333',
-  '44444444-4444-4444-4444-444444444444'
-);
+-- Grant the demo roles and bind the profiles to the demo clinic (the trigger set full_name only).
+-- seed.sql runs with no signed-in user, which app.enforce_profile_guard treats as a trusted context.
+update public.profiles p
+   set role      = d.role::public.app_role,
+       clinic_id = '11111111-1111-1111-1111-111111111111',
+       timezone  = 'Asia/Almaty'
+  from (values
+    ('22222222-2222-2222-2222-222222222222'::uuid, 'clinician'),
+    ('33333333-3333-3333-3333-333333333333'::uuid, 'patient'),
+    ('44444444-4444-4444-4444-444444444444'::uuid, 'clinic_admin')
+  ) as d (id, role)
+ where p.id = d.id;
 
 -- Role records
 insert into public.clinicians (id, profile_id, clinic_id, title, specialties) values

@@ -1,14 +1,28 @@
-// Step 1 of the exercise flow (Датчики). Loads the prescription the patient started from Today, then hands the
-// sensor check to SensorsStep. There is no session row yet, and none is created here: a session starts only once
-// three real sensors are streaming.
+// Step 1 of the exercise flow (Датчики). Loads the prescription the patient started from Today and what connecting
+// sensors needs (the patient, the side bindings are saved under, the saved bindings), then hands over to
+// SensorsStep. There is no session row yet: SensorsStep creates it once three real sensors are streaming (or, on
+// `next dev` with NEXT_PUBLIC_SENSOR_SIMULATION=1, three simulated ones, and the session is stamped as simulated).
+//
+// Only Heel Slide runs on this path. For any other exercise the step stays the honest placeholder it was before:
+// no sensor panel, nothing connected or saved, and no session opened, because nothing after this step could finish
+// one.
+//
+// `?rate=100` asks the sensors for 100 Hz, for the hardware checks; `?rate=50`, no parameter or anything else asks
+// for 50 Hz (lib/ble/sampleRate requestedRateFromParam). Only those two rates are ever written to a sensor.
 
+import { Bluetooth } from "lucide-react";
 import type { Metadata } from "next";
+import Link from "next/link";
 
+import EmptyState from "@/components/app/EmptyState";
 import PageHeader from "@/components/app/PageHeader";
+import { primaryButton } from "@/components/app/recipes";
+import { requestedRateFromParam } from "@/lib/ble/sampleRate";
 import { getTranslation } from "@/locales/server";
 
 import FlowUnavailable from "../../_flow/FlowUnavailable";
-import { loadActivePrescription } from "../../_flow/load";
+import { HEEL_SLIDE_SLUG, loadActivePrescription, loadSensorContext } from "../../_flow/load";
+import { loadPrescriptionExerciseSlug } from "./load";
 import SensorsStep from "./SensorsStep";
 
 export async function generateMetadata(): Promise<Metadata> {
@@ -16,9 +30,18 @@ export async function generateMetadata(): Promise<Metadata> {
   return { title: `${t("flow.steps.sensors")} · Mova` };
 }
 
-export default async function SensorsStepPage({ params }: { params: { prescriptionId: string } }) {
+export default async function SensorsStepPage({
+  params,
+  searchParams,
+}: {
+  params: { prescriptionId: string };
+  searchParams: { rate?: string | string[] };
+}) {
   const { t } = getTranslation();
-  const prescription = await loadActivePrescription(params.prescriptionId);
+  const [prescription, sensors] = await Promise.all([
+    loadActivePrescription(params.prescriptionId),
+    loadSensorContext(),
+  ]);
   if (prescription.kind !== "ok") {
     return (
       <FlowUnavailable
@@ -27,16 +50,55 @@ export default async function SensorsStepPage({ params }: { params: { prescripti
       />
     );
   }
+  if (sensors.kind !== "ok") {
+    return (
+      <FlowUnavailable
+        eyebrow={t("flow.steps.sensors")}
+        reason={sensors.kind === "error" ? "loadError" : "prescriptionNotFound"}
+      />
+    );
+  }
+
+  const exercise = await loadPrescriptionExerciseSlug(prescription.value.id, sensors.value.patientId);
+  if (exercise.kind !== "ok") {
+    return (
+      <FlowUnavailable
+        eyebrow={t("flow.steps.sensors")}
+        reason={exercise.kind === "error" ? "loadError" : "prescriptionNotFound"}
+      />
+    );
+  }
+
+  const title = prescription.value.exerciseName ?? t("flow.untitledExercise");
+  if (exercise.value !== HEEL_SLIDE_SLUG) {
+    // TODO(#22): the other exercises get their sensor step with their session screens.
+    return (
+      <div className="space-y-8">
+        <PageHeader eyebrow={t("flow.steps.sensors")} title={title} />
+        <EmptyState
+          icon={Bluetooth}
+          title={t("flow.pending.title")}
+          body={t("flow.pending.sensors")}
+          action={
+            <Link href="/app" className={primaryButton}>
+              {t("shell.home")}
+            </Link>
+          }
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-8">
-      <PageHeader
-        eyebrow={t("flow.steps.sensors")}
-        title={prescription.value.exerciseName ?? t("flow.untitledExercise")}
-        lead={t("flow.sensors.lead")}
+      <PageHeader eyebrow={t("flow.steps.sensors")} title={title} lead={t("flow.sensors.lead")} />
+      <SensorsStep
+        prescriptionId={prescription.value.id}
+        patientId={sensors.value.patientId}
+        side={sensors.value.side}
+        savedDevices={sensors.value.savedDevices}
+        requestedHz={requestedRateFromParam(searchParams.rate)}
       />
-      {/* TODO(#22): pass prescription.value.id to SensorsStep once it creates the session row. */}
-      <SensorsStep />
     </div>
   );
 }
