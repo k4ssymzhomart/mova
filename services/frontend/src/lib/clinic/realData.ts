@@ -53,13 +53,18 @@ interface CaseRow {
 const num = (v: unknown): number | null =>
   typeof v === "number" && Number.isFinite(v) ? v : null;
 
-function mapCondition(slug: string | null, sessions: SessionRecord[]): Condition {
+function conditionFromSlug(slug: string | null): Condition | null {
   const s = (slug ?? "").toLowerCase();
   if (s.includes("park")) return "parkinsons";
   if (s.includes("stroke") || s.includes("cva")) return "stroke";
   if (s.includes("ortho") || s.includes("acl") || s.includes("post")) return "ortho";
-  // Infer from training history when the catalog link is absent.
-  return sessions.some((x) => x.exercise === "gait") ? "parkinsons" : "stroke";
+  return null;
+}
+
+function mapCondition(slug: string | null, sessions: SessionRecord[]): Condition {
+  // Infer from training history when the catalog link is absent. Only the pack default uses this guess; the caseload
+  // does not show it as the patient's condition (conditionOnFile).
+  return conditionFromSlug(slug) ?? (sessions.some((x) => x.exercise === "gait") ? "parkinsons" : "stroke");
 }
 
 function mapSide(raw: string | null): AffectedSide {
@@ -173,6 +178,7 @@ function mapPatient(row: CaseRow): ClinicPatient {
     (sessions.length ? sessions[sessions.length - 1].startedAt : 0);
 
   return {
+    conditionOnFile: conditionFromSlug(row.condition_slug) !== null,
     demo: {
       name: row.name || "Patient",
       age: ageFromDob(row.date_of_birth),

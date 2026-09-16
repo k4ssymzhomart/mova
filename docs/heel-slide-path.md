@@ -244,12 +244,15 @@ is simulated.
 
 ```bash
 cd services/frontend
-# HEEL_SLIDE_PATIENT_PASSWORD and HEEL_SLIDE_CLINICIAN_PASSWORD in .env.local or the shell, as for the seed
-NEXT_PUBLIC_SENSOR_SIMULATION=1 npx next dev
+# HEEL_SLIDE_PATIENT_PASSWORD and HEEL_SLIDE_CLINICIAN_PASSWORD in .env.local, as for the seed
+npm run demo
 ```
 
-Use `npx next dev`, not `npm run dev` (that script runs `next start`). `NEXT_PUBLIC_` values are compiled in when the
-server starts, so set the flag before starting it.
+`npm run demo` (scripts/demo.mjs) checks `.env.local` by variable name, then starts the development server with
+`NEXT_PUBLIC_SENSOR_SIMULATION=1` on 127.0.0.1, the same way on macOS, Linux and Windows. Without it:
+`NEXT_PUBLIC_SENSOR_SIMULATION=1 npx next dev` in a POSIX shell, or `NEXT_PUBLIC_SENSOR_SIMULATION=1` in
+`.env.development.local`. `NEXT_PUBLIC_` values are compiled in when the server starts, so set the flag before
+starting it. A production server (`npm run build` + `npm start`) has neither the simulation nor test sign-in.
 
 - **Sign-in.** `/signin` shows «Войти как тестовый пациент» and «Войти как тестовый врач» when test sign-in is
   allowed (a local development server or a Vercel preview, the same rule as the password form) and both passwords

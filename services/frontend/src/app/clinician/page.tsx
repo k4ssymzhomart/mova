@@ -1,6 +1,5 @@
 import Link from "next/link";
 
-import FogEventsFeed from "@/components/clinician/FogEventsFeed";
 import { RiskChip } from "@/components/clinician/RiskChip";
 import { caseloadSummary, computeCaseMetrics } from "@/lib/clinic/metrics";
 import { fetchRoster } from "@/lib/clinic/realData";
@@ -65,11 +64,6 @@ export default async function ClinicOverview() {
           ))}
         </div>
       )}
-
-      {/* live freezing-of-gait telemetry streamed from real sessions (RLS-scoped) */}
-      <div className="mt-10">
-        <FogEventsFeed limit={12} />
-      </div>
     </main>
   );
 }
@@ -109,9 +103,11 @@ function PatientCard({
             {p.demo.mrn} · {agoLabel(m.lastActiveAt)}
           </div>
         </div>
-        <span className="rounded-pill border border-line bg-paper-soft px-3 py-1 text-[11px] font-medium uppercase tracking-[0.12em] text-ink-soft">
-          {conditionLabel[p.profile.condition]}
-        </span>
+        {p.conditionOnFile !== false && (
+          <span className="rounded-pill border border-line bg-paper-soft px-3 py-1 text-[11px] font-medium uppercase tracking-[0.12em] text-ink-soft">
+            {conditionLabel[p.profile.condition]}
+          </span>
+        )}
       </div>
 
       <div className="mt-5 flex items-center gap-4">

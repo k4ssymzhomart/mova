@@ -1,22 +1,13 @@
-# Mova Frontend — Clinician Console
+# Mova frontend
 
-Next.js (App Router, TypeScript) dashboard. Dark-mode-first, Vercel-native aesthetic, bento-grid layout,
-with placeholders where the 3D pose viewer and live gait telemetry will mount.
+The Next.js app: patient app, clinician portal and exercise library. How to set it up, run it and present it is in
+the root [`README.md`](../../README.md#running-it). In short:
 
-## Run (dev)
 ```bash
-cd services/frontend
-npm install
-npm run dev          # http://localhost:3000
+npm ci
+cp .env.local.example .env.local   # then fill it in; the test passwords come privately
+npm run demo                       # presenting: development server with simulated sensors
+npm run dev                        # development server with real Bluetooth sensors
 ```
-The dashboard talks to the API gateway at `http://localhost:8000` (start it with
-`docker compose up --build` from the repo root). CORS for `localhost:3000` is already configured on the API.
 
-## Structure
-- `app/layout.tsx`, `app/page.tsx` — shell + bento grid
-- `app/globals.css` — design tokens (dark palette), grid, and micro-animations
-- `components/` — `StreamStatus` (live state, animated), `MetricCard`, `PosePlaceholder`, `TelemetryStrip`
-
-## Next
-Wire `StreamStatus` to the real `ws /api/v1/predict/fog/stream`, render `MetricCard`s from session
-metrics, and replace `PosePlaceholder` with a three.js skeleton driven by estimated pose (Roadmap E4).
+`npm run build` + `npm start` is a production server: it never shows test sign-in or simulated sensors.

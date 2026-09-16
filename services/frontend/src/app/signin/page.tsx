@@ -16,5 +16,14 @@ export default function SignInPage() {
   // The one-press test sign-in buttons follow the same rule and also need both test passwords in the server
   // environment. Only this boolean reaches the browser.
   const testAccountButtons = TEST_PASSWORD_LOGIN && testAccountButtonsAvailable();
-  return <MinimalAuthPage testPasswordLogin={TEST_PASSWORD_LOGIN} testAccountButtons={testAccountButtons} />;
+  // On a local development server only, say why the buttons are missing, by variable name and never by value. The
+  // condition is a literal after NODE_ENV is inlined, so a production build, previews included, drops it.
+  const testAccountSetupHint = process.env.NODE_ENV === "development" && !testAccountButtons;
+  return (
+    <MinimalAuthPage
+      testPasswordLogin={TEST_PASSWORD_LOGIN}
+      testAccountButtons={testAccountButtons}
+      testAccountSetupHint={testAccountSetupHint}
+    />
+  );
 }

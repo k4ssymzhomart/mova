@@ -9,7 +9,7 @@ connected straight to the browser over Bluetooth.
 
 This submission is one exercise, Heel Slide, working end to end: the patient sees it on Today, connects three
 sensors, does ten repetitions while the count and a drawing of the leg follow the movement, answers a check-in, and a
-clinician opens that session. Code: branch `feat/heel-slide`, PR #26.
+clinician opens that session. Code: `main` (PRs #26 and #27). To run or present it, see "Running it" in the README.
 
 ## The engineering finding worth leading with
 

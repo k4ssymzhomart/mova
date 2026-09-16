@@ -37,7 +37,8 @@
       "failed": "Could not sign in. Check the address and password.",
       "asPatient": "Sign in as the test patient",
       "asClinician": "Sign in as the test clinician",
-      "accountFailed": "Could not sign in to the test account."
+      "accountFailed": "Could not sign in to the test account.",
+      "setupHint": "The test account buttons are missing: HEEL_SLIDE_PATIENT_PASSWORD or HEEL_SLIDE_CLINICIAN_PASSWORD is not set on this machine, or a HEEL_SLIDE_*_EMAIL is not a @mova.test address. Fix services/frontend/.env.local and restart npm run demo (npm run demo:check says what is wrong)."
     }
   },
   "landing": {

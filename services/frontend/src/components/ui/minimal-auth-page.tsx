@@ -24,9 +24,12 @@ type TestAccount = "patient" | "clinician";
 export function MinimalAuthPage({
   testPasswordLogin = false,
   testAccountButtons = false,
+  testAccountSetupHint = false,
 }: {
   testPasswordLogin?: boolean;
   testAccountButtons?: boolean;
+  /** Local development only (sign-in page): the buttons are missing because a test password is not set. */
+  testAccountSetupHint?: boolean;
 }) {
   const { t } = useTranslation();
   const [supabase] = React.useState(() => createClient());
@@ -270,6 +273,15 @@ export function MinimalAuthPage({
                 </Button>
               ))}
             </div>
+          )}
+
+          {testAccountSetupHint && (
+            <p
+              role="note"
+              className="rounded-md border border-dashed border-input px-3 py-2.5 text-sm text-muted-foreground"
+            >
+              {t("auth.testLogin.setupHint")}
+            </p>
           )}
 
           {testPasswordLogin && (

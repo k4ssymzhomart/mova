@@ -7,9 +7,9 @@
     "sync:content": "node scripts/sync-content.mjs",
     "predev": "node scripts/sync-content.mjs && node scripts/fetch-models.mjs",
     "prebuild": "node scripts/sync-content.mjs && node scripts/fetch-models.mjs",
-    "dev": "next start",
+    "dev": "next dev",
     "build": "next build",
-    "start": "next start -p 3000",
+    "start": "next start",
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
     "models:sync": "node scripts/fetch-models.mjs",
@@ -17,7 +17,9 @@
     "test:unit": "node --test \"src/!(lib)/**/*.test.ts\" \"src/lib/!(ble|telemetry|scoring)/**/*.test.ts\"",
     "test": "vitest run",
     "test:all": "npm run -s test:unit && npm run -s test",
-    "seed:heel-slide": "node scripts/seed-heel-slide.mjs"
+    "seed:heel-slide": "node scripts/seed-heel-slide.mjs",
+    "demo": "node scripts/demo.mjs",
+    "demo:check": "node scripts/demo.mjs --check"
   },
   "dependencies": {
     "@mediapipe/tasks-vision": "^0.10.35",

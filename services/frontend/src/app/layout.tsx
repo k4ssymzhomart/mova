@@ -19,9 +19,9 @@ const electrolize = Electrolize({
 });
 
 export const metadata: Metadata = {
-  title: "Mova — Motion intelligence for movement rehabilitation",
+  title: "Mova — rehabilitation after knee replacement",
   description:
-    "The first camera-free platform turning everyday wearable motion into clinical-grade gait and freezing-of-gait insight that generalises across patients and devices.",
+    "Rehabilitation after total knee replacement, with exercises followed by three wearable motion sensors on the thigh, shin and foot.",
   // Served from services/frontend/public/icon.png so Chrome and other browsers show the Mova mark
   // in the tab/bookmark instead of the default globe.
   icons: {

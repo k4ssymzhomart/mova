@@ -37,7 +37,8 @@
       "failed": "Не удалось войти. Проверьте адрес и пароль.",
       "asPatient": "Войти как тестовый пациент",
       "asClinician": "Войти как тестовый врач",
-      "accountFailed": "Не удалось войти в тестовый аккаунт."
+      "accountFailed": "Не удалось войти в тестовый аккаунт.",
+      "setupHint": "Кнопок тестовых аккаунтов нет: на этом компьютере не задан HEEL_SLIDE_PATIENT_PASSWORD или HEEL_SLIDE_CLINICIAN_PASSWORD, либо HEEL_SLIDE_*_EMAIL не на @mova.test. Исправьте services/frontend/.env.local и перезапустите npm run demo (npm run demo:check подскажет, что не так)."
     }
   },
   "landing": {

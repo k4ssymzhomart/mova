@@ -24,6 +24,11 @@ export interface Prescription {
 export interface ClinicPatient {
   demo: Demographics;
   profile: PatientProfile;
+  /**
+   * false when the record has no recognised condition and profile.condition is only the portal's guess from session
+   * history. The caseload shows no condition then, rather than a diagnosis nobody recorded. Absent on demo fixtures.
+   */
+  conditionOnFile?: boolean;
   sessions: SessionRecord[];
   prescription: Prescription;
   lastActiveAt: number;

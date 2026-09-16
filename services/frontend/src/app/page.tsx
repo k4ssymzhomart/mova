@@ -1,31 +1,9 @@
-import CapabilitiesSection from "@/components/site/CapabilitiesSection";
-import EmotionSection from "@/components/site/EmotionSection";
-import FaqSection from "@/components/site/FaqSection";
-import FinalCta from "@/components/site/FinalCta";
-import Footer from "@/components/site/Footer";
-import Hero from "@/components/site/Hero";
-import Nav from "@/components/site/Nav";
-import SmoothScroll from "@/components/site/SmoothScroll";
-import ValuesSection from "@/components/site/ValuesSection";
+import { redirect } from "next/navigation";
 
-/**
- * Mova landing — a single scroll-driven narrative:
- *   hero (video + stats) → capabilities scroll-narrative → pinned storytelling
- *   beat → values → testimonials → FAQ → CTA.
- */
+// The root address goes straight into the app: a signed-in patient lands on Today, and anyone else is sent to /signin
+// by the middleware. The marketing landing that used to live here (components/site/*) described the earlier
+// camera-based Parkinson's and stroke prototype ("no sensors, just your camera"), which is the opposite of this
+// knee rehabilitation app. Its components are kept, unreferenced, until it is rewritten for this product.
 export default function Page() {
-  return (
-    <SmoothScroll>
-      <Nav />
-      <main>
-        <Hero />
-        <CapabilitiesSection />
-        <EmotionSection />
-        <ValuesSection />
-        <FaqSection />
-        <FinalCta />
-      </main>
-      <Footer />
-    </SmoothScroll>
-  );
+  redirect("/app");
 }

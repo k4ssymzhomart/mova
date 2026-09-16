@@ -80,32 +80,35 @@ cd services/frontend
 npm ci
 ```
 
-Create `services/frontend/.env.local` (git-ignored) with the project's public values:
-
-```bash
-NEXT_PUBLIC_SUPABASE_URL=<project URL>
-NEXT_PUBLIC_SUPABASE_ANON_KEY=<anon public key>
-```
+Copy `services/frontend/.env.local.example` to `services/frontend/.env.local` (git-ignored) and fill it in:
 
 | Variable | Needed for |
 |---|---|
 | `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY` | The app. Required. |
-| `SUPABASE_SERVICE_ROLE_KEY` | Only `npm run seed:heel-slide`. Server-side only; bypasses row-level security. |
-| `NEXT_PUBLIC_SITE_URL` | The public origin behind a proxy, for sign-in redirects. |
-| `NEXT_PUBLIC_SENSOR_SIMULATION=1` | Simulated sensors, and only under `next dev`. A production build contains no simulator. |
-| `HEEL_SLIDE_PATIENT_PASSWORD`, `HEEL_SLIDE_CLINICIAN_PASSWORD` | The test sign-in buttons, shown only under `next dev` and on Vercel previews. |
+| `HEEL_SLIDE_PATIENT_PASSWORD`, `HEEL_SLIDE_CLINICIAN_PASSWORD` | The test sign-in buttons. Secrets: ask Kassymzhomart privately. |
+| `SUPABASE_SERVICE_ROLE_KEY` | Only `npm run seed:heel-slide`. Not needed to run or present the app; keep it off other machines. |
+| `NEXT_PUBLIC_SITE_URL` | The public origin behind a proxy, for sign-in redirects. Leave unset locally. |
 
-Run it:
+| Command | What you get |
+|---|---|
+| `npm run demo` | **For presenting.** A development server with simulated sensors on http://127.0.0.1:3000/signin, after checking the env file (`npm run demo:check` only checks). Works the same on macOS, Linux and Windows. |
+| `npm run dev` | A development server (http://localhost:3000) with real Bluetooth sensors, for hardware testing. |
+| `npm run build` then `npm start` | A production server. It never shows test sign-in or simulated sensors, by design, and it serves whatever was last built: rebuild after every pull. |
 
-```bash
-npx next dev            # development, http://localhost:3000
-npx next build && npx next start -p 3000   # production build
-```
+Test sign-in («Войти как тестовый пациент» / «Войти как тестовый врач») exists only on a development server and on
+Vercel previews. Web Bluetooth needs Chrome or Edge on desktop or Android; Safari and iOS do not have it. Simulated
+sensors work in any browser.
 
-`npm run dev` is mapped to `next start`, so use `npx next dev` for development. A production build shows only
-Google and e-mail link sign-in; the password form and test buttons for the `@mova.test` accounts exist only in
-development and on Vercel previews. Web Bluetooth needs Chrome or Edge on desktop or Android; Safari and iOS do not
-have it.
+### Presenting the Heel Slide demo
+
+1. `git pull` on `main`, then `npm ci` in `services/frontend`.
+2. `.env.local` with the two Supabase values and the two test passwords.
+3. `npm run demo`, then open http://127.0.0.1:3000/signin and press «Войти как тестовый пациент». Today shows Heel
+   Slide with «Начать». For the clinician side, go back to `/signin` and press «Войти как тестовый врач».
+
+Every «Далее» on the sensors step writes one real session for the test patient to the production database, marked
+simulated. Do not press «Dev auto-login · dev@mova.local» (a different, camera-era account), and do not type an
+address into the e-mail sign-in box (it creates a real account).
 
 ### Checks
 

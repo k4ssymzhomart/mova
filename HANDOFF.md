@@ -1,15 +1,33 @@
-# Handoff — feat/heel-slide (PR #26)
+# Handoff
 
-Two people, an hour each, no context. Read your section only.
+Everything is on `main`: the Heel Slide path (PR #26), the exercise library, the scoring engine and the tenancy fix
+(PR #27). Read your section only.
+
+## Anyone running or presenting the app
+
+Follow "Running it" in [`README.md`](README.md). The short version:
+
+```bash
+git pull                      # on main
+cd services/frontend && npm ci
+npm run demo                  # development server + simulated sensors → http://127.0.0.1:3000/signin
+```
+
+`services/frontend/.env.local` needs four values from Kassymzhomart, sent privately: `NEXT_PUBLIC_SUPABASE_URL`,
+`NEXT_PUBLIC_SUPABASE_ANON_KEY`, `HEEL_SLIDE_PATIENT_PASSWORD`, `HEEL_SLIDE_CLINICIAN_PASSWORD`. Not the service-role
+key. `npm run demo:check` says what is missing, by name.
+
+If `/signin` shows only Google and the e-mail box, you are on a production server (`npm run build` + `npm start`, or
+a deployment): test sign-in never appears there. Use `npm run demo`.
 
 ## Rishat (@Theleriz)
 
-**You don't need to build anything.** PR #26 (`feat/heel-slide`, base `feat/tka-app-shell`) already contains the
+**You don't need to build anything.** `main` already contains the
 working path: Today → three sensors → Heel Slide with a live rep count → check-in → the clinician's view of that
 session. It includes your #25 (real BLE layer), merged in.
 
 **Why your deployment can't log in as the test accounts.** The password form on `/signin` renders only in local
-development (`next dev`) and on Vercel preview builds. Everywhere else `/signin` offers Google and an email link, and
+development (`npm run dev`, `npm run demo`) and on Vercel preview builds. Everywhere else `/signin` offers Google and an email link, and
 the test accounts have no mailbox.
 
 | | |
@@ -20,14 +38,14 @@ the test accounts have no mailbox.
 | Patient start | `/app/session/new/dd6e686a-5946-42d2-bd82-ec94f60f49a9` |
 | Clinician view of that patient | `/clinician/patient/6ed0d292-1183-4ae7-9a3e-04ee87c39a20` |
 
-**Why a self-registered account looks empty.** A new signup (Google or email link) becomes a patient in the shared
-"Mova Personal" clinic with no program and no prescription, so Today has nothing to start. Since hotfix `0035` a signup
+**Why a self-registered account looks empty.** A new signup (Google or email link) becomes a patient in a clinic of
+its own (migration `0036`) with no program and no prescription, so Today has nothing to start. Since `0035` a signup
 can never get a clinician or admin role, whatever the signup form sends.
 
 **Please don't push unreviewed issue output to a shared branch** (`main`, `feat/tka-app-shell`, `feat/heel-slide`).
-Production carries 9 real patients and migrations `0023`, `0034` and `0035` are applied there. Open a PR and ask for a
-review instead. Your #24 is not applied; its `0023_tenancy_fix.sql` shares version `0023` with #25's
-`0023_patient_ble_devices.sql`, so it needs renumbering before it can land.
+Production carries real patients and migrations up to `0023`, then `0034`–`0036`, are applied there. Open a PR and
+ask for a review instead. Your tenancy fix landed as `0036`; your exercise-screen migrations are in the repo as
+`0037`–`0040`, not applied (see the notes in their headers).
 
 ## Nurzhan (@Nurzhan06)
 
@@ -39,8 +57,8 @@ Connect **one** sensor in the app, open «Технические данные»,
 **Skip today:** the university server, model training, the other seven exercises.
 
 **Where things are:**
-- How to run the app locally and sign in: the "Running it with `feat/heel-slide`" section of `HARDWARE-TEST.md`.
-  You need `services/frontend/.env.local` from Kassymzhomart.
+- How to run the app locally and sign in: the "Running it" section of `HARDWARE-TEST.md` (`npm run dev`, real
+  sensors, not `npm run demo`). You need the four `.env.local` values above from Kassymzhomart.
 - Test accounts and URLs: the table in Rishat's section above.
 - Test 1 does not need «Далее»; pressing it starts a session on the production database.
 

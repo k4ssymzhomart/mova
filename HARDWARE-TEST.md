@@ -90,7 +90,7 @@ Put it in the PR as a comment. It's the evidence #18 has been waiting for since 
 
 ---
 
-## Running it with `feat/heel-slide`
+## Running it
 
 The app does the byte-level work in Test 1 for you: connecting a sensor writes the unlock and rate commands to
 `ffe9` and reads the rate back from the sensor's `0x55 0x71` reply. You read the numbers off the screen.
@@ -98,13 +98,13 @@ The app does the byte-level work in Test 1 for you: connecting a sensor writes t
 **Setup (laptop, Chrome or Edge; `localhost` counts as a secure context, so Web Bluetooth works there):**
 
 ```bash
-git fetch origin && git checkout feat/heel-slide
+git checkout main && git pull
 cd services/frontend && npm ci
-# get services/frontend/.env.local from Kassymzhomart (Supabase keys + test account passwords; never commit it)
-npx next dev
+# services/frontend/.env.local: the two Supabase values and the two test passwords, from Kassymzhomart privately
+npm run dev          # real sensors; npm run demo would simulate them
 ```
 
-1. Open `http://localhost:3000/signin` and use **«Вход для тестовых аккаунтов»** with `heel-slide-patient@mova.test`.
+1. Open `http://localhost:3000/signin` and press **«Войти как тестовый пациент»**.
 2. Open `http://localhost:3000/app/session/new/dd6e686a-5946-42d2-bd82-ec94f60f49a9` (the seeded Heel Slide
    prescription). For the 100 Hz run add `?rate=100`.
 3. **Power on one sensor at a time** when you press «Подключить» for a role. All three sensors probably advertise the
