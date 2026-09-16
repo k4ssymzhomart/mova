@@ -46,6 +46,7 @@ interface CaseRow {
   condition_slug: string | null;
   last_session_at: string | null;
   fog_count: number;
+  unacknowledged_red_flag_count: number | null;
   care_plan: CarePlanRow | null;
   sessions: SessionRow[];
 }
@@ -191,6 +192,7 @@ function mapPatient(row: CaseRow): ClinicPatient {
     sessions,
     prescription,
     lastActiveAt,
+    unacknowledgedRedFlagCount: row.unacknowledged_red_flag_count ?? 0,
   };
 }
 

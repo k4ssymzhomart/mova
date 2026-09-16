@@ -272,6 +272,7 @@
       "ortho": "Orthopaedic recovery"
     },
     "flags": {
+      "checkin-red-flag": "Needs attention",
       "freeze": "Elevated freeze-risk",
       "rhythm": "Gait rhythm declining",
       "reach": "Reach speed slowing",

@@ -20,6 +20,15 @@ export function computeCaseMetrics(p: ClinicPatient): CaseMetrics {
 
   const flags: RiskFlag[] = [];
 
+  if (p.unacknowledgedRedFlagCount > 0) {
+    flags.push({
+      id: "checkin-red-flag",
+      severity: "high",
+      label: "Needs attention",
+      detail: `${p.unacknowledgedRedFlagCount} post-session check-in${p.unacknowledgedRedFlagCount > 1 ? "s" : ""} flagged a symptom (swelling, drainage, calf pain, or dizziness) that hasn't been acknowledged yet.`,
+    });
+  }
+
   const freeze = recentFreezeMean(p);
   if (freeze != null && freeze > 0.5) {
     flags.push({

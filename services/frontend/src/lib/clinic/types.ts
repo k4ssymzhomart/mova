@@ -27,6 +27,8 @@ export interface ClinicPatient {
   sessions: SessionRecord[];
   prescription: Prescription;
   lastActiveAt: number;
+  /** Post-session check-ins (post_session_checkins) flagged red and not yet acknowledged by a clinician. */
+  unacknowledgedRedFlagCount: number;
 }
 
 export type RiskSeverity = "high" | "watch" | "info";
