@@ -988,5 +988,63 @@
       "title": "Sensor settings are not available yet",
       "body": "Sensors are connected at the start of each exercise. You will be able to manage them on this page once Bluetooth support is added to the app."
     }
+  },
+  "exerciseLibrary": {
+    "metaTitle": "Exercise library",
+    "eyebrow": "Exercises",
+    "title": "Exercise library",
+    "lead": "Exercises after knee replacement, by recovery phase. Phase timings are a guide, not a go-ahead: only do what your care team has prescribed. You can only start an exercise here if it is prescribed to you and the app already runs it with sensors.",
+    "overview": {
+      "title": "All the exercises in one video",
+      "caption": "A minute of excerpts from the clinician's videos, without sound. Only do the exercises prescribed to you.",
+      "video": "Exercise overview video"
+    },
+    "phase": {
+      "a": "Phase A: discharge to ~3 weeks",
+      "ab": "Phases A–B: discharge to ~6 weeks",
+      "bc": "Phases B–C: ~4–12 weeks",
+      "c": "Phase C: ~7–12 weeks",
+      "ac": "Phases A–C: discharge to ~12 weeks",
+      "none": "Phase not stated"
+    },
+    "phaseShort": {
+      "a": "Phase A",
+      "ab": "Phases A–B",
+      "bc": "Phases B–C",
+      "c": "Phase C",
+      "ac": "Phases A–C",
+      "none": "Phase not stated"
+    },
+    "quantifiability": {
+      "full": "Technique is assessed",
+      "partial": "Partly assessed",
+      "fullOrPartial": "Fully or partly assessed",
+      "completionOnly": "Completion is counted"
+    },
+    "field": {
+      "sensors": "Sensors",
+      "target": "Target",
+      "quantifiability": "Assessment",
+      "minValidExcursion": "Smallest movement that counts",
+      "measures": "What the sensors measure"
+    },
+    "details": "Details",
+    "start": "Start",
+    "notPrescribed": "Not prescribed",
+    "prescriptionUnknown": "Couldn't check your prescription",
+    "media": {
+      "poster": "Still from the video: {name}",
+      "playNamed": "Play video: {name}",
+      "pauseNamed": "Pause video: {name}",
+      "play": "Play",
+      "pause": "Pause",
+      "video": "Video: {name}",
+      "comingSoon": "Video coming"
+    },
+    "detail": {
+      "close": "Close",
+      "cues": "How to do it",
+      "commonErrors": "Common mistakes"
+    }
   }
 }

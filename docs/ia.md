@@ -34,6 +34,7 @@ NAV       /app                         Today
           /care-team                   Care team
 UTILITY   /settings                    footer
           /devices                     not in nav; empty state until #21 builds the device page
+          /exercises                   not in nav; static exercise library, videos, «Начать» only for a prescribed Heel Slide
 DETAIL    /program/[prescriptionId]    highlights Plan
           /progress/[sessionId]        highlights Progress
 FLOW      all under /app/session, all highlight Today, tab bar hidden
@@ -45,7 +46,6 @@ FLOW      all under /app/session, all highlight Today, tab bar hidden
           /app/session/[id]/stop               RED instruction (НТЗ §15)
 REDIRECT  /app/session, /app/session/new       → /app
           /app/session/[id]                    → the step matching the session's status
-          /exercises                           → /program
           /achievements                        → /progress
           /learn, /learn/[slug], /intake       → /app
 ```
@@ -58,7 +58,7 @@ shown as "nothing here". A missing or foreign id shows a not-found state inside 
 | Was | Now | Why |
 |---|---|---|
 | Тренировка `/app/session/new` | redirect to `/app` | The flow is a wizard entered from Today. As a nav item it invited starting with no sensors, and the old route created a session row on every click. |
-| Упражнения `/exercises` | redirect to `/program` | The catalog is upper-limb and freezing-of-gait work; a patient never browses unprescribed exercises. |
+| Упражнения `/exercises` | static TKA exercise library, not in nav | The old catalog was upper-limb and freezing-of-gait work. The page is now the knee exercises from the НТЗ and the scoring spec (`lib/exercises/catalog.ts`) with clinician-recorded videos; only a prescribed Heel Slide can be started from it. |
 | Достижения `/achievements`, sidebar streak ring | redirect to `/progress` | Gamification is not shell chrome. Bringing it back safely (scoring spec §12.2) belongs to #22. |
 | Устройства `/devices` | out of nav, empty state | Sensor status belongs in the flow. The page showed three fake sensors with invented battery and signal values; #21 rebuilds it. |
 | Команда по уходу `/care-team` | renamed Специалисты | Its invented clinician, email, phone number, review date, and a messenger that saved to localStorage are gone. |

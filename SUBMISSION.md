@@ -38,12 +38,17 @@ the hardware protocol, and it confirms or kills this claim with a single number.
   the network drops until it can be sent.
 - **Repetition logic** — the hysteresis counter ported from the earlier Python service, with its ±180° wrap bug fixed
   and a regression test that fails on the old code.
-- **Database** — Supabase with row-level security; clinician reads go through an active care-team link. A live
-  hole where anyone could sign up as an administrator was found during this work and closed on production
-  (migration `0035`).
+- **Database** — Supabase with row-level security; clinician reads go through an active care-team link. Two live
+  holes were found during this work and closed on production: anyone could sign up as an administrator (migration
+  `0035`), and any account in the shared self-serve clinic, patients included, could list every patient in it
+  through the clinician-portal functions (migration `0036`).
 - **Check-in** — pain before and after, difficulty, how the knee feels, new symptoms; every scale starts unanswered.
 - **Clinician view** — the session's repetitions recounted on the server from the stored frames, the movement series,
   per-sensor technical data and the check-in answers.
+- **Exercise library** — `/exercises` shows the twelve exercises from the НТЗ and the scoring spec, with the
+  clinician-recorded reference videos (R-05, НТЗ §9.3) on the 7 exercises a clip is confirmed to show, and a one-minute
+  overview at the top. Eight of the twelve have scoring targets; the five with no confirmed clip say the video is
+  coming. The catalogue and videos are static files; only a prescribed Heel Slide can be started from the page.
 
 ## What is deliberately not claimed
 
@@ -77,5 +82,6 @@ unvalidated number is worth more than one that shows a confident wrong one.
 ## What is next
 
 1. Calibration to an anatomical knee angle, validated against a goniometer.
-2. The deterministic scoring engine for all eight exercises.
+2. Wiring the scoring engine for the eight exercises. It is in the branch (`lib/scoring`, 40 tests) but no screen
+   uses it yet, so nothing is scored.
 3. The clinician prescription builder.
