@@ -1,20 +1,23 @@
 // One Heel Slide session for the clinician, inside the patient page after its header. Server-rendered from the
 // view the loader built (lib/clinic/heelSlideResult.ts): reps recounted from the stored frames against the
-// prescribed target (with several presses of «Начать», the sum and each start's own count), the device's own count
-// only as a labelled aside, the proxy chart, the technical facts a hardware check needs (per-sensor frames and rates,
-// the rate checks, battery at start and finish, reconnects, the skew between sensors kept apart from the recount's
-// pairing tolerance, what the device confirmed sending), and the patient's check-in answers. No score and no knee
-// angle: the proxy is shown only on the chart, under its honest label. A session recorded on the simulated transport
-// carries a notice above everything that cannot be dismissed, and says so again in the session list, the chart
-// caption and the technical block, so no part of it can be read as sensor data.
+// prescribed target (with several presses of «Начать», the sum and each start's own count), the score lib/scoring
+// computed from the same stored frames (Technique/Repetitions/Movement goal/Overall, spec §12.1/§13.1 wording,
+// expandable into the Correctness+Volume+Target breakdown spec §13.2 asks for), the device's own count only as a
+// labelled aside, the proxy chart, the technical facts a hardware check needs (per-sensor frames and rates, the
+// rate checks, battery at start and finish, reconnects, the skew between sensors kept apart from the recount's
+// pairing tolerance, what the device confirmed sending), and the patient's check-in answers. The score, like the
+// chart, is provisional: the underlying angle is a relative, uncalibrated sensor reading (issue #17), never a
+// clinically validated knee angle. A session recorded on the simulated transport carries a notice above everything
+// that cannot be dismissed, and says so again in the session list, the chart caption and the technical block, so
+// no part of it can be read as sensor data.
 
-import { TriangleAlert } from "lucide-react";
+import { ChevronRight, TriangleAlert } from "lucide-react";
 import Link from "next/link";
 
 import LocalDateTime from "@/components/app/LocalDateTime";
-import { bodyText, card, cardTitle, eyebrow, metricValue, sectionTitle, textLink, tileLabel } from "@/components/app/recipes";
+import { bodyText, card, cardTitle, eyebrow, focusRing, metricValue, sectionTitle, textLink, tileLabel } from "@/components/app/recipes";
 import HeelSlideProxyChart from "@/components/clinician/HeelSlideProxyChart";
-import type { HeelSlideSection } from "@/lib/clinic/heelSlideResult";
+import type { HeelSlideScore, HeelSlideSection } from "@/lib/clinic/heelSlideResult";
 import {
   type BatteryValue,
   type CheckInAnswers,
@@ -65,7 +68,7 @@ export default function HeelSlideResult({ section }: { section: Visible }) {
       <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_320px]">
         <div className="min-w-0 space-y-8">
           {section.kind === "ok" ? (
-            <SessionResult view={section.view} t={t} />
+            <SessionResult view={section.view} score={section.score} scoreError={section.scoreError} t={t} />
           ) : (
             <header>
               <h2 id="heel-slide-result-title" className={sectionTitle}>
@@ -93,7 +96,17 @@ export default function HeelSlideResult({ section }: { section: Visible }) {
   );
 }
 
-function SessionResult({ view, t }: { view: HeelSlideView; t: T }) {
+function SessionResult({
+  view,
+  score,
+  scoreError,
+  t,
+}: {
+  view: HeelSlideView;
+  score: HeelSlideScore | null;
+  scoreError: boolean;
+  t: T;
+}) {
   const { session } = view;
   return (
     <>
@@ -124,6 +137,8 @@ function SessionResult({ view, t }: { view: HeelSlideView; t: T }) {
 
       <Reps view={view} t={t} />
 
+      <Scores score={score} error={scoreError} t={t} />
+
       <div>
         <h3 className={cardTitle}>{t("clinician.heelSlide.chart.title")}</h3>
         <div className="mt-4">
@@ -133,6 +148,94 @@ function SessionResult({ view, t }: { view: HeelSlideView; t: T }) {
 
       <Technical view={view} t={t} />
     </>
+  );
+}
+
+function Scores({ score, error, t }: { score: HeelSlideScore | null; error: boolean; t: T }) {
+  if (error) {
+    return (
+      <div>
+        <h3 className={cardTitle}>{t("clinician.heelSlide.scores.title")}</h3>
+        <p role="status" className={cn(bodyText, "mt-1")}>
+          {t("clinician.heelSlide.scores.error")}
+        </p>
+      </div>
+    );
+  }
+  if (score === null) {
+    return (
+      <div>
+        <h3 className={cardTitle}>{t("clinician.heelSlide.scores.title")}</h3>
+        <p className={cn(bodyText, "mt-1")}>{t("clinician.heelSlide.scores.notYet")}</p>
+      </div>
+    );
+  }
+
+  const { result } = score;
+  const validReps = result.reps.filter((r) => r.validForVolume).length;
+  const tiles: { label: string; value: number; detail?: string }[] = [
+    { label: t("clinician.heelSlide.scores.technique"), value: result.correctnessScore },
+    {
+      label: t("clinician.heelSlide.scores.reps"),
+      value: validReps,
+      detail: t("clinician.heelSlide.scores.repsOfTarget", { n: validReps, target: result.prescribedReps }),
+    },
+    {
+      label: t("clinician.heelSlide.scores.target"),
+      value: result.targetScore,
+      detail: t("clinician.heelSlide.scores.targetReached", { n: result.targetReachedCount, total: validReps }),
+    },
+    { label: t("clinician.heelSlide.scores.overall"), value: result.executionEffectiveness },
+  ];
+
+  return (
+    <div>
+      <h3 className={cardTitle}>{t("clinician.heelSlide.scores.title")}</h3>
+      {result.frozen && (
+        <p className="mt-1 flex items-start gap-2 text-base font-medium leading-relaxed text-ink">
+          <TriangleAlert className="mt-0.5 size-5 shrink-0 text-amber-700" strokeWidth={2} aria-hidden="true" />
+          {t("clinician.heelSlide.scores.frozen")}
+        </p>
+      )}
+      <dl className="mt-3 grid gap-x-8 gap-y-3 sm:grid-cols-2 xl:grid-cols-4">
+        {tiles.map((tile) => (
+          <div key={tile.label}>
+            <dt className={tileLabel}>{tile.label}</dt>
+            <dd className="tnum mt-0.5 text-base text-ink">
+              {tile.value}
+              {tile.detail && <span className="block text-sm text-ink-soft">{tile.detail}</span>}
+            </dd>
+          </div>
+        ))}
+      </dl>
+      <details className={cn(card, "group mt-4")}>
+        <summary
+          className={cn(
+            "flex min-h-12 cursor-pointer list-none items-center gap-2 rounded-card px-4 text-base font-medium text-ink [&::-webkit-details-marker]:hidden",
+            focusRing,
+          )}
+        >
+          <ChevronRight
+            className="size-5 shrink-0 text-ink-soft transition-transform group-open:rotate-90 motion-reduce:transition-none"
+            strokeWidth={2}
+            aria-hidden="true"
+          />
+          {t("clinician.heelSlide.scores.expand")}
+        </summary>
+        <div className="space-y-2 border-t border-line px-4 py-4">
+          <p className={bodyText}>
+            {t("clinician.heelSlide.scores.explain", {
+              correctness: result.correctnessScore,
+              validReps,
+              prescribedReps: result.prescribedReps,
+              targetReached: result.targetReachedCount,
+              target: result.targetScore,
+            })}
+          </p>
+          <p className="text-sm text-ink-soft">{t("clinician.heelSlide.scores.provisional")}</p>
+        </div>
+      </details>
+    </div>
   );
 }
 
