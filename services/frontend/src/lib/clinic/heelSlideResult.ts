@@ -11,6 +11,7 @@
 
 import "server-only";
 
+import { sessionScoreFromRow } from "@/lib/scoring/heelSlideStoredScore";
 import { buildStoredProxySeries, DEFAULT_MAX_PAIR_SKEW_MS } from "@/lib/motion/flexion";
 import { countOrientedRepetitions, heelSlideThresholds, MAX_REP_GAP_MS } from "@/lib/motion/reps";
 import { createClient } from "@/lib/supabase/server";
@@ -33,6 +34,9 @@ const MOTION: MotionDeps = {
   maxPairSkewMs: DEFAULT_MAX_PAIR_SKEW_MS,
 };
 
+/** A scored session's row, as lib/scoring's engine and 0041_session_scores.sql produced it. */
+export type HeelSlideScore = NonNullable<ReturnType<typeof sessionScoreFromRow>>;
+
 export type HeelSlideSection =
   | { kind: "none" }
   /** The requested session is not one of this patient's Heel Slide sessions, or is no longer readable. */
@@ -42,7 +46,13 @@ export type HeelSlideSection =
    * unknown. Otherwise the list loaded and the result call for that session failed.
    */
   | { kind: "error"; patientId: string; sessions: ReviewSessionItem[]; selectedId: string | null }
-  | { kind: "ok"; patientId: string; sessions: ReviewSessionItem[]; view: HeelSlideView };
+  /**
+   * score is null when the patient hasn't opened their own summary screen yet — lib/scoring/
+   * loadHeelSlideStoredScore.server.ts computes and stores it there, not here; this section only ever
+   * reads. A failed score read does not fail the whole section: the rest (reps, chart, technical detail)
+   * still renders, with the score area saying it couldn't load rather than showing nothing at all.
+   */
+  | { kind: "ok"; patientId: string; sessions: ReviewSessionItem[]; view: HeelSlideView; score: HeelSlideScore | null; scoreError: boolean };
 
 /**
  * The Heel Slide section for `patientId` (patients.id). `requestedSessionId` is the `?session=` search param;
@@ -80,5 +90,18 @@ export async function loadHeelSlideSection(
   // null: access was revoked or the session removed between the two calls.
   const view = buildHeelSlideView(result.data, MOTION, { expectedPatientId: patientId });
   if (!view) return { kind: "unavailable", patientId, sessions: pick.sessions };
-  return { kind: "ok", patientId, sessions: pick.sessions, view };
+
+  // A plain select, not a third RPC: session_scores' own RLS policy (app.can_review_patient or
+  // app.can_access_patient) already admits exactly the callers clinician_session_result just did.
+  let score: HeelSlideScore | null = null;
+  let scoreError = false;
+  try {
+    const scoreRow = await supabase.from("session_scores").select("*").eq("session_id", pick.selected.id).maybeSingle();
+    if (scoreRow.error) scoreError = true;
+    else score = sessionScoreFromRow(scoreRow.data);
+  } catch {
+    scoreError = true;
+  }
+
+  return { kind: "ok", patientId, sessions: pick.sessions, view, score, scoreError };
 }

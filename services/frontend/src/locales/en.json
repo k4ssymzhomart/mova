@@ -396,6 +396,21 @@
         "current": "shown",
         "more": "Older sessions not listed: {n}"
       },
+      "scores": {
+        "title": "Scoring",
+        "notYet": "Not scored yet — the patient hasn't opened their own summary screen for this session.",
+        "error": "The score couldn't be loaded.",
+        "frozen": "Part of this session was recorded with a weak sensor signal, so part of the score may be incomplete.",
+        "technique": "Technique",
+        "reps": "Repetitions",
+        "target": "Movement goal",
+        "overall": "Overall",
+        "repsOfTarget": "{n} of {target}",
+        "targetReached": "Reached in {n} of {total}",
+        "expand": "How this total was reached",
+        "explain": "Technique: {correctness}. Volume: {validReps} of {prescribedReps} repetitions. Movement goal: reached in {targetReached} of {validReps} repetitions, average target score {target}.",
+        "provisional": "These numbers come from relative sensor readings, not yet a calibrated knee angle."
+      },
       "listError": "This patient's sessions could not be loaded. Refresh the page.",
       "simulated": {
         "notice": "Simulated session: the data was created by the program, not by sensors",
@@ -570,14 +585,20 @@
       "started": "Started",
       "duration": "Duration",
       "status": "Status",
-      "scoresTitle": "Scores aren't available yet",
-      "scoresBody": "Sensor-based scores aren't ready yet. When they are, you'll see them here.",
-      "scoreUnavailable": "Not yet",
+      "scoresTitle": "Scoring",
+      "scoresNotYet": "This session doesn't have a score yet.",
+      "scoresError": "Couldn't load your scores. Reload the page.",
+      "scoresFrozen": "Part of this session was recorded with a weak sensor signal, so part of the score may be incomplete.",
       "score": {
         "technique": "Technique",
         "reps": "Repetitions",
         "target": "Movement goal",
         "overall": "Overall"
+      },
+      "scoreDetail": {
+        "reps": "{n} of {target}",
+        "target": "Reached in {n} of {total}",
+        "provisional": "These numbers come from relative sensor readings, not yet a calibrated knee angle."
       }
     },
     "unavailable": {
