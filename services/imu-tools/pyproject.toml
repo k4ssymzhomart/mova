@@ -1,0 +1,36 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "mova-imu-tools"
+version = "0.1.0"
+description = "mova IMU capture, rig diagnostics and offline movement analysis (technical, non-clinical)"
+requires-python = ">=3.11"
+license = { text = "Proprietary" }
+# numpy is the only third-party dependency, and only `analysis.rep_quality` uses
+# it. Everything else in the package is pure stdlib.
+dependencies = ["numpy>=1.26"]
+
+[project.optional-dependencies]
+# Real sensors only. `bleak` is imported lazily, inside the functions that need
+# it, so every simulator and capture-replay path works without this extra.
+ble = ["bleak>=0.22,<4"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/mova_imu"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+# `analysis/` and `gateway/` are vendored from Phoenix and are never edited in
+# mova (see VENDORED.md). Linting them would force edits into files that have to
+# stay a clean copy, so a re-sync stays a straight overwrite.
+extend-exclude = ["src/mova_imu/analysis", "src/mova_imu/gateway"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "C4", "PTH", "RUF"]
+ignore = ["E501"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["mova_imu"]
