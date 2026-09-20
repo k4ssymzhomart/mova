@@ -20,6 +20,32 @@ Seven links, each of which has to work on real hardware:
 Out of scope on this path: other exercises, any score (correctness / volume / target), calibration, a
 prescription builder, safety triage of the check-in answers.
 
+### An offline recount now exists
+
+`services/imu-tools/` holds a Python port of PHOENIX's rep segmentation and scoring. Export a
+session's `session_frames` rows and `tools/frames_to_capture.py` turns them into a capture the rest of
+those tools read, so link 6 can be checked against something other than itself:
+
+```bash
+py services/imu-tools/tools/frames_to_capture.py frames.json --out captures/mova-<session>.jsonl
+py services/imu-tools/tools/tune_reps.py --file captures/mova-<session>-start1.jsonl --expected 10
+```
+
+**Where it agrees.** The signal is the same quantity. PHOENIX's pinned knee signal is shank-minus-thigh
+on pitch and `src/lib/motion/flexion.ts` is `wrap(shank.pitch − thigh.pitch)` on the same axis, so the
+recount reads the proxy described above and not a second, different one.
+
+**Where it diverges, on purpose.** The zero. `flexion.ts` re-zeroes on every «Начать» and
+`buildStoredProxySeries` counts each start on its own zero; PHOENIX takes one rest level from the
+leading stay-still run of the whole take. So the converter splits per start by default, frames before
+the first start go to a `.pre-start` file that is never counted, and `--merge-starts` warns that its
+number will disagree with the clinician view. Comparing the clinician recount with `tune_reps` per
+start is the check worth running; a difference is a finding to write down, not a number to choose
+between.
+
+Nothing in that package is clinical, and its Execution Score stays inside it — see
+[`services/imu-tools/README.md`](../services/imu-tools/README.md)'s "what is real" table.
+
 ---
 
 ## 1. What is real and what is labelled

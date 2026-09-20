@@ -85,7 +85,11 @@ module = ["polars.*", "pyarrow.*", "scipy.*", "sklearn.*", "wandb.*", "typer.*"]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]
-testpaths = ["tests"]
+# services/imu-tools/tests covers the IMU tooling, including the tree vendored from PHOENIX: an
+# untested vendored copy is how a re-sync breaks silently. It needs the package installed
+# (`pip install -e services/imu-tools`); without that, collect it on its own with
+# `python -m unittest discover -s services/imu-tools/tests`, which needs no plugins.
+testpaths = ["tests", "services/imu-tools/tests"]
 addopts = "-q --cov=mova --cov-report=term-missing"
 pythonpath = ["src"]
 

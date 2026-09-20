@@ -33,16 +33,20 @@ has not been verified. The hardware protocol is [`HARDWARE-TEST.md`](HARDWARE-TE
   [`docs/walkthrough/heel-slide-walkthrough-1920.mp4`](docs/walkthrough/heel-slide-walkthrough-1920.mp4).
 - **Sensor rate configuration.** The app writes the output rate to the sensor and reads it back, instead of leaving
   it at the default.
-- **Exercise library** at `/exercises`: the twelve exercises from the НТЗ and the scoring spec, with the
-  clinician-recorded reference videos on the seven exercises a clip is confirmed to show
-  ([screenshots](docs/exercise-library/)).
+- **Exercise library** at `/exercises`: seventeen exercises — twelve from the НТЗ and the scoring spec, plus five
+  carried over from the PHOENIX signal and execution profiles — with the clinician-recorded reference videos on
+  the twelve a clip is confirmed to show ([screenshots](docs/exercise-library/)).
+- **Offline IMU tooling** in `services/imu-tools`: BLE capture, rig-health diagnostics, rep segmentation and a
+  localhost dev-tools page, all of which run with no sensors. It reads the app's own stored frames, so a session
+  can be recounted outside the browser ([README](services/imu-tools/README.md)).
 
 What it does not do, stated in full in `SUBMISSION.md`:
 
 - **No knee angle in degrees.** The sensors give a relative orientation reading that is not calibrated to the knee,
   so the patient screen shows no number and the clinician chart says what the reading is.
-- **No scores.** The scoring engine for the eight exercises is in `services/frontend/src/lib/scoring` with its tests,
-  but no screen uses it yet.
+- **No scores.** The scoring engine now covers thirteen exercises and is in `services/frontend/src/lib/scoring`
+  with its tests, but no screen uses it yet. `services/imu-tools` can score a recording offline; that number is a
+  non-clinical engineering figure and stays inside that package.
 - **Not run on physical sensors.** The recording uses a simulated sensor transport that exists only in local
   development and is marked «Симуляция» on screen.
 
@@ -61,11 +65,13 @@ flowchart LR
   - `src/lib/telemetry` — frame buffer, durable queue and outbox.
   - `src/lib/motion` — repetition logic and the leg-guide geometry.
   - `src/lib/scoring` — the scoring engine (not wired to a screen).
-  - `src/lib/exercises` — the static exercise catalogue; videos in `public/exercises`.
+  - `src/lib/exercises` — the static exercise catalogue and the exercise-id map; videos in `public/exercises`.
+- `services/imu-tools` — IMU capture, diagnostics and offline analysis (Python, ported from PHOENIX; non-clinical).
 - `supabase/migrations` — the database schema, row-level security and RPCs; `supabase/tests` — SQL tests.
 - `docs` — the IA ([`docs/ia.md`](docs/ia.md)), the runbook, the walkthrough and research notes.
 
-Everything else in the repository (`services/api`, the Python `src` and ML tooling, `benchmark`, `data_manifests`,
+Everything else in the repository (`services/api`, the Python `src` and ML tooling — but not `services/imu-tools`,
+which is part of the current product — `benchmark`, `data_manifests`,
 most of `docs`, and the camera session screens still in the frontend) belongs to the earlier camera-based prototype
 for Parkinson's disease and stroke (June–August 2026). It is kept for reference and is not the current product;
 figures in its documents were that prototype's design targets, not measurements of this app.
