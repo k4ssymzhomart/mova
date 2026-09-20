@@ -1,4 +1,4 @@
-# Ported from Phoenix 1480ab0:services/imu-gateway/analyze_capture.py
+# Ported from Phoenix 1480ab0:services/imu-tools/analyze_capture.py
 # Adapted for mova: import paths and capture directory only; the logic is unchanged.
 """Health report for a recorded IMU capture (no hardware needed).
 

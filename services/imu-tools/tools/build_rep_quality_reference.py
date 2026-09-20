@@ -1,10 +1,10 @@
-# Ported from Phoenix 1480ab0:scripts/build_rep_quality_reference.py
+# Ported from Phoenix 1480ab0:tools/build_rep_quality_reference.py
 # Adapted for mova: import paths and capture directory only; the logic is unchanged.
 """Build per-exercise range and tempo reference sets from labeled takes.
 
-  python scripts/build_rep_quality_reference.py                  # every labeled exercise
-  python scripts/build_rep_quality_reference.py --exercise exercise-step-up-v1 --k 3
-  python scripts/build_rep_quality_reference.py --dry-run        # report only, write nothing
+  py tools/build_rep_quality_reference.py                  # every labeled exercise
+  py tools/build_rep_quality_reference.py --exercise exercise-step-up-v1 --k 3
+  py tools/build_rep_quality_reference.py --dry-run        # report only, write nothing
 
 For each ``*.reps.csv`` in --captures (written by label_reps.py):
 1. re-detect the take's reps with the current signal profile;
@@ -16,7 +16,7 @@ Then, per exercise and quality:
 1. report leave-one-recording-out cross-validation, plus leave-one-subject-out
    with 2+ subjects, against the always-predict-the-majority baseline;
 2. write the qualities that beat it to
-   ``services/api/app/ml/checkpoints/rep_quality/<exercise_id>.json``, which
+   ``src/mova_imu/analysis/reference_sets/<exercise_id>.json``, which
    the API loads for shadow assessment. A quality that does not beat the
    baseline is left out unless --force.
 """

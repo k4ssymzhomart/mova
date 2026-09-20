@@ -1,4 +1,4 @@
-# Ported from Phoenix 1480ab0:services/imu-gateway/selftest_imu.py
+# Ported from Phoenix 1480ab0:services/imu-tools/selftest_imu.py
 # Adapted for mova: import paths and capture directory only; the logic is unchanged.
 """Guided live self-test for the three-sensor WT901BLE68 rig.
 

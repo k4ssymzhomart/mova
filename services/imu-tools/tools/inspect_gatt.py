@@ -1,4 +1,4 @@
-# Ported from Phoenix 1480ab0:services/imu-gateway/inspect_gatt.py
+# Ported from Phoenix 1480ab0:services/imu-tools/inspect_gatt.py
 # Adapted for mova: import paths and capture directory only; the logic is unchanged.
 """Diagnostic GATT inspection for a single BLE address.
 

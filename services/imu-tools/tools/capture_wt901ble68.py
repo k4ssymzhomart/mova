@@ -1,4 +1,4 @@
-# Ported from Phoenix 1480ab0:services/imu-gateway/capture_wt901ble68.py
+# Ported from Phoenix 1480ab0:tools/capture_wt901ble68.py
 # Adapted for mova: import paths and capture directory only; the logic is unchanged.
 """Capture non-clinical WT901BLE68 BLE notifications into an anonymised JSONL file.
 
@@ -9,7 +9,7 @@ roles. Every record is tagged `origin: "hardware"` and
 `phoenix_imu_gateway` parser. It does not calculate ROM, repetitions, score or
 clinical feedback -- except for the live terminal counter below, which is a
 best-effort preview only; the authoritative rep count comes from
-`scripts/label_reps.py` run on the finished file. Do not record patient
+`tools/label_reps.py` run on the finished file. Do not record patient
 identifiers in the output filename or file contents.
 
 Example:

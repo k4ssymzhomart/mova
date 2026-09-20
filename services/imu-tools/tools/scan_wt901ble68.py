@@ -1,4 +1,4 @@
-# Ported from Phoenix 1480ab0:services/imu-gateway/scan_wt901ble68.py
+# Ported from Phoenix 1480ab0:services/imu-tools/scan_wt901ble68.py
 # Adapted for mova: import paths and capture directory only; the logic is unchanged.
 """Diagnostic BLE scan to find nearby WT901BLE68 sensor addresses.
 

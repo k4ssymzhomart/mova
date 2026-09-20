@@ -1,14 +1,14 @@
-# Ported from Phoenix 1480ab0:scripts/check_execution_score.py
+# Ported from Phoenix 1480ab0:tools/check_execution_score.py
 # Adapted for mova: import paths and capture directory only; the logic is unchanged.
 """Score one finished capture with the deterministic Execution Score, offline.
 
 No API, no DB, no trained reference needed -- unlike check_rep_quality.py's
 KNN, this just needs the exercise's calibrated targets in
-services/api/app/execution_score.py.
+src/mova_imu/analysis/execution_score.py.
 
 Example:
-  python scripts/check_execution_score.py \
-      --file services/imu-gateway/captures/exercise-heel-slide-v1-test-01.jsonl \
+  py tools/check_execution_score.py \
+      --file captures/exercise-heel-slide-v1-test-01.jsonl \
       --exercise exercise-heel-slide-v1 --prescribed 10
 """
 

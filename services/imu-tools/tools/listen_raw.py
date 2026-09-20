@@ -1,4 +1,4 @@
-# Ported from Phoenix 1480ab0:services/imu-gateway/listen_raw.py
+# Ported from Phoenix 1480ab0:services/imu-tools/listen_raw.py
 # Adapted for mova: import paths and capture directory only; the logic is unchanged.
 """Diagnostic raw BLE notification listener for a single WT901BLE68 address.
 

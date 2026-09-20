@@ -1,24 +1,25 @@
-# Ported from Phoenix 1480ab0:scripts/tune_reps.py
+# Ported from Phoenix 1480ab0:tools/tune_reps.py
 # Adapted for mova: import paths and capture directory only; the logic is unchanged.
 """Offline tuner for the deterministic rep counter.
 
 Record a known number of real repetitions, then run this against that data to
 see which sensor pair / orientation axis carries the movement and how many
 reps each threshold set detects. Use the result to edit
-``services/api/app/reps.py``.
+``src/mova_imu/analysis/reps.py``.
 
-Data source (one of):
-  --session <id>[,<id>...]       pull packets from the running compose postgres
-                                 (comma-separated -> analyse each in turn)
-  --file <path.jsonl>            a capture JSONL (either the gateway-event shape
-                                 or services/imu-gateway/captures/*.jsonl shape)
-  --list                         list rehab_session_ids present in the DB and exit
+This is the one tool allowed to sweep sensor pairs and axes. Every other
+mova-facing entry point runs with the exercise's pinned signal profile, so the
+live counter and an offline recount can never disagree about which signal they
+are reading.
+
+Data source:
+  --file <path.jsonl>   a capture JSONL, a gateway-event dump, or a mova
+                        `session_frames` export (the shape is detected)
 
 Examples:
-  python scripts/tune_reps.py --list
-  python scripts/tune_reps.py --session <id> --expected 10
-  python scripts/tune_reps.py --session <id1>,<id2> --expected 10
-  python scripts/tune_reps.py --file dump.jsonl --expected 8 --enter 15 --exit 6
+  py tools/tune_reps.py --file captures/take.jsonl --expected 8
+  py tools/tune_reps.py --file captures/take.jsonl --expected 10 --enter 15 --exit 6
+  py tools/tune_reps.py --file captures/take.jsonl --exercise exercise-heel-slide-v1
 """
 
 from __future__ import annotations
@@ -34,33 +35,6 @@ ROLES = ("thigh", "shank", "foot")
 AXES = ("ori_roll", "ori_pitch", "ori_yaw")
 AXIS_SHORT = {"ori_roll": "roll", "ori_pitch": "pitch", "ori_yaw": "yaw"}
 
-
-def list_sessions() -> list[tuple[str, int]]:
-    """(rehab_session_id, packet_count) for every session in the running DB,
-    newest activity first."""
-    from replay_capture_to_api import psql
-
-    out = psql(
-        "SELECT rehab_session_id, count(*), max(received_at) "
-        "FROM gateway_packet_events GROUP BY rehab_session_id ORDER BY max(received_at) DESC;"
-    )
-    sessions: list[tuple[str, int]] = []
-    for line in out.splitlines():
-        parts = [p.strip() for p in line.split("|")]
-        if len(parts) >= 2 and parts[0]:
-            sessions.append((parts[0], int(parts[1])))
-    return sessions
-
-
-def load_session_events(session_id: str) -> list[dict]:
-    from replay_capture_to_api import psql
-
-    out = psql(
-        "SELECT payload FROM gateway_packet_events "
-        f"WHERE rehab_session_id = '{session_id}' ORDER BY received_at, id;"
-    )
-    rows = [json.loads(line) for line in out.splitlines() if line.strip()]
-    return [normalise(row) for row in rows if normalise(row) is not None]
 
 
 def load_file_events(path: str) -> list[dict]:
@@ -135,10 +109,11 @@ def main() -> int:
     parser = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
-    src = parser.add_mutually_exclusive_group(required=True)
-    src.add_argument("--session", help="rehab_session_id(s) in the running DB, comma-separated")
-    src.add_argument("--file", help="path to a JSONL dump")
-    src.add_argument("--list", action="store_true", help="list sessions in the DB and exit")
+    parser.add_argument(
+        "--file",
+        required=True,
+        help="capture JSONL, gateway-event dump, or mova session_frames export",
+    )
     parser.add_argument("--expected", type=int, default=None, help="reps you actually did")
     parser.add_argument("--rate", type=float, default=20.0)
     parser.add_argument("--enter", type=float, default=18.0)
@@ -152,29 +127,8 @@ def main() -> int:
     )
     args = parser.parse_args()
 
-    if args.list:
-        sessions = list_sessions()
-        if not sessions:
-            print("no gateway_packet_events rows in the DB")
-            return 0
-        print(f"{'rehab_session_id':<38} {'packets':>8}")
-        print("-" * 47)
-        for session_id, count in sessions:
-            print(f"{session_id:<38} {count:>8}")
-        return 0
-
-    if args.file:
-        events = load_file_events(args.file)
-        return analyse(events, args) or analyse_profile(events, args)
-
-    session_ids = [s.strip() for s in args.session.split(",") if s.strip()]
-    worst = 0
-    for session_id in session_ids:
-        if len(session_ids) > 1:
-            print(f"\n{'=' * 60}\nsession {session_id}\n{'=' * 60}")
-        events = load_session_events(session_id)
-        worst = analyse(events, args) or analyse_profile(events, args) or worst
-    return worst
+    events = load_file_events(args.file)
+    return analyse(events, args) or analyse_profile(events, args)
 
 
 def analyse_profile(events: list[dict], args: argparse.Namespace) -> int:

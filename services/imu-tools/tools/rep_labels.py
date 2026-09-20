@@ -1,4 +1,4 @@
-# Ported from Phoenix 1480ab0:scripts/rep_labels.py
+# Ported from Phoenix 1480ab0:tools/rep_labels.py
 # Adapted for mova: import paths and capture directory only; the logic is unchanged.
 """Shared helpers for the rep-labeling workflow.
 
@@ -7,7 +7,7 @@ Used by two scripts:
 - ``build_rep_quality_reference.py`` reads the labels back and builds the KNN
   reference sets.
 
-A take is one capture JSONL (``services/imu-gateway/captures/*.jsonl``). Its
+A take is one capture JSONL (``captures/*.jsonl``). Its
 reps live next to it in ``<stem>.reps.csv``, one row per rep:
 
     exercise_id, subject, take, rep, start_ms, end_ms   identity and timing

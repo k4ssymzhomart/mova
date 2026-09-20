@@ -1,4 +1,4 @@
-# Ported from Phoenix 1480ab0:services/imu-gateway/debug_axes.py
+# Ported from Phoenix 1480ab0:services/imu-tools/debug_axes.py
 # Adapted for mova: import paths and capture directory only; the logic is unchanged.
 """Live WT901BLE68 debug view: every value each sensor sends, its MAC, and the
 per-axis range so you can see which orientation axis your knee flexion lands on.
@@ -6,7 +6,7 @@ per-axis range so you can see which orientation axis your knee flexion lands on.
 Non-clinical diagnostic. Connects directly over BLE (bleak), so unlike the
 patient-web path it DOES show the physical MAC address of each sensor.
 
-    cd services/imu-gateway
+    cd services/imu-tools
     python -m pip install -e ".[ble]"
 
     # find addresses first if you don't have them

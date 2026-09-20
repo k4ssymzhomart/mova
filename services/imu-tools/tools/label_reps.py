@@ -1,10 +1,10 @@
-# Ported from Phoenix 1480ab0:scripts/label_reps.py
+# Ported from Phoenix 1480ab0:tools/label_reps.py
 # Adapted for mova: import paths and capture directory only; the logic is unchanged.
 """Detect the reps of one recorded take and write them to a CSV for labeling.
 
 Run once per capture, right after recording it:
 
-  python scripts/label_reps.py --file services/imu-gateway/captures/heel-good-bad-01.jsonl \
+  py tools/label_reps.py --file captures/heel-good-bad-01.jsonl \
       --exercise exercise-heel-slide-v1 --range good --tempo bad --subject s1 --expected 8
 
 It prints every detected rep, then writes ``heel-good-bad-01.reps.csv`` next to
@@ -17,7 +17,7 @@ that quality. Do not add, delete or renumber rows. The script refuses to
 overwrite an existing CSV unless --force.
 
 If the detected count differs from --expected, the take is not written: fix the
-exercise's signal profile (check it with scripts/tune_reps.py --exercise) or
+exercise's signal profile (check it with tools/tune_reps.py --exercise) or
 re-record. Never force labels onto a wrong segmentation.
 
 Recording design: vary one quality per take so the two models can tell a range

@@ -1,0 +1,786 @@
+<!-- Ported from Phoenix 1480ab0:devtools/static/index.html; mova branding only. -->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>mova IMU Dev Tools</title>
+<style>
+  :root {
+    --bg: #12151a; --panel: #1b2027; --panel2: #232a33; --line: #2f3944; --text: #e4e9ef;
+    --muted: #8b98a7; --accent: #4ea1ff; --good: #3ecf8e; --warn: #f2b84b; --bad: #f0616d;
+    --info: #7aa7ff; --mono: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  }
+  html { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+         font: 14px/1.45 system-ui, "Segoe UI", sans-serif; }
+  header { display: flex; flex-wrap: wrap; gap: 12px 18px; align-items: center; padding: 10px 16px;
+           background: var(--panel); border-bottom: 1px solid var(--line); position: sticky; top: 0; z-index: 5; }
+  header h1 { font-size: 15px; margin: 0; letter-spacing: .04em; }
+  header .grow { flex: 1; }
+  nav { display: flex; gap: 4px; padding: 8px 16px 0; border-bottom: 1px solid var(--line); background: var(--panel); }
+  nav button { background: none; border: 1px solid transparent; border-bottom: none; color: var(--muted);
+               padding: 8px 16px; cursor: pointer; border-radius: 6px 6px 0 0; font: inherit; }
+  nav button.on { background: var(--bg); color: var(--text); border-color: var(--line); }
+  main { padding: 16px; max-width: 1500px; margin: 0 auto; }
+  section.tab { display: none; }
+  section.tab.on { display: block; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; margin-bottom: 14px; }
+  .card h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin: 0 0 10px; }
+  .row { display: flex; flex-wrap: wrap; gap: 14px; }
+  .row > .card { flex: 1 1 320px; }
+  .grid3 { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 14px; }
+  .kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin-bottom: 14px; }
+  .kpi { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; }
+  .kpi .l { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .07em; }
+  .kpi .v { font-size: 30px; font-weight: 600; font-variant-numeric: tabular-nums; line-height: 1.15; }
+  .kpi .s { color: var(--muted); font-size: 12px; min-height: 17px; }
+  label { color: var(--muted); font-size: 12px; display: inline-flex; flex-direction: column; gap: 3px; }
+  input, select, button.b { background: var(--panel2); border: 1px solid var(--line); color: var(--text);
+                            border-radius: 6px; padding: 6px 9px; font: inherit; }
+  input[type=number] { width: 88px; }
+  input[type=text] { width: 220px; }
+  input[type=checkbox] { width: auto; }
+  label.inline { flex-direction: row; align-items: center; gap: 6px; }
+  button.b { cursor: pointer; }
+  button.b:hover { border-color: var(--accent); }
+  button.primary { background: #1f5fae; border-color: #2d7ad6; }
+  button.danger { background: #7a2530; border-color: #a83a48; }
+  button.b:disabled { opacity: .45; cursor: default; }
+  .controls { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end; margin-bottom: 8px; }
+  table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; }
+  th, td { padding: 4px 8px; border-bottom: 1px solid var(--line); text-align: right; white-space: nowrap; }
+  th { color: var(--muted); font-weight: 500; font-size: 12px; }
+  th:first-child, td:first-child, td.l, th.l { text-align: left; }
+  tr.click { cursor: pointer; }
+  tr.click:hover, tr.sel { background: var(--panel2); }
+  .pill { display: inline-block; padding: 1px 9px; border-radius: 999px; font-size: 12px; border: 1px solid var(--line); }
+  .pill.good { color: var(--good); border-color: var(--good); } .pill.warn { color: var(--warn); border-color: var(--warn); }
+  .pill.bad { color: var(--bad); border-color: var(--bad); } .pill.info { color: var(--info); border-color: var(--info); }
+  .pill.mute { color: var(--muted); }
+  .good { color: var(--good); } .warn { color: var(--warn); } .bad { color: var(--bad); } .muted { color: var(--muted); }
+  .mono { font-family: var(--mono); font-size: 12.5px; }
+  canvas { width: 100%; display: block; }
+  pre.console { background: #0c0f13; border: 1px solid var(--line); border-radius: 6px; padding: 10px; max-height: 340px;
+                overflow: auto; font: 12px/1.4 var(--mono); white-space: pre-wrap; margin: 8px 0 0; }
+  .find { font-size: 13px; padding: 2px 0; }
+  .sensor h3 { margin: 0 0 6px; font-size: 15px; display: flex; gap: 8px; align-items: center; }
+  .bar { height: 5px; background: var(--panel2); border-radius: 3px; overflow: hidden; margin: 4px 0 8px; }
+  .bar > i { display: block; height: 100%; background: var(--good); }
+  .kv { display: grid; grid-template-columns: auto 1fr; gap: 2px 10px; font-size: 13px; }
+  .kv span:nth-child(odd) { color: var(--muted); }
+  #toast { position: fixed; bottom: 16px; right: 16px; background: #3b1a20; border: 1px solid var(--bad); padding: 10px 14px;
+           border-radius: 8px; max-width: 480px; display: none; z-index: 10; white-space: pre-wrap; }
+  .note { color: var(--muted); font-size: 12.5px; margin: 4px 0 8px; }
+  .split { display: grid; grid-template-columns: 340px minmax(0, 1fr); gap: 14px; align-items: start; }
+  @media (max-width: 900px) { .split { grid-template-columns: 1fr; } }
+  .scroll { max-height: 640px; overflow: auto; }
+</style>
+</head>
+<body>
+<header>
+  <h1>mova &middot; IMU DEV TOOLS</h1>
+  <span id="src" class="pill mute">no source</span>
+  <label class="inline">Exercise <select id="g-ex"></select></label>
+  <label class="inline">Prescribed reps <input id="g-presc" type="number" min="1" value="10"></label>
+  <button class="b" id="g-reset" title="Forget buffered data and start a new take (connections stay)">New take</button>
+  <span class="grow"></span>
+  <span id="take" class="muted mono"></span>
+  <span class="muted" style="font-size:12px">non-clinical dev tool &middot; angles are relative sensor orientation, not knee flexion; nothing here is a score</span>
+</header>
+<nav id="nav"></nav>
+<main>
+
+<!-- ============================================================ SENSORS -->
+<section class="tab" id="tab-sensors">
+  <div class="row">
+    <div class="card" style="flex:2 1 520px">
+      <h2>Bluetooth sensors</h2>
+      <div class="controls">
+        <label>Scan seconds <input id="scan-sec" type="number" value="6" min="2" max="30"></label>
+        <button class="b primary" id="scan-btn">Scan</button>
+        <button class="b primary" id="connect-btn">Connect assigned</button>
+        <button class="b danger" id="disconnect-btn">Disconnect all</button>
+        <span id="scan-status" class="muted"></span>
+      </div>
+      <p class="note">Power sensors on one at a time to tell them apart. Assign each sensor a role
+        (never inferred); the choice is remembered per address in this browser.</p>
+      <table id="scan-table"><thead><tr><th class="l">Address</th><th class="l">Name</th><th>RSSI</th><th class="l">Match</th><th class="l">Role</th></tr></thead><tbody></tbody></table>
+    </div>
+    <div class="card" style="flex:1 1 360px">
+      <h2>No hardware? Other sources</h2>
+      <div class="controls">
+        <label>Amplitude &deg; <input id="sim-amp" type="number" value="45"></label>
+        <label>Rep period s <input id="sim-per" type="number" value="4" step="0.5"></label>
+        <label>Reps <input id="sim-reps" type="number" value="8"></label>
+        <label>Noise &deg; <input id="sim-noise" type="number" value="0.2" step="0.1"></label>
+      </div>
+      <div class="controls">
+        <button class="b primary" id="sim-start">Start simulator</button>
+        <span class="muted">stall sensor:</span>
+        <label class="inline"><input type="checkbox" class="stall" value="thigh">thigh</label>
+        <label class="inline"><input type="checkbox" class="stall" value="shank">shank</label>
+        <label class="inline"><input type="checkbox" class="stall" value="foot">foot</label>
+      </div>
+      <div class="controls">
+        <label>Replay capture <select id="rp-file" style="max-width:250px"></select></label>
+        <label>Speed <input id="rp-speed" type="number" value="1" step="0.5" min="0.5"></label>
+        <label class="inline"><input type="checkbox" id="rp-loop">loop</label>
+        <button class="b primary" id="rp-start">Replay</button>
+      </div>
+      <button class="b" id="src-stop">Stop source</button>
+      <p class="note">Simulated and replayed packets are tagged <code>synthetic</code>; recordings made from them
+        get a <code>sim-</code>/<code>replay-</code> prefix.</p>
+    </div>
+  </div>
+  <div class="grid3" id="sensor-cards"></div>
+  <div class="card"><h2>Connection log</h2><pre class="console" id="log" style="max-height:180px"></pre></div>
+</section>
+
+<!-- ================================================================ LIVE -->
+<section class="tab" id="tab-live">
+  <div class="card">
+    <div class="controls" style="margin:0">
+      <label>Enter &deg; <input id="t-enter" type="number" step="0.5" placeholder="profile"></label>
+      <label>Exit &deg; <input id="t-exit" type="number" step="0.5" placeholder="profile"></label>
+      <label>Min rep s <input id="t-minrep" type="number" step="0.1" placeholder="profile"></label>
+      <button class="b" id="t-apply">Apply live thresholds</button>
+      <button class="b" id="t-clear">Use profile defaults</button>
+      <label>Chart window <select id="win"><option value="20">last 20 s</option><option value="45" selected>last 45 s</option>
+        <option value="0">whole take</option></select></label>
+      <span class="muted" id="live-note"></span>
+    </div>
+  </div>
+  <div id="live-panel"></div>
+  <div class="row">
+    <div class="card"><h2>Signal quality gate (last 8 s)</h2><div id="quality"></div></div>
+    <div class="card"><h2>Stream health (last 8 s)</h2><div id="health"></div></div>
+  </div>
+  <div class="card"><h2>Raw sensor angles (roll / pitch / yaw, last 12 s)</h2>
+    <div class="grid3">
+      <div><div class="muted" style="font-size:12px">THIGH</div><canvas id="tr-thigh" height="130"></canvas></div>
+      <div><div class="muted" style="font-size:12px">SHANK</div><canvas id="tr-shank" height="130"></canvas></div>
+      <div><div class="muted" style="font-size:12px">FOOT</div><canvas id="tr-foot" height="130"></canvas></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================== RECORD -->
+<section class="tab" id="tab-record">
+  <div class="row">
+    <div class="card" style="flex:2 1 560px">
+      <h2>Record with capture_wt901ble68.py (real sensors)</h2>
+      <p class="note">Runs <code>tools/capture_wt901ble68.py</code> exactly as on the command line, then
+        scores the file with <code>tools/check_execution_score.py</code>. The script owns the Bluetooth connection, so
+        any sensors connected on the Sensors tab are released first. The Live tab follows the file while it is written.
+        Hold still for 3&ndash;5 s at the start of the take, then do the reps.</p>
+      <div class="controls">
+        <label>Thigh address <input id="sc-thigh" type="text" style="width:170px"></label>
+        <label>Shank address <input id="sc-shank" type="text" style="width:170px"></label>
+        <label>Foot address <input id="sc-foot" type="text" style="width:170px"></label>
+      </div>
+      <div class="controls">
+        <label>Capture name <input id="sc-name" type="text"></label>
+        <label>Seconds <input id="sc-secs" type="number" min="5" value="25"></label>
+        <label>Expected reps <input id="sc-exp" type="number" min="1" value="8"></label>
+        <span class="muted" style="font-size:12px">exercise and prescribed reps come from the header</span>
+      </div>
+      <pre class="console" id="sc-cmd" style="max-height:none"></pre>
+      <div class="controls" style="margin-top:10px">
+        <button class="b primary" id="sc-start">Start capture</button>
+        <button class="b danger" id="sc-stop">Stop early</button>
+        <span id="sc-status"></span>
+      </div>
+      <div class="bar" style="height:7px"><i id="sc-bar" style="width:0%"></i></div>
+      <pre class="console" id="sc-console" style="min-height:120px">Not running.</pre>
+      <div id="sc-result"></div>
+    </div>
+    <div class="card" style="flex:1 1 340px">
+      <h2>Live while capturing</h2><div id="sc-live"></div>
+      <h2 style="margin-top:18px">No hardware: record from simulator / replay</h2>
+      <p class="note">Uses the current source (start it on the Sensors tab). Files get a <code>sim-</code> / <code>replay-</code> prefix.</p>
+      <div class="controls">
+        <label>Name <input id="rec-name" type="text" style="width:170px"></label>
+        <label>Expected <input id="rec-exp" type="number" min="1" value="8" style="width:70px"></label>
+        <label>Range <select id="rec-range"></select></label>
+        <label>Tempo <select id="rec-tempo"></select></label>
+        <label>Subject <input id="rec-subject" type="text" value="s1" style="width:60px"></label>
+      </div>
+      <div class="controls">
+        <label class="inline"><input type="checkbox" id="rec-auto" checked>write rep-label CSV on match</label>
+      </div>
+      <div class="controls">
+        <button class="b" id="rec-start">Start</button>
+        <button class="b" id="rec-stop">Stop &amp; assess</button>
+      </div>
+      <div id="rec-status"></div><div id="rec-live"></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ CAPTURES -->
+<section class="tab" id="tab-captures">
+  <div class="split">
+    <div class="card">
+      <h2>Captures</h2>
+      <div class="controls"><button class="b" id="cap-refresh">Refresh</button>
+        <label class="inline"><input type="checkbox" id="cap-syn" checked>show sim/replay</label></div>
+      <div class="scroll"><table id="cap-table"><thead><tr><th class="l">File</th><th>KB</th><th>Labels</th></tr></thead><tbody></tbody></table></div>
+    </div>
+    <div>
+      <div class="card">
+        <div class="controls" style="margin:0">
+          <b id="cap-title" class="mono">select a capture</b>
+          <label>Exercise <select id="cap-ex"></select></label>
+          <label>Prescribed <input id="cap-presc" type="number" min="1" placeholder="none"></label>
+          <label>Enter &deg; <input id="c-enter" type="number" step="0.5" placeholder="profile"></label>
+          <label>Exit &deg; <input id="c-exit" type="number" step="0.5" placeholder="profile"></label>
+          <label>Min rep s <input id="c-minrep" type="number" step="0.1" placeholder="profile"></label>
+          <label>Still dps <input id="c-still" type="number" step="1" placeholder="profile"></label>
+          <label>Still s <input id="c-stills" type="number" step="0.1" placeholder="profile"></label>
+          <button class="b primary" id="cap-analyze">Analyze</button>
+          <button class="b" id="cap-replay" title="Play this capture through the Live tab">Replay in Live</button>
+          <button class="b primary" id="cap-score" title="tools/check_execution_score.py">Score (script)</button>
+          <button class="b" id="cap-knn" title="tools/check_rep_quality.py">KNN rating (script)</button>
+          <button class="b" id="cap-tune" title="tools/tune_reps.py sweep">Tune sweep</button>
+        </div>
+        <pre class="console" id="cap-console" style="display:none"></pre>
+      </div>
+      <div id="cap-panel"></div>
+      <div class="row">
+        <div class="card"><h2>Signal quality on first 5 s (calibration window)</h2><div id="cap-quality"></div></div>
+        <div class="card"><h2>Stream health of whole capture</h2><div id="cap-health"></div></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================================================================ LABELS -->
+<section class="tab" id="tab-labels">
+  <div class="row">
+    <div class="card" style="flex:2 1 560px">
+      <h2>Rep labels &mdash; <span id="lab-title" class="mono">select a capture in the Captures tab</span></h2>
+      <div id="lab-body"></div>
+    </div>
+    <div class="card" style="flex:1 1 340px">
+      <h2>Rep-quality reference (KNN)</h2>
+      <p class="note">Runs <code>tools/build_rep_quality_reference.py</code> over every labeled capture.
+        Dry run reports cross-validation only; the real build writes the checkpoint the API and Live tab load.</p>
+      <div class="controls">
+        <label>Only exercise <select id="ref-ex"></select></label>
+      </div>
+      <div class="controls">
+        <button class="b" id="ref-dry">Dry run</button>
+        <button class="b danger" id="ref-build">Build &amp; write checkpoint</button>
+      </div>
+      <pre class="console" id="ref-console" style="display:none"></pre>
+    </div>
+  </div>
+</section>
+</main>
+<div id="toast"></div>
+
+<script>
+"use strict";
+const ROLES = ["thigh", "shank", "foot"];
+const LABELS = ["bad", "mediocre", "good"];
+const S = { live: null, exercises: [], captures: [], selected: null, capAnalysis: null,
+            roleMap: {}, tab: "sensors" };
+try { S.roleMap = JSON.parse(localStorage.getItem("mova-imu-roles") || "{}"); } catch (e) { S.roleMap = {}; }
+const $ = (id) => document.getElementById(id);
+const fmt = (v, d = 1) => (v === null || v === undefined || Number.isNaN(v)) ? "–" : Number(v).toFixed(d);
+const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;"}[c]));
+
+let toastTimer = null;
+function toast(message) {
+  const el = $("toast"); el.textContent = message; el.style.display = "block";
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => { el.style.display = "none"; }, 7000);
+}
+async function api(path, body) {
+  const options = body === undefined ? {} : { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) };
+  let response;
+  try { response = await fetch(path, options); } catch (e) { toast("Server not reachable: " + e.message); throw e; }
+  const data = await response.json();
+  if (!response.ok || data.ok === false) { toast(data.error || data.reason || "request failed"); throw new Error(data.error || "request failed"); }
+  return data;
+}
+const post = (path, body) => api(path, body || {}).catch(() => null);
+function pill(text, kind) { return `<span class="pill ${kind}">${esc(text)}</span>`; }
+function levelKind(level) { return { HIGH: "good", MEDIUM: "warn", LOW: "bad", INVALID: "bad", PASS: "good", WARN: "warn", FAIL: "bad" }[level] || "mute"; }
+
+/* ------------------------------------------------------------------ tabs */
+const TABS = [["sensors", "Sensors"], ["live", "Live"], ["record", "Record"], ["captures", "Captures"], ["labels", "Labels"]];
+$("nav").innerHTML = TABS.map(([id, name]) => `<button data-t="${id}">${name}</button>`).join("");
+function showTab(id) {
+  S.tab = id;
+  document.querySelectorAll("nav button").forEach((b) => b.classList.toggle("on", b.dataset.t === id));
+  document.querySelectorAll("section.tab").forEach((s) => s.classList.toggle("on", s.id === "tab-" + id));
+  if (id === "captures") loadCaptures();
+  if (id === "labels") loadLabels();
+  if (id === "sensors" || id === "record") loadCaptures(true);
+  try { localStorage.setItem("mova-imu-tab", id); } catch (e) { /* ignore */ }
+}
+$("nav").addEventListener("click", (e) => { if (e.target.dataset.t) showTab(e.target.dataset.t); });
+
+/* ---------------------------------------------------------------- charts */
+function chart(canvas, o) {
+  const dpr = window.devicePixelRatio || 1;
+  // Pin the CSS height first: with width:100% and auto height, resizing the bitmap would
+  // otherwise change the aspect ratio and make the canvas grow on every redraw.
+  const h = +(canvas.dataset.h || (canvas.dataset.h = canvas.getAttribute("height")));
+  canvas.style.height = h + "px";
+  const w = canvas.clientWidth;
+  canvas.width = w * dpr; canvas.height = h * dpr;
+  const c = canvas.getContext("2d"); c.scale(dpr, dpr); c.clearRect(0, 0, w, h);
+  const css = getComputedStyle(document.documentElement);
+  const pad = { l: 44, r: 10, t: 8, b: 22 };
+  const xs = o.series.flatMap((s) => s.x), ys = o.series.flatMap((s) => s.y).concat((o.hlines || []).map((l) => l.y));
+  if (!xs.length) { c.fillStyle = css.getPropertyValue("--muted"); c.fillText(o.empty || "no data yet", 14, h / 2); return; }
+  let x0 = o.xMin ?? Math.min(...xs), x1 = o.xMax ?? Math.max(...xs);
+  if (x1 - x0 < 1e-6) x1 = x0 + 1;
+  let y0 = Math.min(...ys), y1 = Math.max(...ys);
+  if (y1 - y0 < 1) { y0 -= 1; y1 += 1; }
+  const m = (y1 - y0) * 0.08; y0 -= m; y1 += m;
+  const X = (v) => pad.l + (v - x0) / (x1 - x0) * (w - pad.l - pad.r);
+  const Y = (v) => h - pad.b - (v - y0) / (y1 - y0) * (h - pad.t - pad.b);
+  c.font = "11px system-ui"; c.textBaseline = "middle";
+  const grid = css.getPropertyValue("--line"), muted = css.getPropertyValue("--muted");
+  for (let i = 0; i <= 4; i++) {
+    const v = y0 + (y1 - y0) * i / 4; c.strokeStyle = grid; c.beginPath(); c.moveTo(pad.l, Y(v)); c.lineTo(w - pad.r, Y(v)); c.stroke();
+    c.fillStyle = muted; c.textAlign = "right"; c.fillText(v.toFixed(0), pad.l - 6, Y(v));
+  }
+  c.textAlign = "center"; c.textBaseline = "top";
+  for (let i = 0; i <= 5; i++) { const v = x0 + (x1 - x0) * i / 5; c.fillStyle = muted; c.fillText(v.toFixed(0) + (o.xUnit || "s"), X(v), h - pad.b + 5); }
+  (o.bands || []).forEach((b) => {
+    const a = Math.max(X(b.x0), pad.l), z = Math.min(X(b.x1), w - pad.r); if (z <= a) return;
+    c.fillStyle = "rgba(78,161,255,.13)"; c.fillRect(a, pad.t, z - a, h - pad.t - pad.b);
+    c.fillStyle = muted; c.textAlign = "center"; c.textBaseline = "top"; c.fillText(b.label, (a + z) / 2, pad.t + 2);
+  });
+  (o.hlines || []).forEach((l) => {
+    c.strokeStyle = l.color; c.setLineDash(l.dash || [5, 4]); c.beginPath(); c.moveTo(pad.l, Y(l.y)); c.lineTo(w - pad.r, Y(l.y)); c.stroke(); c.setLineDash([]);
+    c.fillStyle = l.color; c.textAlign = "right"; c.textBaseline = "bottom"; c.fillText(l.label, w - pad.r - 2, Y(l.y) - 1);
+  });
+  o.series.forEach((s) => {
+    c.strokeStyle = s.color; c.lineWidth = s.width || 1.6; c.beginPath(); let started = false;
+    s.x.forEach((xv, i) => { if (xv < x0 || xv > x1) return; const px = X(xv), py = Y(s.y[i]); if (!started) { c.moveTo(px, py); started = true; } else c.lineTo(px, py); });
+    c.stroke();
+  });
+  c.lineWidth = 1;
+  if (o.legend) { c.textAlign = "left"; c.textBaseline = "top"; let lx = pad.l + 6;
+    o.series.forEach((s) => { c.fillStyle = s.color; c.fillText("● " + s.label, lx, pad.t + 2); lx += 16 + s.label.length * 6.5 + 12; }); }
+}
+
+/* -------------------------------------------- analysis panel (Live + Captures) */
+function panelHtml(p) {
+  return `<div class="kpis" id="${p}-kpis"></div>
+    <div class="card"><h2 id="${p}-ctitle">Movement angle</h2><canvas id="${p}-chart" height="270"></canvas>
+      <div id="${p}-chart2wrap" style="display:none"><h2 style="margin-top:12px">Form signals (from rest)</h2><canvas id="${p}-chart2" height="150"></canvas></div>
+      <div class="note" id="${p}-notes"></div></div>
+    <div class="row"><div class="card" style="flex:2 1 560px"><h2>Repetitions</h2><div class="scroll" id="${p}-reps"></div></div>
+      <div class="card"><h2>Execution Score</h2><div id="${p}-score"></div></div></div>`;
+}
+$("live-panel").innerHTML = panelHtml("L");
+$("cap-panel").innerHTML = panelHtml("C");
+
+function kpi(label, value, sub, cls) { return `<div class="kpi"><div class="l">${label}</div><div class="v ${cls || ""}">${value}</div><div class="s">${sub || ""}</div></div>`; }
+
+function fillPanel(p, a, opts) {
+  opts = opts || {};
+  const kp = $(p + "-kpis");
+  if (!a || a.status === "waiting") {
+    kp.innerHTML = kpi("Angle", "–", "waiting for data") + kpi("Reps", "–", "");
+    chart($(p + "-chart"), { series: [], empty: "Connect sensors or start the simulator (Sensors tab)" });
+    $(p + "-reps").innerHTML = ""; $(p + "-score").innerHTML = ""; $(p + "-notes").textContent = "";
+    return;
+  }
+  const exec = a.execution, prescribed = opts.prescribed;
+  const ok = a.status === "assessed";
+  const q = opts.quality;
+  kp.innerHTML =
+    kpi(opts.angleLabel || "Angle from rest", a.angle_now === null || a.angle_now === undefined ? "–" : fmt(a.angle_now, 1) + "°", a.proxy ? esc(a.proxy.replace(/_deg$/, "")) : "")
+    + kpi("Reps detected", a.rep_count ?? 0, prescribed ? "of " + prescribed + " prescribed" : "")
+    + kpi("Execution score", exec && exec.status === "scored" ? fmt(exec.execution_score, 1) : "–",
+          exec ? (exec.status === "scored" ? "volume " + fmt(exec.volume.score, 0) + " · target " + fmt(exec.target_achievement.score, 0) + " · corr " + fmt(exec.correctness.score, 0) : esc(exec.reason || "")) : "no reps yet")
+    + kpi("Rest level", a.baseline === "static_window" ? "still ✓" : (a.baseline ? "median" : "–"),
+          a.baseline === "static_window" ? "from the initial still window" : "no still start found – hold still 3 s first", a.baseline === "static_window" ? "good" : "warn")
+    + kpi("Status", esc(a.status), esc(a.reason || (a.frames + " frames @ " + a.rate_hz + " Hz")), ok ? "good" : "warn")
+    + (q ? kpi("Signal gate", esc(q.level), q.scoring_permitted ? "scoring permitted" : "scoring blocked", levelKind(q.level) === "good" ? "good" : levelKind(q.level) === "warn" ? "warn" : "bad") : "");
+
+  $(p + "-ctitle").textContent = "Movement angle: " + (a.proxy || "–") + "  (rest = 0°)";
+  const t = a.series.t, y = a.series.angle;
+  let xMin, xMax;
+  if (opts.window > 0 && t.length) { xMax = t[t.length - 1]; xMin = Math.max(0, xMax - opts.window); }
+  const th = a.thresholds;
+  chart($(p + "-chart"), {
+    series: [{ x: t, y: y, color: "#4ea1ff", label: "angle" }], xMin, xMax, legend: false,
+    hlines: [{ y: 0, color: "#5b6673", label: "rest", dash: [2, 3] }, { y: th.enter_deg, color: "#3ecf8e", label: "enter " + th.enter_deg + "°" },
+             { y: th.exit_deg, color: "#f2b84b", label: "exit " + th.exit_deg + "°" }],
+    bands: a.segments.map((s) => ({ x0: s.start, x1: s.end, label: "rep " + s.index })),
+    empty: a.status === "insufficient_frames" ? "need ~2 s of data from all three sensors" : "no data",
+  });
+  const sec = a.secondary || [];
+  $(p + "-chart2wrap").style.display = sec.length ? "block" : "none";
+  if (sec.length) {
+    const colors = ["#f2b84b", "#c792ea", "#7fdbca"];
+    const tt = t; // secondary series are thinned exactly like the primary one
+    chart($(p + "-chart2"), { series: sec.map((s, i) => ({ x: tt, y: s.values, color: colors[i % 3], label: s.name })), xMin, xMax, legend: true });
+  }
+  const bio = a.biomechanics_summary;
+  const notes = (a.limitations && a.limitations.length ? "<div>" + a.limitations.map(esc).join("<br>") + "</div>" : "")
+    + (bio ? `<pre class="console">${esc(JSON.stringify(bio, null, 1))}</pre>` : "");
+  const box = $(p + "-notes");
+  const wasOpen = box.querySelector("details") ? box.querySelector("details").open : false;
+  box.innerHTML = notes ? `<details ${wasOpen ? "open" : ""}><summary>Session aggregates &amp; limitations</summary>${notes}</details>` : "";
+
+  renderReps(p, a);
+  renderScore(p, a);
+}
+
+function renderReps(p, a) {
+  if (!a.reps || !a.reps.length) { $(p + "-reps").innerHTML = `<div class="muted">No completed reps yet.${a.reason ? " (" + esc(a.reason) + ")" : ""}</div>`; return; }
+  const featNames = [...new Set(a.reps.flatMap((r) => Object.keys(r.features)))];
+  const knn = a.knn && a.knn.status === "predicted" ? a.knn : null;
+  const head = ["rep", "start s", "end s", ...featNames, "target", "correct."].concat(knn ? knn.qualities : []);
+  let html = "<table><thead><tr>" + head.map((h) => `<th>${esc(h)}</th>`).join("") + "</tr></thead><tbody>";
+  a.reps.forEach((r, i) => {
+    const e = a.execution && a.execution.reps ? a.execution.reps[i] : null;
+    html += `<tr><td>${r.index}</td><td>${fmt(r.start_s)}</td><td>${fmt(r.end_s)}</td>`
+      + featNames.map((n) => `<td>${fmt(r.features[n], 2)}</td>`).join("")
+      + `<td>${e ? fmt(e.target.score, 0) : "–"}</td><td>${e ? fmt(e.correctness.score, 0) : "–"}</td>`;
+    if (knn) knn.qualities.forEach((qn) => {
+      const rt = knn.reps[i][qn];
+      const issues = rt.issues && rt.issues.length ? " [" + rt.issues.map((x) => x.code).join(",") + "]" : "";
+      html += rt.abstained ? `<td class="muted">abstain</td>` : `<td class="${rt.label === "good" ? "good" : rt.label === "bad" ? "bad" : "warn"}">${rt.label} ${Math.round(rt.confidence * 100)}%${esc(issues)}</td>`;
+    });
+    html += "</tr>";
+  });
+  html += "</tbody></table>";
+  if (!knn) html += `<div class="note">Rep-quality KNN: ${a.knn ? esc(a.knn.reason || a.knn.status) : "n/a"} (label takes and build the reference in the Labels tab).</div>`;
+  $(p + "-reps").innerHTML = html;
+}
+
+function renderScore(p, a) {
+  const e = a.execution, w = a.score_weights;
+  if (!e) { $(p + "-score").innerHTML = '<div class="muted">Needs at least one rep.</div>'; return; }
+  if (e.status !== "scored") { $(p + "-score").innerHTML = `<div class="warn">No score: ${esc(e.reason)}</div>`; return; }
+  const v = e.volume.score ?? 0, t = e.target_achievement.score ?? 0, c = e.correctness.score ?? 0;
+  let html = `<div class="kv"><span>Correctness × ${w.correctness}</span><span class="mono">${fmt(c, 1)} → ${fmt(c * w.correctness, 1)}</span>
+    <span>Volume × ${w.volume}</span><span class="mono">${e.volume.score === null ? "– (set prescribed reps)" : fmt(v, 1) + " → " + fmt(v * w.volume, 1)}</span>
+    <span>Target × ${w.target}</span><span class="mono">${fmt(t, 1)} → ${fmt(t * w.target, 1)}</span>
+    <span><b>Execution Score</b></span><span class="mono"><b>${fmt(e.execution_score, 1)}</b></span></div><h2 style="margin-top:12px">Per rep sub-metrics</h2>`;
+  e.reps.forEach((r) => {
+    const m = Object.entries(r.correctness.metrics || {}).map(([k, val]) => `${esc(k)}=${fmt(val, 0)}`).join(", ");
+    html += `<div class="mono" style="font-size:12px">rep ${r.index}: target ${fmt(r.target.score, 0)} · corr ${fmt(r.correctness.score, 0)} <span class="muted">${m}</span></div>`;
+  });
+  $(p + "-score").innerHTML = html;
+}
+
+function renderQuality(id, q) {
+  const el = $(id);
+  if (!q) { el.innerHTML = '<div class="muted">–</div>'; return; }
+  const rates = q.sample_rates_hz ? Object.entries(q.sample_rates_hz).map(([r, hz]) => `${r} ${fmt(hz, 1)} Hz`).join(" · ") : "";
+  el.innerHTML = `<div>${pill(q.level, levelKind(q.level))} scoring ${q.scoring_permitted ? '<span class="good">permitted</span>' : '<span class="bad">blocked</span>'}
+    ${q.synchronization_skew_ms != null ? " · skew " + fmt(q.synchronization_skew_ms, 0) + " ms" : ""}</div>
+    <div class="note">${rates}</div><div>${(q.reasons || []).map((r) => `<div class="find warn">${esc(r)}</div>`).join("") || '<span class="good">no issues</span>'}</div>
+    <div class="note">Static-calibration reasons are expected while a person is moving.</div>`;
+}
+
+function renderHealth(id, h) {
+  const el = $(id);
+  if (!h) { el.innerHTML = '<div class="muted">–</div>'; return; }
+  let html = `<div>${pill(h.verdict, levelKind(h.verdict))}</div>`;
+  const sensors = Object.values(h.sensors || {});
+  if (sensors.length) {
+    html += `<table><thead><tr><th class="l">role</th><th>frames</th><th>Hz</th><th>p95 dt</th><th>max gap</th><th>frozen</th><th>clip</th></tr></thead><tbody>`
+      + sensors.map((s) => `<tr><td class="l">${s.role}</td><td>${s.frames}</td><td>${fmt(s.rate_hz)}</td><td>${fmt(s.p95_dt_ms, 0)} ms</td><td>${fmt(s.max_gap_s, 2)} s</td><td>${s.longest_frozen_run}</td><td>${s.clipped_samples}</td></tr>`).join("") + "</tbody></table>";
+  }
+  html += (h.findings || []).map((f) => `<div class="find ${levelKind(f.level)}">[${f.level}] ${f.role || "rig"}: ${esc(f.code)} – ${esc(f.message)}</div>`).join("");
+  el.innerHTML = html;
+}
+
+/* -------------------------------------------------------------- sensors tab */
+function renderSensors(live) {
+  const src = live.source;
+  const badge = $("src");
+  badge.textContent = src.kind === "none" ? "no source" : (src.detail || src.kind);
+  badge.className = "pill " + (src.kind === "ble" ? "good" : src.kind === "none" ? "mute" : "info");
+  $("take").textContent = "take " + fmt(live.take_seconds, 0) + " s · " + live.buffer_events + " packets buffered";
+  const kindOf = { connected: "good", simulated: "info", connecting: "warn", error: "bad", disconnected: "bad", idle: "mute" };
+  $("sensor-cards").innerHTML = ROLES.map((r) => {
+    const s = live.sensors[r]; const stale = s.age_s !== null && s.age_s > 1.5 && (s.status === "connected" || s.status === "simulated");
+    const e = s.euler || [], a = s.accel || [], g = s.gyro || [];
+    return `<div class="card sensor"><h3>${r.toUpperCase()} ${pill(stale ? "no data " + fmt(s.age_s, 1) + " s" : s.status, stale ? "bad" : kindOf[s.status] || "mute")}</h3>
+      <div class="muted mono" style="font-size:12px">${esc(s.address || "unassigned")}${s.error ? ' · <span class="bad">' + esc(s.error) + "</span>" : ""}</div>
+      <div class="bar"><i style="width:${Math.min(100, s.hz / 20 * 100)}%;background:${s.hz >= 8 ? "var(--good)" : "var(--bad)"}"></i></div>
+      <div class="kv"><span>Rate</span><span>${fmt(s.hz)} Hz (min 8)</span><span>Frames</span><span>${s.frames} · invalid ${s.invalid}</span>
+        <span>Roll / Pitch / Yaw</span><span class="mono">${e.length ? e.map((v) => fmt(v, 1) + "°").join("  ") : "–"}</span>
+        <span>Accel raw</span><span class="mono">${a.length ? a.join("  ") : "–"}</span><span>Gyro raw</span><span class="mono">${g.length ? g.join("  ") : "–"}</span></div></div>`;
+  }).join("");
+  $("log").textContent = live.log.map(([t, m]) => new Date(t * 1000).toLocaleTimeString() + "  " + m).join("\n");
+  const sc = live.scan;
+  $("scan-status").textContent = sc.status === "scanning" ? "scanning…" : sc.status === "error" ? "scan error: " + sc.error : sc.status === "done" ? sc.devices.length + " device(s)" : "";
+  $("scan-btn").disabled = sc.status === "scanning";
+  renderScanTable(sc.devices);
+  document.querySelectorAll(".stall").forEach((box) => { box.checked = (live.sim.stalled || []).includes(box.value); });
+}
+let lastScanKey = "";
+function renderScanTable(devices) {
+  const key = JSON.stringify(devices.map((d) => d.address)) + JSON.stringify(S.roleMap);
+  if (key === lastScanKey && !document.activeElement.closest("#scan-table")) return;
+  if (document.activeElement.closest && document.activeElement.closest("#scan-table")) return; // don't rebuild under an open dropdown
+  lastScanKey = key;
+  $("scan-table").querySelector("tbody").innerHTML = devices.map((d) => `<tr><td class="l mono">${esc(d.address)}</td><td class="l">${esc(d.name || "(no name)")}</td>
+    <td>${d.rssi ?? "–"}</td><td class="l">${d.likely ? pill("likely WT901", "good") : ""}</td>
+    <td class="l"><select data-addr="${esc(d.address)}"><option value="">—</option>${ROLES.map((r) => `<option ${S.roleMap[d.address] === r ? "selected" : ""}>${r}</option>`).join("")}</select></td></tr>`).join("");
+}
+$("scan-table").addEventListener("change", (e) => {
+  const addr = e.target.dataset.addr; if (!addr) return;
+  if (e.target.value) S.roleMap[addr] = e.target.value; else delete S.roleMap[addr];
+  try { localStorage.setItem("mova-imu-roles", JSON.stringify(S.roleMap)); } catch (err) { /* ignore */ }
+});
+$("scan-btn").onclick = () => post("/api/scan", { seconds: +$("scan-sec").value });
+$("connect-btn").onclick = () => {
+  const assign = {};
+  document.querySelectorAll("#scan-table select").forEach((sel) => { if (sel.value) assign[sel.value] = sel.dataset.addr; });
+  post("/api/connect", { assign });
+};
+$("disconnect-btn").onclick = () => post("/api/disconnect");
+$("src-stop").onclick = () => post("/api/source/stop");
+const simParams = () => ({ amplitude: $("sim-amp").value, period: $("sim-per").value, reps: $("sim-reps").value, noise: $("sim-noise").value });
+$("sim-start").onclick = () => post("/api/sim/start", simParams());
+document.querySelectorAll(".stall").forEach((box) => box.addEventListener("change", () =>
+  post("/api/sim/update", { stalled: [...document.querySelectorAll(".stall")].filter((b) => b.checked).map((b) => b.value) })));
+["sim-amp", "sim-per", "sim-reps", "sim-noise"].forEach((id) => $(id).addEventListener("change", () => post("/api/sim/update", simParams())));
+$("rp-start").onclick = () => $("rp-file").value && post("/api/replay/start", { file: $("rp-file").value, speed: +$("rp-speed").value, loop: $("rp-loop").checked });
+
+/* ---------------------------------------------------------------- live tab */
+function renderLive(live) {
+  const a = live.analysis;
+  fillPanel("L", a, { prescribed: live.exercise.prescribed, window: +$("win").value, quality: live.quality });
+  renderQuality("quality", live.quality);
+  renderHealth("health", live.health);
+  ROLES.forEach((r) => {
+    const tr = live.sensors[r].trace, now = tr.length ? tr[tr.length - 1][0] : 0;
+    const x = tr.map((p) => p[0] - now);
+    chart($("tr-" + r), { series: [1, 2, 3].map((k, i) => ({ x, y: tr.map((p) => p[k]), color: ["#f0616d", "#3ecf8e", "#4ea1ff"][i], label: ["roll", "pitch", "yaw"][i], width: 1.3 })),
+      xMin: -12, xMax: 0, legend: true });
+  });
+  $("live-note").textContent = live.exercise.overrides && Object.values(live.exercise.overrides).some((v) => v !== null && v !== "") ? "custom thresholds active" : "";
+}
+function tuning(prefix) { return { enter_deg: $(prefix + "-enter").value, exit_deg: $(prefix + "-exit").value, min_rep_seconds: $(prefix + "-minrep").value }; }
+async function pushExercise() {
+  await post("/api/exercise", { exercise_id: $("g-ex").value, prescribed: $("g-presc").value, ...tuning("t") });
+}
+$("g-ex").onchange = () => { $("t-enter").value = $("t-exit").value = $("t-minrep").value = ""; pushExercise(); };
+$("g-presc").onchange = pushExercise;
+$("t-apply").onclick = pushExercise;
+$("t-clear").onclick = () => { $("t-enter").value = $("t-exit").value = $("t-minrep").value = ""; pushExercise(); };
+$("g-reset").onclick = () => post("/api/reset");
+
+/* -------------------------------------------------------------- record tab */
+function renderRecord(live) {
+  const rec = live.recording, res = live.recording_result;
+  $("rec-start").disabled = !!rec; $("rec-stop").disabled = !rec;
+  let html = "";
+  if (rec) html += `<div>${pill("RECORDING", "bad")} <span class="mono">${esc(rec.file)}</span> · ${fmt(rec.seconds, 0)} s · frames ${ROLES.map((r) => r + " " + rec.counts[r]).join(" · ")}</div>`;
+  if (res) html += `<div style="margin-top:8px">${pill(res.ok ? "OK" : "PROBLEM", res.ok ? "good" : "bad")} ${esc(res.message)}<div class="note">${esc(res.file)} · ${res.seconds} s${res.synthetic ? " · synthetic source" : ""}
+    · frames ${ROLES.map((r) => r + " " + res.frames[r]).join(" · ")}</div><button class="b" onclick="openCapture('${esc(res.file)}')">Open in Captures</button></div>`;
+  $("rec-status").innerHTML = html || '<div class="muted">Not recording.</div>';
+  const a = live.analysis;
+  $("rec-live").innerHTML = a && a.status !== "waiting"
+    ? `<div class="kpis">${kpi("Angle", a.angle_now == null ? "–" : fmt(a.angle_now, 0) + "°", "")}${kpi("Reps so far", a.rep_count, live.recording && live.recording.expected ? "expected " + live.recording.expected : "")}</div>
+       <div class="note">Rest level: ${esc(a.baseline || "–")}. ${a.baseline === "static_window" ? "" : "Hold still 3 s at the start of the take."}</div>`
+    : '<div class="muted">Waiting for data from the source.</div>';
+}
+function suggestName() {
+  const ex = $("g-ex").value || "take"; const used = new Set(S.captures.map((c) => c.name));
+  for (let n = 1; n < 100; n++) { const name = `${ex}-take-${String(n).padStart(2, "0")}`; if (!used.has(name + ".jsonl") && !used.has("sim-" + name + ".jsonl") && !used.has("replay-" + name + ".jsonl")) return name; }
+  return ex + "-take";
+}
+$("rec-start").onclick = async () => {
+  const r = await post("/api/record/start", { name: $("rec-name").value || suggestName(), exercise_id: $("g-ex").value, expected: $("rec-exp").value,
+    range: $("rec-range").value, tempo: $("rec-tempo").value, subject: $("rec-subject").value, auto_label: $("rec-auto").checked });
+  if (r) $("rec-name").value = "";
+};
+$("rec-stop").onclick = async () => { await post("/api/record/stop"); loadCaptures(true); };
+window.openCapture = (name) => { S.selected = name; showTab("captures"); };
+
+/* ------------------------------------------------- capture_wt901ble68.py panel */
+const DEFAULT_ADDR = { thigh: "F4:03:1A:86:71:AD", shank: "D6:4D:35:86:B6:05", foot: "DF:E2:8F:65:F6:46" };
+let savedAddr = {};
+try { savedAddr = JSON.parse(localStorage.getItem("mova-imu-capture-addrs") || "{}"); } catch (e) { savedAddr = {}; }
+ROLES.forEach((r) => { $("sc-" + r).value = savedAddr[r] || DEFAULT_ADDR[r]; });
+function scForm() {
+  return { thigh: $("sc-thigh").value.trim(), shank: $("sc-shank").value.trim(), foot: $("sc-foot").value.trim(),
+    seconds: $("sc-secs").value, name: $("sc-name").value.trim() || suggestName(), expected: $("sc-exp").value,
+    exercise_id: $("g-ex").value, prescribed: $("g-presc").value };
+}
+function scCommand() {
+  const f = scForm();
+  return `python tools/capture_wt901ble68.py --seconds ${f.seconds} --output captures/${f.name}.jsonl `
+    + ROLES.map((r) => `--sensor ${r}=${f[r]}`).join(" ") + ` --exercise ${f.exercise_id}` + (f.expected ? ` --expected ${f.expected}` : "");
+}
+function refreshScCommand() {
+  const f = scForm(); ROLES.forEach((r) => { savedAddr[r] = f[r]; });
+  try { localStorage.setItem("mova-imu-capture-addrs", JSON.stringify(savedAddr)); } catch (e) { /* ignore */ }
+  $("sc-cmd").textContent = scCommand();
+}
+["sc-thigh", "sc-shank", "sc-foot", "sc-name", "sc-secs", "sc-exp", "g-ex"].forEach((id) => $(id).addEventListener("input", refreshScCommand));
+$("g-ex").addEventListener("change", refreshScCommand);
+$("sc-start").onclick = async () => { const r = await post("/api/capture/start", scForm()); if (r) { $("sc-name").value = ""; $("sc-console").textContent = "starting …"; } };
+$("sc-stop").onclick = () => post("/api/capture/stop");
+
+function lineClass(line) {
+  if (line.startsWith("[REP]")) return "good";
+  if (line.startsWith("[RESULT]")) return /SUCCESS/.test(line) ? "good" : "bad";
+  if (line.startsWith("[SYNC]")) return /FAILED|ABORTED|WARNING/.test(line) ? "bad" : "muted";
+  return "";
+}
+function renderCapture(live) {
+  const c = live.capture, running = !!(c && c.job.running && !c.result);
+  $("sc-start").disabled = running; $("sc-stop").disabled = !running;
+  if (!c) { $("sc-status").innerHTML = ""; $("sc-live").innerHTML = '<div class="muted">No capture running.</div>'; return; }
+  const job = c.job;
+  $("sc-status").innerHTML = running ? pill("RECORDING " + fmt(job.elapsed, 0) + " s", "bad") + ` <span class="mono">${esc(c.file)}</span>`
+    : c.result ? pill(c.result.stopped ? "STOPPED" : (c.result.exit_code === 0 ? "DONE" : "FAILED"), c.result.exit_code === 0 && !c.result.stopped ? "good" : "warn") + ` <span class="mono">${esc(c.file)}</span>` : pill("scoring …", "info");
+  $("sc-bar").style.width = Math.min(100, job.elapsed / c.seconds * 100) + "%";
+  const box = $("sc-console"), stick = box.scrollTop + box.clientHeight >= box.scrollHeight - 30;
+  const keep = box.scrollTop;
+  box.innerHTML = job.lines.map((l) => `<div class="${lineClass(l)}">${esc(l)}</div>`).join("") || "waiting for output …";
+  box.scrollTop = stick ? box.scrollHeight : keep;
+  const a = live.analysis;
+  $("sc-live").innerHTML = `<div class="kpis">${kpi("Script reps", c.script_reps, c.expected ? "expected " + c.expected : "")}${kpi("Angle", a && a.angle_now != null ? fmt(a.angle_now, 0) + "°" : "–", "")}</div>
+    <div class="note">${ROLES.map((r) => r + " " + fmt(live.sensors[r].hz) + " Hz").join(" · ")}. Rest level: ${esc((a && a.baseline) || "–")}.</div>`;
+  const res = c.result;
+  if (res) {
+    const sc = res.score;
+    $("sc-result").innerHTML = `<h2 style="margin-top:12px">Result</h2><div>${res.verdict ? esc(res.verdict) : '<span class="muted">no result line from the script</span>'}</div>
+      <h2 style="margin-top:12px">${sc ? esc(sc.command) : "check_execution_score.py"}</h2>
+      <pre class="console">${esc(sc ? sc.output : "capture file was not written, nothing to score")}</pre>
+      ${res.file_exists ? `<button class="b" onclick="openCapture('${esc(c.file)}')">Open in Captures</button>` : ""}`;
+  } else $("sc-result").innerHTML = "";
+}
+refreshScCommand();
+
+/* ------------------------------------------------------------ captures tab */
+async function loadCaptures(quiet) {
+  const list = await api("/api/captures").catch(() => null); if (!list) return;
+  S.captures = list;
+  if (!$("rec-name").value) $("rec-name").placeholder = suggestName();
+  if (!$("sc-name").value) { $("sc-name").placeholder = suggestName(); refreshScCommand(); }
+  const rp = $("rp-file"), keep = rp.value;
+  rp.innerHTML = list.map((c) => `<option>${esc(c.name)}</option>`).join(""); if (keep) rp.value = keep;
+  if (quiet) return;
+  const show = $("cap-syn").checked;
+  $("cap-table").querySelector("tbody").innerHTML = list.filter((c) => show || !c.synthetic).map((c) =>
+    `<tr class="click ${c.name === S.selected ? "sel" : ""}" data-f="${esc(c.name)}"><td class="l mono" style="font-size:12px">${esc(c.name.replace(/\.jsonl$/, ""))}${c.synthetic ? " " + pill("syn", "info") : ""}</td><td>${c.size_kb}</td><td>${c.labeled ? "✓" : ""}</td></tr>`).join("");
+}
+$("cap-table").addEventListener("click", (e) => { const tr = e.target.closest("tr[data-f]"); if (tr) { S.selected = tr.dataset.f; selectCapture(); loadCaptures(); } });
+$("cap-refresh").onclick = () => loadCaptures();
+$("cap-syn").onchange = () => loadCaptures();
+async function selectCapture() {
+  const cap = S.captures.find((c) => c.name === S.selected); if (!cap) return;
+  $("cap-title").textContent = cap.name;
+  if (cap.exercise) $("cap-ex").value = cap.exercise;
+  $("cap-console").style.display = "none";
+  analyzeSelected();
+}
+async function analyzeSelected() {
+  if (!S.selected) return;
+  const q = new URLSearchParams({ file: S.selected, exercise: $("cap-ex").value, prescribed: $("cap-presc").value,
+    enter_deg: $("c-enter").value, exit_deg: $("c-exit").value, min_rep_seconds: $("c-minrep").value, still_rate_dps: $("c-still").value, min_still_seconds: $("c-stills").value });
+  const a = await api("/api/captures/analyze?" + q).catch(() => null); if (!a) return;
+  S.capAnalysis = a;
+  fillPanel("C", a, { prescribed: +$("cap-presc").value || null, window: 0, quality: a.quality, angleLabel: "Angle at end of take" });
+  renderQuality("cap-quality", a.quality); renderHealth("cap-health", a.health);
+}
+$("cap-analyze").onclick = analyzeSelected;
+$("cap-replay").onclick = async () => { if (S.selected && await post("/api/replay/start", { file: S.selected, speed: 1, loop: false })) showTab("live"); };
+async function runCapScript(name, label) {
+  if (!S.selected) return; const box = $("cap-console"); box.style.display = "block"; box.textContent = "running " + label + " …";
+  const r = await post("/api/script", { name, file: S.selected, exercise: $("cap-ex").value, prescribed: $("cap-presc").value || $("g-presc").value });
+  if (r) box.textContent = "$ " + r.command + "\n\n" + r.output + (r.success ? "" : "\n\n(exit code " + r.exit_code + ")");
+}
+$("cap-score").onclick = () => runCapScript("score", "check_execution_score.py");
+$("cap-knn").onclick = () => runCapScript("quality", "check_rep_quality.py");
+$("cap-tune").onclick = async () => {
+  if (!S.selected) return; const box = $("cap-console"); box.style.display = "block"; box.textContent = "running tune_reps.py …";
+  const r = await post("/api/script", { name: "tune", file: S.selected, expected: $("rec-exp").value }); if (r) box.textContent = "$ " + r.command + "\n\n" + r.output;
+};
+
+/* -------------------------------------------------------------- labels tab */
+async function loadLabels() {
+  const body = $("lab-body");
+  if (!S.selected) { body.innerHTML = '<div class="muted">Pick a capture in the Captures tab first.</div>'; return; }
+  $("lab-title").textContent = S.selected;
+  const cap = S.captures.find((c) => c.name === S.selected) || {};
+  const lab = await api("/api/labels?file=" + encodeURIComponent(S.selected)).catch(() => null); if (!lab) return;
+  const exOpts = S.exercises.map((e) => `<option ${e.id === (cap.exercise || $("g-ex").value) ? "selected" : ""}>${e.id}</option>`).join("");
+  const sel = (id, val) => `<select id="${id}">${LABELS.map((l) => `<option ${l === val ? "selected" : ""}>${l}</option>`).join("")}</select>`;
+  let html = "";
+  if (lab.exists) {
+    html += `<div class="note">${esc(lab.file)} — change any rep that came out differently from what the take was meant to show; choose “skip” to drop a rep from that quality. Rep count/order can't change here.</div>
+      <table id="lab-table"><thead><tr><th>rep</th><th>start ms</th><th>end ms</th><th>peak°</th><th>ROM</th><th>dur s</th><th>tempo</th><th class="l">range</th><th class="l">tempo</th></tr></thead><tbody>`
+      + lab.rows.map((r) => `<tr data-rep="${r.rep}"><td>${r.rep}</td><td>${r.start_ms}</td><td>${r.end_ms}</td><td>${fmt(r.peak_from_rest_deg, 1)}</td><td>${fmt(r.rom_degrees, 1)}</td><td>${fmt(r.duration_seconds, 2)}</td><td>${fmt(r.tempo_ratio, 2)}</td>`
+        + ["range", "tempo"].map((qn) => `<td class="l"><select data-q="${qn}">${["", ...LABELS, "skip"].map((l) => `<option ${l === (r[qn] || "") ? "selected" : ""}>${l}</option>`).join("")}</select></td>`).join("") + "</tr>").join("")
+      + `</tbody></table><div class="controls" style="margin-top:10px"><button class="b primary" id="lab-save">Save labels</button></div><hr style="border-color:var(--line)">`;
+  }
+  html += `<h2>${lab.exists ? "Re-create (overwrites labels)" : "Create labels from detected reps"}</h2>
+    <div class="controls"><label>Exercise <select id="lab-ex">${exOpts}</select></label><label>Range ${sel("lab-range", "good")}</label><label>Tempo ${sel("lab-tempo", "good")}</label>
+      <label>Subject <input id="lab-subj" type="text" value="s1" style="width:80px"></label><label>Expected reps <input id="lab-exp" type="number" min="1"></label>
+      <label class="inline"><input type="checkbox" id="lab-force" ${lab.exists ? "" : "disabled"}>overwrite</label><button class="b primary" id="lab-create">${lab.exists ? "Re-create" : "Create CSV"}</button></div>
+    <div class="note">Every rep starts as the take's range/tempo; then fix exceptions above. Refuses to write if the detected count differs from expected.</div>`;
+  body.innerHTML = html;
+  if ($("lab-save")) $("lab-save").onclick = async () => {
+    const labels = [...document.querySelectorAll("#lab-table tbody tr")].map((tr) => ({ rep: +tr.dataset.rep,
+      range: tr.querySelector('[data-q="range"]').value, tempo: tr.querySelector('[data-q="tempo"]').value }));
+    const r = await post("/api/labels/save", { file: S.selected, labels }); if (r) { toast("labels saved"); loadLabels(); }
+  };
+  $("lab-create").onclick = async () => {
+    const r = await post("/api/labels/create", { file: S.selected, exercise_id: $("lab-ex").value, range: $("lab-range").value, tempo: $("lab-tempo").value,
+      subject: $("lab-subj").value, expected: $("lab-exp").value, force: $("lab-force").checked });
+    if (r) { toast("wrote " + r.file + " (" + r.reps + " reps)"); loadCaptures(true); loadLabels(); }
+  };
+}
+async function runReference(dry) {
+  if (!dry && !confirm("Build the KNN reference and WRITE the checkpoint file the API loads?")) return;
+  const box = $("ref-console"); box.style.display = "block"; box.textContent = "running build_rep_quality_reference.py …";
+  const r = await post("/api/script", { name: "build_reference", dry_run: dry, exercise: $("ref-ex").value });
+  if (r) { box.textContent = r.command + "\n\n" + r.output; refreshExercises(); }
+}
+$("ref-dry").onclick = () => runReference(true);
+$("ref-build").onclick = () => runReference(false);
+
+/* -------------------------------------------------------------------- boot */
+async function refreshExercises() {
+  S.exercises = await api("/api/exercises").catch(() => []);
+  const opts = S.exercises.map((e) => `<option value="${e.id}">${e.id}${e.has_reference ? "" : " (no KNN ref)"}</option>`).join("");
+  const keep = $("g-ex").value; $("g-ex").innerHTML = opts; if (keep) $("g-ex").value = keep;
+  const keepCap = $("cap-ex").value; $("cap-ex").innerHTML = opts; if (keepCap) $("cap-ex").value = keepCap;
+  $("ref-ex").innerHTML = '<option value="">all</option>' + S.exercises.map((e) => `<option>${e.id}</option>`).join("");
+}
+$("rec-range").innerHTML = $("rec-tempo").innerHTML = LABELS.map((l) => `<option ${l === "good" ? "selected" : ""}>${l}</option>`).join("");
+let polling = false;
+async function poll() {
+  if (polling) return; polling = true;
+  try {
+    const live = await (await fetch("/api/live")).json();
+    S.live = live;
+    if (document.activeElement !== $("g-presc") && live.exercise.prescribed) $("g-presc").value = live.exercise.prescribed;
+    if (S.exercises.length && document.activeElement !== $("g-ex")) $("g-ex").value = live.exercise.id;
+    renderSensors(live);
+    if (S.tab === "live") renderLive(live);
+    if (S.tab === "record") { renderRecord(live); renderCapture(live); }
+  } catch (e) { $("src").textContent = "server offline"; $("src").className = "pill bad"; }
+  polling = false;
+}
+(async () => {
+  await refreshExercises(); await loadCaptures(true);
+  let tab = "sensors"; try { tab = localStorage.getItem("mova-imu-tab") || tab; } catch (e) { /* ignore */ }
+  showTab(TABS.some((t) => t[0] === tab) ? tab : "sensors");
+  poll(); setInterval(poll, 350);
+})();
+</script>
+</body>
+</html>

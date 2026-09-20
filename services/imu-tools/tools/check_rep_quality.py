@@ -1,14 +1,14 @@
-# Ported from Phoenix 1480ab0:scripts/check_rep_quality.py
+# Ported from Phoenix 1480ab0:tools/check_rep_quality.py
 # Adapted for mova: import paths and capture directory only; the logic is unchanged.
 """Score one finished capture against a built reference, offline -- no API, no DB.
 
-Run this after ``scripts/build_rep_quality_reference.py`` has written a
+Run this after ``tools/build_rep_quality_reference.py`` has written a
 checkpoint for the exercise, against any capture -- typically a fresh test
 take that was *not* one of the recordings the reference was built from.
 
 Example:
-  python scripts/check_rep_quality.py \
-      --file services/imu-gateway/captures/exercise-heel-slide-v1-test-01.jsonl \
+  py tools/check_rep_quality.py \
+      --file captures/exercise-heel-slide-v1-test-01.jsonl \
       --exercise exercise-heel-slide-v1
 """
 
@@ -47,7 +47,7 @@ def main() -> int:
     if result["status"] != "predicted":
         print(
             f"no prediction: {result['reason']} "
-            "(build the reference first: python scripts/build_rep_quality_reference.py)"
+            "(build the reference first: py tools/build_rep_quality_reference.py)"
         )
         return 1
 
