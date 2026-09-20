@@ -30,47 +30,27 @@ import statistics
 from pathlib import Path
 
 from mova_imu.analysis.preprocessing import preprocess_transport_events
+from mova_imu.sources.events import ROLES, normalise  # noqa: F401  -- re-exported
+from mova_imu.sources.mova_frames import load_session_frames
 
-ROLES = ("thigh", "shank", "foot")
 AXES = ("ori_roll", "ori_pitch", "ori_yaw")
 AXIS_SHORT = {"ori_roll": "roll", "ori_pitch": "pitch", "ori_yaw": "yaw"}
 
 
 
 def load_file_events(path: str) -> list[dict]:
-    rows = [
-        json.loads(line)
-        for line in Path(path).read_text(encoding="utf-8").splitlines()
-        if line.strip()
-    ]
-    return [normalise(row) for row in rows if normalise(row) is not None]
+    """Every frame of a capture, a gateway dump or a mova session_frames export.
 
-
-def normalise(row: dict) -> dict | None:
-    """Accept both the gateway-event shape and the capture-file shape."""
-    if "sensor_role" in row and "orientation_euler_degrees" in row:
-        role = row["sensor_role"]
-        euler = row["orientation_euler_degrees"]
-        ts = row["timestamp_gateway"]
-        accel = (row.get("ax", 0), row.get("ay", 0), row.get("az", 0))
-        gyro = (row.get("gx", 0), row.get("gy", 0), row.get("gz", 0))
-    elif "sensor" in row and "euler_degrees" in row:
-        role = row["sensor"]["role"]
-        euler = row["euler_degrees"]
-        ts = row["gateway_timestamp"]
-        accel = row.get("accelerometer_raw", (0, 0, 0))
-        gyro = row.get("gyroscope_raw", (0, 0, 0))
-    else:
-        return None
-    if role not in ROLES or not isinstance(euler, list | tuple) or len(euler) != 3:
-        return None
-    return {
-        "sensor_role": role,
-        "timestamp_gateway": ts,
-        "ax": int(accel[0]), "ay": int(accel[1]), "az": int(accel[2]),
-        "gx": int(gyro[0]), "gy": int(gyro[1]), "gz": int(gyro[2]),
-        "orientation_euler_degrees": [float(euler[0]), float(euler[1]), float(euler[2])],
-    }
+    The shape is detected per row by ``mova_imu.sources.events.normalise``, so
+    one flag covers all three. Rows carrying no usable orientation are dropped
+    and reported rather than zero-filled.
+    """
+    session = load_session_frames(path, require_all_roles=False)
+    if session.drops.dropped:
+        print(f"  {Path(path).name}: {session.drops.summary()}")
+    if session.simulated:
+        print("  NOTE: simulated sensors -- these frames were not recorded off a person.")
+    return session.events
 
 
 def _wrap(degrees: float) -> float:
