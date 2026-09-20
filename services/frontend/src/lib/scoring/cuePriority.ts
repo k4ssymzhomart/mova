@@ -31,7 +31,11 @@ function ladderForRep(config: ExerciseConfig, rep: RepResult): { priority: 2 | 3
   const targetScore = perRepTargetScore(config, rep);
   if (targetScore < TARGET_CLOSE_THRESHOLD) return { priority: 3, code: "target_far" };
   if (targetScore < 100) return { priority: 4, code: "target_close" };
-  if (rep.tempoSec < config.tempoRangeSec[0]) return { priority: 5, code: "too_fast" };
+  // No calibrated tempo range means there is no pace to be "too fast" for; skip the cue rather than
+  // telling the patient to slow down against a number nobody has measured.
+  if (config.tempoRangeSec !== null && rep.tempoSec < config.tempoRangeSec[0]) {
+    return { priority: 5, code: "too_fast" };
+  }
   if (rep.smoothness01 < SMOOTHNESS_FLOOR) return { priority: 6, code: "low_smoothness" };
   return { priority: 7, code: "all_good" };
 }

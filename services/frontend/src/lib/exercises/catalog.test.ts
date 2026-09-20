@@ -25,6 +25,12 @@ const SLUGS = [
   "step-up",
   "walking-gait",
   "standing-hip-abduction",
+  // From the PHOENIX signal/execution profiles rather than НТЗ Appendix A — see the note in catalog.ts.
+  "ball-knee-flexion",
+  "heel-slide-with-band",
+  "supported-knee-raise",
+  "seated-knee-extension",
+  "resisted-ankle-pump",
 ];
 
 const SCORED = [
@@ -36,6 +42,12 @@ const SCORED = [
   "ankle-pumps",
   "mini-squat",
   "quad-set",
+  // The five PHOENIX-profile exercises: each has a target, so each is scored.
+  "ball-knee-flexion",
+  "heel-slide-with-band",
+  "supported-knee-raise",
+  "seated-knee-extension",
+  "resisted-ankle-pump",
 ];
 
 const LOCALES = ["ru", "kk", "en"] as const;
@@ -81,7 +93,7 @@ test("only heel-slide is prescribed", () => {
   );
 });
 
-test("the eight exercises of the scoring spec are the scored ones", () => {
+test("the scored exercises are the eight of the scoring spec plus the five PHOENIX-profile ones", () => {
   assert.deepEqual(
     EXERCISE_CATALOG.filter((e) => e.scored)
       .map((e) => e.slug)
@@ -149,7 +161,8 @@ test("sensors are known roles, listed once each in role order", () => {
 });
 
 // The clips confirmed against the exercise. A clip on the wrong exercise is worse than none, so a change here is a
-// clinical decision, not a refactor. Clips 2, 3, 8, 13 and 14 of the set are in public/exercises but on no entry.
+// clinical decision, not a refactor. walking-gait.mp4 is a second camera angle of walking-gait-front-side, so it
+// is deliberately on no entry.
 const CONFIRMED_CLIPS: Record<string, string> = {
   "heel-slide": "heel-slide",
   "seated-knee-flexion": "seated-knee-flexion",
@@ -158,6 +171,13 @@ const CONFIRMED_CLIPS: Record<string, string> = {
   "quad-set": "quad-set",
   "step-up": "step-up",
   "walking-gait": "walking-gait-front-side",
+  // Clips 2, 3, 8, 13 and 14 were the unattached ones. Five are now paired with the PHOENIX-profile
+  // exercises; each pairing is a clinical decision listed in the pull request, not a refactor.
+  "ball-knee-flexion": "seated-ball-roll",
+  "heel-slide-with-band": "supine-knee-flexion-strap",
+  "supported-knee-raise": "supine-bend-and-raise-strap",
+  "seated-knee-extension": "seated-knee-extension",
+  "resisted-ankle-pump": "ankle-dorsiflexion-band",
 };
 
 test("only the confirmed clips are attached, each with its own poster", () => {

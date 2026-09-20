@@ -18,18 +18,23 @@ function clampScore(v: number): number {
 }
 
 /** One rep's score for one named correctness component. Falls back to a neutral 100 for a component
- *  this rep has no signal for, rather than crashing or silently zeroing a whole exercise's weighting. */
-function componentScore(key: string, config: ExerciseConfig, rep: RepResult): number {
+ *  this rep has no signal for, rather than crashing or silently zeroing a whole exercise's weighting.
+ *
+ *  null is different, and stronger: the exercise has no CALIBRATED target for this component, so it
+ *  abstains and its weight is redistributed over the components that do have one. A neutral 100
+ *  would quietly reward an exercise for something nobody has measured. */
+function componentScore(key: string, config: ExerciseConfig, rep: RepResult): number | null {
   switch (key) {
     case "smoothness":
     case "downUpSmoothness":
     case "smoothRise":
       return clampScore(rep.smoothness01 * 100);
     case "tempo":
-      return tempoScore(rep.tempoSec, config.tempoRangeSec);
+      return config.tempoRangeSec === null ? null : tempoScore(rep.tempoSec, config.tempoRangeSec);
     case "controlledReturn":
     case "controlledLowering":
     case "return":
+      if (config.tempoRangeSec === null) return null;
       return rep.returnDurationSec !== undefined
         ? controlledReturnScore(rep.returnDurationSec, config.tempoRangeSec)
         : 100;
@@ -63,32 +68,60 @@ function componentScore(key: string, config: ExerciseConfig, rep: RepResult): nu
   }
 }
 
-/** Session-mean of one component across valid reps; 0 when there are none (never fabricate). */
-function sessionComponentMean(key: string, config: ExerciseConfig, reps: RepResult[]): number {
+/** Session-mean of one component across valid reps; 0 when there are none (never fabricate).
+ *  null when the component abstains for this exercise — see componentScore. */
+function sessionComponentMean(key: string, config: ExerciseConfig, reps: RepResult[]): number | null {
   const valid = reps.filter((r) => r.validForVolume);
   if (valid.length === 0) return 0;
-  return Math.round(valid.reduce((sum, r) => sum + componentScore(key, config, r), 0) / valid.length);
+  let total = 0;
+  for (const rep of valid) {
+    const value = componentScore(key, config, rep);
+    // Abstention is a property of the exercise's config, not of one rep, so the first
+    // null settles it for the whole component.
+    if (value === null) return null;
+    total += value;
+  }
+  return Math.round(total / valid.length);
 }
 
-/** 0..100 session-level Correctness Score — the weighted sum feeding Execution Effectiveness. */
+/** 0..100 session-level Correctness Score — the weighted sum feeding Execution Effectiveness.
+ *
+ *  Components that abstain are left out and the remaining weights are renormalized over what was
+ *  actually used, so an uncalibrated sub-metric never counts as a zero and never counts as a free
+ *  100. This mirrors PHOENIX's rep_correctness, which divides by its used_weight for the same reason. */
 export function sessionCorrectnessScore(config: ExerciseConfig, reps: RepResult[]): number {
   const valid = reps.filter((r) => r.validForVolume);
   if (valid.length === 0) return 0;
 
   let total = 0;
+  let usedWeight = 0;
   for (const [key, weight] of Object.entries(config.correctnessWeights)) {
-    const value = key === "consistency" ? consistencyScore(valid.map((r) => r.peakExcursionDeg)) : sessionComponentMean(key, config, reps);
+    const value =
+      key === "consistency"
+        ? consistencyScore(valid.map((r) => r.peakExcursionDeg))
+        : sessionComponentMean(key, config, reps);
+    if (value === null) continue;
     total += weight * value;
+    usedWeight += weight;
   }
-  return clampScore(total);
+  // Every component abstained: there is nothing measured to report, so say 0 rather than invent one.
+  if (usedWeight <= 0) return 0;
+  return clampScore(total / usedWeight);
 }
 
 /** Per-rep correctness for display/live-feedback purposes (e.g. "low smoothness" cueing) — excludes the
- *  session-only "consistency" term, with the remaining weights renormalized to sum to 1. */
+ *  session-only "consistency" term, with the remaining weights renormalized over the components that
+ *  did not abstain. */
 export function perRepCorrectnessScore(config: ExerciseConfig, rep: RepResult): number {
-  const entries = Object.entries(config.correctnessWeights).filter(([key]) => key !== "consistency");
-  const weightSum = entries.reduce((sum, [, w]) => sum + w, 0);
-  if (weightSum <= 0) return 100;
-  const total = entries.reduce((sum, [key, w]) => sum + w * componentScore(key, config, rep), 0);
-  return clampScore(total / weightSum);
+  let total = 0;
+  let usedWeight = 0;
+  for (const [key, weight] of Object.entries(config.correctnessWeights)) {
+    if (key === "consistency") continue;
+    const value = componentScore(key, config, rep);
+    if (value === null) continue;
+    total += weight * value;
+    usedWeight += weight;
+  }
+  if (usedWeight <= 0) return 100;
+  return clampScore(total / usedWeight);
 }

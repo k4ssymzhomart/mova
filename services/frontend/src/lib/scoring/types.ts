@@ -16,7 +16,15 @@ export type ExerciseSlug =
   | "straight_leg_raise"
   | "ankle_pumps"
   | "mini_squat"
-  | "quad_set";
+  | "quad_set"
+  // From the PHOENIX signal/execution profiles rather than the docx — see exerciseConfigs.ts.
+  // These slugs are snake_case like the rest; lib/exercises/ids.ts maps them to the kebab-case
+  // catalog slugs, which are the canonical ones.
+  | "ball_knee_flexion"
+  | "heel_slide_with_band"
+  | "supported_knee_raise"
+  | "seated_knee_extension"
+  | "resisted_ankle_pump";
 
 /** How a rep's Target Score is computed. "band" and "hold" exercises use exercise-specific formulas
  *  in targetScore.ts rather than the generic at_least ratio — see that file for the dispatch. */
@@ -44,8 +52,14 @@ export interface ExerciseConfig {
    *  render "цель не настроена" rather than inventing 90°, per the spec's explicit edge case (§16). */
   targetValueDeg: number | null;
   minValidExcursionDeg: number;
-  /** [min, max] seconds a well-paced rep should take; drives tempoScore and the "too fast" cue. */
-  tempoRangeSec: [number, number];
+  /** [min, max] seconds a well-paced rep should take; drives tempoScore and the "too fast" cue.
+   *  null means NOT CALIBRATED for this exercise — PHOENIX leaves the tempo target empty until a
+   *  reference take exists, and inventing a plausible range here would turn "we have not measured
+   *  this" into a number the patient is scored against. The tempo and controlled-return sub-scores
+   *  then abstain and their weight is redistributed over the rest (correctnessScore.ts), which is
+   *  what PHOENIX's own rep_correctness does via its used_weight. repDetector still needs a
+   *  mechanical abandon timeout and falls back to a documented default. */
+  tempoRangeSec: [number, number] | null;
   /** Only for hold-type exercises (Quad Set) or exercises with an explicit end-hold component. */
   holdTargetSec?: number;
   correctnessWeights: CorrectnessWeights;
