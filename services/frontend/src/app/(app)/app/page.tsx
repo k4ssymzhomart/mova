@@ -178,7 +178,11 @@ function ExerciseCard({ item, t, locale }: { item: ExerciseItem; t: Translate; l
   return (
     <li className={instrumentCard}>
       {/* Last on a phone, so the button stays on the first screen; beside the text from the small breakpoint up. */}
-      <ClipStill poster={poster} className="order-last h-52 w-full sm:order-none sm:h-full sm:min-h-[20rem]" />
+      <ClipStill
+        poster={poster}
+        video={entry?.video ?? ""}
+        className="order-last h-52 w-full sm:order-none sm:h-full sm:min-h-[20rem]"
+      />
       <div className={instrumentBody}>{body}</div>
     </li>
   );

@@ -30,7 +30,7 @@ export default function StepPending({
   const { t } = getTranslation();
   return (
     <div className="space-y-8">
-      <PageHeader eyebrow={t(`flow.steps.${step}`)} title={exerciseName ?? t("flow.untitledExercise")} />
+      <PageHeader stacked eyebrow={t(`flow.steps.${step}`)} title={exerciseName ?? t("flow.untitledExercise")} />
       <EmptyState
         icon={icon}
         title={t("flow.pending.title")}

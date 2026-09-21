@@ -60,7 +60,7 @@ export default async function ExerciseStep({ params }: { params: { id: string } 
   if (exerciseSlug !== HEEL_SLIDE_SLUG) {
     return (
       <div className="space-y-8">
-        <PageHeader
+        <PageHeader stacked
           eyebrow={t("flow.steps.exercise")}
           title={exerciseName ?? t("flow.untitledExercise")}
           lead={t("flow.exercise.leadGeneric")}
@@ -81,7 +81,7 @@ export default async function ExerciseStep({ params }: { params: { id: string } 
 
   return (
     <div className="space-y-8">
-      <PageHeader
+      <PageHeader stacked
         eyebrow={t("flow.steps.exercise")}
         title={exerciseName ?? t("flow.untitledExercise")}
         lead={t("flow.exercise.lead")}

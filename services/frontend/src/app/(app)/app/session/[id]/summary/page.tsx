@@ -44,7 +44,7 @@ export default async function SummaryStep({ params }: { params: { id: string } }
 
   return (
     <div className="space-y-8">
-      <PageHeader eyebrow={t("flow.steps.summary")} title={exerciseName ?? t("flow.untitledExercise")} />
+      <PageHeader stacked eyebrow={t("flow.steps.summary")} title={exerciseName ?? t("flow.untitledExercise")} />
 
       <section aria-labelledby="session-details" className={cn(card, "p-6 sm:p-8")}>
         <h2 id="session-details" className={cardTitle}>

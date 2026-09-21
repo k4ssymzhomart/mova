@@ -35,6 +35,9 @@ export const pageFlow = "space-y-10 lg:space-y-14";
 export const pageMasthead =
   "border-b border-line pb-6 lg:grid lg:grid-cols-[minmax(0,1fr)_minmax(0,26rem)] lg:items-end lg:gap-x-12 lg:pb-8";
 
+/** The masthead of a page in the narrow task frame: one column, so a long name keeps its own line. */
+export const pageMastheadStacked = "border-b border-line pb-6";
+
 /** A section heading with its count beside it. Never justified apart: the frame is wide. */
 export const sectionHead = "flex flex-wrap items-baseline gap-x-4 gap-y-1";
 

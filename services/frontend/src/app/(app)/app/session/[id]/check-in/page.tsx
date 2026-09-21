@@ -52,7 +52,7 @@ export default async function CheckInStep({ params }: { params: { id: string } }
 
   return (
     <div className="space-y-8">
-      <PageHeader eyebrow={eyebrow} title={t("flow.checkIn.title")} lead={t("flow.checkIn.hint")} />
+      <PageHeader stacked eyebrow={eyebrow} title={t("flow.checkIn.title")} lead={t("flow.checkIn.hint")} />
       <CheckInForm sessionId={id} />
     </div>
   );

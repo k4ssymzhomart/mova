@@ -23,7 +23,7 @@ export default function FlowUnavailable({ reason, eyebrow }: { reason: Unavailab
   const { t } = getTranslation();
   return (
     <div className="space-y-8">
-      <PageHeader eyebrow={eyebrow ?? t("flow.title")} title={t("flow.unavailable.title")} />
+      <PageHeader stacked eyebrow={eyebrow ?? t("flow.title")} title={t("flow.unavailable.title")} />
       <EmptyState
         icon={ICON[reason]}
         title={t(`flow.unavailable.${reason}.title`)}

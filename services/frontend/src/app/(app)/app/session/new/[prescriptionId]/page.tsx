@@ -75,7 +75,7 @@ export default async function SensorsStepPage({
 
   return (
     <div className="space-y-8">
-      <PageHeader eyebrow={t("flow.steps.sensors")} title={title} lead={t("flow.sensors.lead")} />
+      <PageHeader stacked eyebrow={t("flow.steps.sensors")} title={title} lead={t("flow.sensors.lead")} />
       <SensorsStep
         prescriptionId={prescription.value.id}
         patientId={sensors.value.patientId}
