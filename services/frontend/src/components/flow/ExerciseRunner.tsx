@@ -517,21 +517,25 @@ function RunnerBody({
 
       {mode !== null ? (
         <>
-          <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_20rem]">
+          {/* The camera takes the full width of the step: the patient is looking at themselves from across the
+              room, and a half-width picture of a person lying on the floor is not something they can read. */}
+          {mode === "camera" ? (
+            <ExerciseVisionStage
+              joint={visionJoint}
+              side={side ?? "right"}
+              facing="environment"
+              targetDeg={config?.targetValueDeg ?? null}
+              label={exerciseName ?? undefined}
+              onSample={onVisionSample}
+              onStatusChange={(status) => setCameraReady(status === "running")}
+            />
+          ) : null}
+
+          <div className="mt-6 grid gap-6 lg:grid-cols-[minmax(0,1fr)_20rem]">
             <div className="space-y-6">
-              {mode === "camera" ? (
-                <ExerciseVisionStage
-                  joint={visionJoint}
-                  side={side ?? "right"}
-                  facing="environment"
-                  targetDeg={config?.targetValueDeg ?? null}
-                  label={exerciseName ?? undefined}
-                  onSample={onVisionSample}
-                  onStatusChange={(status) => setCameraReady(status === "running")}
-                />
-              ) : (
+              {mode === "sensors" ? (
                 <SensorConnectPanel patientId={patientId} side={side} savedDevices={savedDevices} />
-              )}
+              ) : null}
 
               <section className={cn(card, "p-5 sm:p-6")} aria-live="polite">
                 <div className="flex items-start justify-between gap-4">

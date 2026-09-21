@@ -18,7 +18,7 @@
 // It never opens anything a production build keeps shut: the test sign-in and the simulation are still decided by
 // NODE_ENV, which `next dev` alone makes "development".
 
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, resolve } from "node:path";
@@ -120,6 +120,17 @@ const url = `http://${LAN ? "localhost" : "127.0.0.1"}:${port}/signin`;
 if (CHECK_ONLY) {
   console.log(`demo: ready. \`npm run demo\` will serve ${url} with simulated sensors.`);
   process.exit(0);
+}
+
+// The camera needs the MediaPipe runtime and the pose model. fetch-models.mjs puts both under
+// public/mediapipe (git-ignored); without them the app falls back to a CDN, which needs the internet at
+// exactly the wrong moment. `next dev` started here does not run the predev hook, so do it once, here.
+if (!existsSync(resolve(root, "public/mediapipe/pose_landmarker_lite.task"))) {
+  console.log("demo: fetching the pose model for the camera (once)…");
+  const sync = spawnSync(process.execPath, [resolve(root, "scripts/fetch-models.mjs")], { cwd: root, stdio: "inherit" });
+  if (sync.status !== 0) {
+    console.warn("demo: warning: the pose model could not be fetched; the camera will try a CDN instead.");
+  }
 }
 
 const childEnv = { ...shellEnv, NEXT_PUBLIC_SENSOR_SIMULATION: "1", NEXT_PUBLIC_SENSOR_MOCK: "" };

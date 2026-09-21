@@ -124,7 +124,7 @@ export default function ExerciseVisionStage({
   const sideRef = useRef(side);
   const mirrorRef = useRef(facing === "user");
   const onSampleRef = useRef(onSample);
-  const showVideoRef = useRef(false);
+  const showVideoRef = useRef(true);
   // What React is currently showing. The draw loop compares against these before lifting anything, and
   // the reset effect below clears them with the state, so the two can never disagree about what is on
   // screen — a loop-local copy would go on believing it had already shown a hint it had just cleared.
@@ -135,7 +135,10 @@ export default function ExerciseVisionStage({
   mirrorRef.current = facing === "user";
   onSampleRef.current = onSample;
 
-  const [showVideo, setShowVideo] = useState(false);
+  // The picture is shown by default: a patient checking their own position has to see themselves, and the whole
+  // point of the skeleton is that it sits over the body it was measured from. The switch below turns the picture
+  // off for someone who wants the outline alone; either way the frames stay on this device.
+  const [showVideo, setShowVideo] = useState(true);
   showVideoRef.current = showVideo;
   const [readoutDeg, setReadoutDeg] = useState<number | null>(null);
   const [hint, setHint] = useState<Hint>("none");
@@ -298,9 +301,10 @@ export default function ExerciseVisionStage({
     <figure className={cn(card, "overflow-hidden")}>
       <div className="relative aspect-[4/3] w-full bg-card">
         <canvas ref={canvasRef} className="absolute inset-0 h-full w-full" />
-        {/* The source feed. Owned here and never shown directly. It is moved off-screen rather than
-            display:none, because Safari and iOS can stop delivering frames to a display:none video —
-            and a phone propped across the room from the patient is exactly an iOS device. */}
+        {/* The source feed. It is drawn into the canvas rather than shown directly, so the skeleton and the
+            picture cannot drift apart, and it is moved off-screen rather than display:none, because Safari and
+            iOS can stop delivering frames to a display:none video — and a phone propped across the room from
+            the patient is exactly an iOS device. */}
         <video
           ref={videoRef}
           className="pointer-events-none absolute -left-[9999px] top-0 size-px opacity-0"
