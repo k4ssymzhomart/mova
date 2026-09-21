@@ -24,7 +24,14 @@ export type ExerciseSlug =
   | "heel_slide_with_band"
   | "supported_knee_raise"
   | "seated_knee_extension"
-  | "resisted_ankle_pump";
+  | "resisted_ankle_pump"
+  // The two PHOENIX profiles that had no mova exercise at all until the catalog gained them —
+  // services/imu-tools/exercise_ids.json listed both under phoenix_unmapped.ids. Their configs live in
+  // exerciseConfigs.ts, which is owned by another change in this build: until that lands, EXERCISE_CONFIGS
+  // (a Record<ExerciseSlug, ExerciseConfig>) is missing these two keys and the typecheck says so, which is
+  // the correct order — the union is the contract and the table has to satisfy it.
+  | "lying_partial_leg_raise"
+  | "lying_partial_leg_hold";
 
 /** How a rep's Target Score is computed. "band" and "hold" exercises use exercise-specific formulas
  *  in targetScore.ts rather than the generic at_least ratio — see that file for the dispatch. */
@@ -122,18 +129,61 @@ export interface LiveCue {
   emittedAtMs: number;
 }
 
+/** One scored component, together with an explicit record of what went into it.
+ *
+ *  `score === null` is the whole point of this type: it means NOTHING was measured. It is never 0 and
+ *  never 100, because both of those are grades — 0 fails the patient for something nobody looked at,
+ *  100 rewards them for it. This is the shape PHOENIX already uses: services/imu-tools/src/mova_imu/
+ *  analysis/execution_score.py:216-218 returns {"score": None, "reason": "no_calibrated_metrics"} in
+ *  exactly this situation rather than a number. */
+export interface ComponentScore {
+  /** 0..100 over the sub-components that were measured, or null when none of them were. */
+  score: number | null;
+  /** Sub-component keys that produced a number, in the order the config declares them. */
+  measured: string[];
+  /** Sub-component keys that abstained — no calibrated target for this exercise, or no data in the
+   *  rep. The UI must name these to the patient; a score computed from half its declared components
+   *  is not the same thing as a score, and hiding that is how a guess becomes a fact. */
+  abstained: string[];
+  /** Sum of the DECLARED weights that actually contributed, 0..1. 1 means everything the config asked
+   *  for was measured; 0 means nothing was and `score` is null. Anything between is a partial
+   *  measurement that the caller is expected to disclose rather than round away. */
+  weightUsed: number;
+}
+
+/** The names the session rollup weighs. */
+export type ExecutionComponentName = "correctness" | "volume" | "target";
+
+/** The session rollup, with the weight redistribution made visible instead of hidden inside one integer.
+ *  Port of assess_execution's return shape (execution_score.py:304-323), whose `components_used` this
+ *  mirrors field for field. */
+export interface ExecutionResult {
+  /** 0..100, or null when not one component could be scored. */
+  score: number | null;
+  /** The weight each component actually carried AFTER the abstaining ones were dropped and the rest
+   *  renormalised. A missing key means that component abstained. These sum to 1 whenever `score` is
+   *  not null. */
+  componentsUsed: Partial<Record<ExecutionComponentName, number>>;
+  /** Components that carried no weight because nothing was measured for them. */
+  abstained: ExecutionComponentName[];
+}
+
 export interface SessionResult {
   exerciseSlug: ExerciseSlug;
   reps: RepResult[];
   prescribedReps: number;
-  /** 0..100, min(valid_reps/prescribed_reps, 1) × 100. */
-  volumeScore: number;
-  /** 0..100, session-mean of each valid rep's per-rep target score. */
-  targetScore: number;
-  /** 0..100, session-mean of each valid rep's per-rep correctness score. */
-  correctnessScore: number;
-  /** 0..100, 0.50×correctness + 0.20×volume + 0.30×target — the canonical formula from spec §2. */
-  executionEffectiveness: number;
+  /** 0..100, min(valid_reps/prescribed_reps, 1) × 100. Null when nothing was prescribed, because a
+   *  session with no prescription has no volume to be a fraction of (execution_score.py:250-251 calls
+   *  this "no_prescribed_reps"). */
+  volumeScore: number | null;
+  /** Session-mean of each valid rep's per-rep target score, or an abstention when the exercise has no
+   *  configured target or no valid rep to read one from. */
+  targetScore: ComponentScore;
+  /** Weighted session technique score, plus which technique components were actually measured. */
+  correctnessScore: ComponentScore;
+  /** 0.50×correctness + 0.20×volume + 0.30×target (spec §2), renormalised over whichever of the three
+   *  were measured. `execution.componentsUsed` reports the weights that were really applied. */
+  execution: ExecutionResult;
   /** Provisional — relative angle, not a clinically-calibrated absolute ROM. */
   romMaxDeg: number | null;
   romMeanDeg: number | null;

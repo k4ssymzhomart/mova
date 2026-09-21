@@ -9,13 +9,6 @@ export function hasFineHoverPointer(): boolean {
   return typeof window !== "undefined" && window.matchMedia("(hover: hover) and (pointer: fine)").matches;
 }
 
-// Where to centre a clip that is cropped to a 16:9 frame. The clips are phone recordings; heel-slide.mp4 is a landscape
-// shot letterboxed inside a portrait frame, a little below the middle, so a centred crop shows a band of its black
-// letterbox. The clips themselves are used as recorded (no re-encoding), so the frame is placed instead.
-const CLIP_FOCUS: Readonly<Record<string, string>> = {
-  "/exercises/heel-slide.mp4": "50% 58%",
-};
-
-export function clipObjectPosition(video: string): string | undefined {
-  return CLIP_FOCUS[video];
-}
+// Where a clip is centred and what shape its frame is are NOT here. That is per-clip geometry measured from the
+// files themselves, and it lives in @/lib/exercises/clipGeometry so that the session screen — which is not part of
+// the library — can read the same table. This file stays what its name says: the media queries.

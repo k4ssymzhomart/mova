@@ -31,6 +31,10 @@ const SLUGS = [
   "supported-knee-raise",
   "seated-knee-extension",
   "resisted-ankle-pump",
+  // The two PHOENIX profiles mova had no clinician clip for. They are in the library anyway; the missing
+  // footage shows up as their absence from CONFIRMED_CLIPS below, which pins video and poster to null.
+  "lying-partial-leg-raise",
+  "lying-partial-leg-hold",
 ];
 
 const SCORED = [
@@ -42,12 +46,16 @@ const SCORED = [
   "ankle-pumps",
   "mini-squat",
   "quad-set",
-  // The five PHOENIX-profile exercises: each has a target, so each is scored.
+  // The seven PHOENIX-profile exercises: each has a target, so each is scored. The two lying partial raises
+  // are scored on thigh elevation, which is a target Phoenix states; having no reference clip does not make an
+  // exercise unscorable, it only means the patient has nothing to watch.
   "ball-knee-flexion",
   "heel-slide-with-band",
   "supported-knee-raise",
   "seated-knee-extension",
   "resisted-ankle-pump",
+  "lying-partial-leg-raise",
+  "lying-partial-leg-hold",
 ];
 
 const LOCALES = ["ru", "kk", "en"] as const;
@@ -69,7 +77,7 @@ function texts(e: ExerciseEntry): Localized[] {
   ];
 }
 
-test("the catalog holds exactly the twelve slugs, each once", () => {
+test("the catalog holds exactly the nineteen slugs, each once", () => {
   const slugs = EXERCISE_CATALOG.map((e) => e.slug);
   assert.equal(new Set(slugs).size, slugs.length);
   assert.deepEqual([...slugs].sort(), [...SLUGS].sort());
@@ -93,7 +101,7 @@ test("only heel-slide is prescribed", () => {
   );
 });
 
-test("the scored exercises are the eight of the scoring spec plus the five PHOENIX-profile ones", () => {
+test("the scored exercises are the eight of the scoring spec plus the seven PHOENIX-profile ones", () => {
   assert.deepEqual(
     EXERCISE_CATALOG.filter((e) => e.scored)
       .map((e) => e.slug)
@@ -173,6 +181,8 @@ const CONFIRMED_CLIPS: Record<string, string> = {
   "walking-gait": "walking-gait-front-side",
   // Clips 2, 3, 8, 13 and 14 were the unattached ones. Five are now paired with the PHOENIX-profile
   // exercises; each pairing is a clinical decision listed in the pull request, not a refactor.
+  // lying-partial-leg-raise and lying-partial-leg-hold are deliberately absent from this map: no clip of
+  // either exercise was ever recorded, and their absence here is what pins their video and poster to null.
   "ball-knee-flexion": "seated-ball-roll",
   "heel-slide-with-band": "supine-knee-flexion-strap",
   "supported-knee-raise": "supine-bend-and-raise-strap",

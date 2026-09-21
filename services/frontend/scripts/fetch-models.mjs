@@ -10,6 +10,15 @@
 //   3. Neither — the app falls back to clearly-labelled SIMULATED scoring so the UI never bricks.
 //
 // It NEVER fails the build: every path exits 0. A missing model degrades to simulation, not a 500.
+//
+// It also self-hosts the MediaPipe Pose assets into public/mediapipe/. Those were fetched from two
+// public CDNs at runtime (cdn.jsdelivr.net for the wasm, storage.googleapis.com for the .task), which
+// means the camera "exoskeleton" died whenever either was unreachable and never worked offline at all
+// — and a clinic's captive wifi is exactly where a patient without sensors would use it. The six wasm
+// files are already on disk inside node_modules, so that half is a copy, not a download. The model is a
+// download, and the same discipline applies to it: if it fails, the warning says so and the hook falls
+// back to the CDN by itself (src/lib/cv/useMediaPipePose.ts tries the local path first, then the CDN).
+// Set MOVA_SKIP_MEDIAPIPE=1 to skip the whole step.
 
 import { execSync } from "node:child_process";
 import { copyFileSync, existsSync, mkdirSync, statSync, writeFileSync } from "node:fs";
@@ -78,9 +87,91 @@ async function tryRemote() {
   }
 }
 
+// ── MediaPipe Pose: wasm runtime + pose landmarker model, served from our own origin ──────────────
+
+const mpDest = resolve(here, "../public/mediapipe");
+const mpWasmDest = resolve(mpDest, "wasm");
+const mpWasmSrc = resolve(here, "../node_modules/@mediapipe/tasks-vision/wasm");
+// The six files FilesetResolver picks between at runtime (SIMD / no-SIMD / threaded), pinned by name so
+// a package update that adds a seventh shows up here as a missing file rather than silently not copied.
+const MP_WASM_FILES = [
+  "vision_wasm_internal.js",
+  "vision_wasm_internal.wasm",
+  "vision_wasm_module_internal.js",
+  "vision_wasm_module_internal.wasm",
+  "vision_wasm_nosimd_internal.js",
+  "vision_wasm_nosimd_internal.wasm",
+];
+const MP_MODEL_FILE = "pose_landmarker_lite.task";
+// The "lite" float16 export, which is the one useMediaPipePose has always asked the CDN for. Keeping
+// the same file means self-hosting changes where the bytes come from and nothing about the detections.
+const MP_MODEL_URL =
+  "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task";
+
+function copyMediaPipeWasm() {
+  if (!existsSync(mpWasmSrc)) {
+    console.warn("models:fetch — @mediapipe/tasks-vision wasm not in node_modules; the app uses the CDN.");
+    return false;
+  }
+  mkdirSync(mpWasmDest, { recursive: true });
+  let copied = 0;
+  for (const f of MP_WASM_FILES) {
+    const from = resolve(mpWasmSrc, f);
+    if (!existsSync(from)) {
+      console.warn(`models:fetch — mediapipe wasm: ${f} missing from node_modules`);
+      continue;
+    }
+    copyFileSync(from, resolve(mpWasmDest, f));
+    copied += 1;
+  }
+  if (copied === MP_WASM_FILES.length) {
+    console.log(`models:fetch — copied ${copied} MediaPipe wasm files to public/mediapipe/wasm.`);
+    return true;
+  }
+  console.warn(`models:fetch — MediaPipe wasm incomplete (${copied}/${MP_WASM_FILES.length}); the app uses the CDN.`);
+  return false;
+}
+
+async function fetchMediaPipeModel() {
+  const target = resolve(mpDest, MP_MODEL_FILE);
+  if (existsSync(target)) {
+    console.log("models:fetch — MediaPipe pose model already present.");
+    return true;
+  }
+  mkdirSync(mpDest, { recursive: true });
+  try {
+    const res = await fetch(MP_MODEL_URL);
+    if (!res.ok) {
+      console.warn(`models:fetch — ${MP_MODEL_FILE}: HTTP ${res.status}; the app uses the CDN.`);
+      return false;
+    }
+    writeFileSync(target, Buffer.from(await res.arrayBuffer()));
+    const mb = (statSync(target).size / 1e6).toFixed(1);
+    console.log(`models:fetch — downloaded ${MP_MODEL_FILE} (${mb} MB).`);
+    return true;
+  } catch (err) {
+    console.warn(`models:fetch — ${MP_MODEL_FILE}: ${err?.message ?? err}; the app uses the CDN.`);
+    return false;
+  }
+}
+
+async function syncMediaPipe() {
+  if (process.env.MOVA_SKIP_MEDIAPIPE === "1") {
+    console.log("models:fetch — MOVA_SKIP_MEDIAPIPE=1, leaving MediaPipe on the public CDNs.");
+    return;
+  }
+  const wasm = copyMediaPipeWasm();
+  const model = await fetchMediaPipeModel();
+  if (wasm && model) {
+    console.log("models:fetch — MediaPipe Pose is self-hosted; no runtime CDN needed.");
+  }
+}
+
 async function main() {
+  await syncMediaPipe();
+
   if (have().length === BINARIES.length) {
-    console.log("models:fetch — binaries already present, nothing to do.");
+    console.log("models:fetch — ONNX binaries already present, nothing to do.");
     return;
   }
   tryLocal();

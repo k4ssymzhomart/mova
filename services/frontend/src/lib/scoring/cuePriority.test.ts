@@ -111,6 +111,19 @@ describe("selectCue — priority ladder", () => {
     expect(second).toBe(first);
   });
 
+  it("skips both target rungs entirely when the exercise has no target to measure against", () => {
+    // perRepTargetScore abstains for a null targetValueDeg. Telling the patient to bend further
+    // against a target nobody configured would be inventing the very number the config left empty.
+    const noTarget = { ...config, targetValueDeg: null };
+    const cue = selectCue(
+      { signal: OK_SIGNAL, lastCompletedRep: rep({ peakExcursionDeg: 5, tempoSec: 4, smoothness01: 0.95 }), config: noTarget, nowMs: 1000 },
+      null,
+    );
+    expect(cue?.code).not.toBe("target_far");
+    expect(cue?.code).not.toBe("target_close");
+    expect(cue?.code).toBe("all_good");
+  });
+
   it("never says 'bend further' once the target is reached — target_far/target_close cannot fire for a rep at or above 100% target score", () => {
     const cue = selectCue(
       { signal: OK_SIGNAL, lastCompletedRep: rep({ peakExcursionDeg: 120, tempoSec: 4, smoothness01: 0.95 }), config, nowMs: 1000 },

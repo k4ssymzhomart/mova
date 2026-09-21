@@ -41,6 +41,8 @@ export const EXERCISE_IDS: readonly ExerciseIds[] = [
   { catalog: "heel-slide-with-band", scoring: "heel_slide_with_band", phoenix: "exercise-heel-slide-with-band-v1" },
   { catalog: "supported-knee-raise", scoring: "supported_knee_raise", phoenix: "exercise-supported-knee-raise-v1" },
   { catalog: "resisted-ankle-pump", scoring: "resisted_ankle_pump", phoenix: "exercise-resisted-ankle-pump-v1" },
+  { catalog: "lying-partial-leg-raise", scoring: "lying_partial_leg_raise", phoenix: "exercise-lying-partial-leg-raise-v1" },
+  { catalog: "lying-partial-leg-hold", scoring: "lying_partial_leg_hold", phoenix: "exercise-lying-partial-leg-hold-v1" },
 
   { catalog: "seated-knee-flexion", scoring: "seated_knee_flexion", phoenix: null },
   { catalog: "prone-knee-bend", scoring: "prone_knee_bend", phoenix: null },
@@ -54,13 +56,14 @@ export const EXERCISE_IDS: readonly ExerciseIds[] = [
 
 /**
  * PHOENIX signal profiles deliberately without a mova exercise. Listed so a profile added upstream
- * and forgotten here fails a test rather than silently having no exercise. Both are thigh-absolute
- * raises that mova has no clinician-recorded clip for; held for a second pass.
+ * and forgotten here fails a test rather than silently having no exercise.
+ *
+ * Empty right now: every PHOENIX profile has a catalog entry. The two thigh-absolute raises that used
+ * to sit here were mapped in September 2026. mova still has no clinician-recorded clip of either, and
+ * that stays recorded where it belongs — as `video: null` on their catalog.ts entries — rather than as
+ * a missing identity mapping, which is a different fact about a different thing.
  */
-export const PHOENIX_UNMAPPED: readonly string[] = [
-  "exercise-lying-partial-leg-raise-v1",
-  "exercise-lying-partial-leg-hold-v1",
-];
+export const PHOENIX_UNMAPPED: readonly string[] = [];
 
 /** Look an exercise up by an id in any of the three spaces. `undefined` when there is no row. */
 export function resolveExerciseIds(value: string): ExerciseIds | undefined {

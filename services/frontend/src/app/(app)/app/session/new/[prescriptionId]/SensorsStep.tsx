@@ -27,7 +27,7 @@ import { ArrowRight, Info, LoaderCircle, TriangleAlert } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useId, useRef, useState } from "react";
 
-import { primaryButton } from "@/components/app/recipes";
+import { primaryButton, secondaryButton } from "@/components/app/recipes";
 import { sensorDeviceInfo } from "@/components/flow/heelSlideRecords";
 import SensorConnectPanel, { type SavedDeviceRow } from "@/components/flow/SensorConnectPanel";
 import { sensorsStepReady } from "@/components/flow/sensorsReady";
@@ -46,12 +46,20 @@ export default function SensorsStep({
   side,
   savedDevices,
   requestedHz,
+  cameraAvailable = false,
 }: {
   prescriptionId: string;
   patientId: string;
   side: "left" | "right" | null;
   savedDevices: readonly SavedDeviceRow[];
   requestedHz: SupportedRateHz;
+  /**
+   * True when this exercise can also be measured by the camera (lib/exercises/visionJoint states a joint for it).
+   * It adds a second way out of this step for a patient who has no sensors: the session opens without them and the
+   * exercise screen offers the camera. The sensors path is untouched and «Далее» still needs all three, because a
+   * session that CLAIMS to be measured by sensors must actually have them.
+   */
+  cameraAvailable?: boolean;
 }) {
   const snapshot = useSensorStatus();
   const live = useLiveSensors();
@@ -76,8 +84,8 @@ export default function SensorsStep({
         ? t("flow.sensors.blockedUnsupported")
         : t("flow.sensors.blockedNotReady");
 
-  async function start() {
-    if (!ready || startingRef.current) return;
+  async function start(withoutSensors = false) {
+    if ((!ready && !withoutSensors) || startingRef.current) return;
     startingRef.current = true;
     setStarting(true);
     setStartError(null);
@@ -87,7 +95,8 @@ export default function SensorsStep({
     try {
       const { data, error } = await createClient().rpc("start_prescribed_session", {
         p_prescription: prescriptionId,
-        p_device_info: sensorDeviceInfo(getSnapshot(), snapshot.source === "simulated"),
+        // A session opened for the camera records no sensor device info, because no sensor was bound to a role.
+        p_device_info: withoutSensors ? {} : sensorDeviceInfo(getSnapshot(), snapshot.source === "simulated"),
       });
       const id = (data as { id?: unknown } | null)?.id;
       if (!error && typeof id === "string") sessionId = id;
@@ -113,7 +122,7 @@ export default function SensorsStep({
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-5">
         <button
           type="button"
-          onClick={start}
+          onClick={() => void start()}
           disabled={!ready || starting}
           aria-describedby={reason ? reasonId : undefined}
           className={primaryButton}
@@ -125,6 +134,11 @@ export default function SensorsStep({
             <ArrowRight className="size-5" strokeWidth={2} aria-hidden="true" />
           )}
         </button>
+        {cameraAvailable && !ready && (
+          <button type="button" onClick={() => void start(true)} disabled={starting} className={secondaryButton}>
+            {t("flow.sensors.continueWithCamera")}
+          </button>
+        )}
         {reason && (
           <p id={reasonId} className="flex items-start gap-2 text-base leading-relaxed text-ink-soft">
             <Info className="mt-0.5 size-5 shrink-0" strokeWidth={1.8} aria-hidden="true" />

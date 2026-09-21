@@ -38,6 +38,8 @@
     { "catalog": "heel-slide-with-band",  "scoring": "heel_slide_with_band",  "phoenix": "exercise-heel-slide-with-band-v1" },
     { "catalog": "supported-knee-raise",  "scoring": "supported_knee_raise",  "phoenix": "exercise-supported-knee-raise-v1" },
     { "catalog": "resisted-ankle-pump",   "scoring": "resisted_ankle_pump",   "phoenix": "exercise-resisted-ankle-pump-v1" },
+    { "catalog": "lying-partial-leg-raise", "scoring": "lying_partial_leg_raise", "phoenix": "exercise-lying-partial-leg-raise-v1" },
+    { "catalog": "lying-partial-leg-hold",  "scoring": "lying_partial_leg_hold",  "phoenix": "exercise-lying-partial-leg-hold-v1" },
 
     { "catalog": "seated-knee-flexion",     "scoring": "seated_knee_flexion",     "phoenix": null },
     { "catalog": "prone-knee-bend",         "scoring": "prone_knee_bend",         "phoenix": null },
@@ -56,13 +58,13 @@
       "SIGNAL_PROFILES exactly -- a profile added upstream and forgotten here",
       "fails a test instead of silently having no mova exercise.",
       "",
-      "Both of these are thigh-absolute-angle exercises that mova has no",
-      "clinician-recorded clip for. Held for a second pass rather than shipped",
-      "into the library with no reference footage."
+      "The list is empty right now: every Phoenix signal profile has a mova",
+      "catalog entry. The two thigh-absolute raises that used to sit here,",
+      "exercise-lying-partial-leg-raise-v1 and exercise-lying-partial-leg-hold-v1,",
+      "were mapped in September 2026. mova still has no clinician-recorded clip",
+      "of either -- that is recorded where it belongs, as video: null on their",
+      "catalog.ts entries, not as an absent mapping."
     ],
-    "ids": [
-      "exercise-lying-partial-leg-raise-v1",
-      "exercise-lying-partial-leg-hold-v1"
-    ]
+    "ids": []
   }
 }

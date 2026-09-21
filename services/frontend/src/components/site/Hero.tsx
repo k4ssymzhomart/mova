@@ -16,8 +16,8 @@ export default function Hero() {
   });
 
   // Parallax + cinematic fade as you scroll past the hero.
-  const mediaY = useTransform(scrollYProgress, [0, 1], ["0%", "20%"]);
-  const mediaScale = useTransform(scrollYProgress, [0, 1], [1, 1.14]);
+  // The parallax pair that drove the backdrop image (mediaY / mediaScale) went with it; see the footage-layer
+  // comment below. They come straight back from `scrollYProgress` when a real hero asset lands.
   const contentY = useTransform(scrollYProgress, [0, 1], ["0%", "-14%"]);
   const contentOpacity = useTransform(scrollYProgress, [0, 0.8], [1, 0]);
 
@@ -28,29 +28,22 @@ export default function Hero() {
       data-nav-dark
       className="relative h-[100svh] min-h-[680px] w-full overflow-hidden bg-night"
     >
-      {/* Footage layer — drop a real loop at /public/hero.mp4 and it takes over. */}
-      <motion.div
-        style={{ y: mediaY, scale: mediaScale }}
-        className="absolute inset-0 will-change-transform"
-      >
-        <div className="grain absolute inset-0 h-full w-full">
-          <img
-            src="https://picsum.photos/seed/mova-hero-motion/2000/1400"
-            alt=""
-            className="kenburns h-full w-full object-cover"
-          />
-        </div>
-        <video
-          className="absolute inset-0 h-full w-full object-cover"
-          autoPlay
-          muted
-          loop
-          playsInline
-        >
-          <source src="/hero.webm" type="video/webm" />
-          <source src="/hero.mp4" type="video/mp4" />
-        </video>
-      </motion.div>
+      {/* Footage layer — deliberately EMPTY, and both things that used to be here were removed for a reason.
+
+          It held a <video> with <source src="/hero.webm"> and "/hero.mp4". Neither file has ever existed in
+          public/, so every visit painted an empty black box over the backdrop. A hero loop is an asset decision,
+          not a code one: a real one needs a silent, seamlessly looping landscape clip encoded twice (webm + mp4),
+          small enough to be worth fetching before the page is readable, with a poster so the first paint is not
+          blank. None of that can be invented here.
+
+          It also held a backdrop from https://picsum.photos/..., so the landing's only picture came from a host we
+          do not control and leaked a request to it on every visit. The obvious local replacement is one of the
+          clinician's own reference stills from public/exercises — but those were recorded for the exercise library,
+          and a full-bleed marketing hero is a materially more prominent use of a real person's likeness than a
+          library thumbnail. Whether their consent covers it is not a question this file can answer, so it is left
+          to whoever can. Drop a licensed still or a hero loop in public/ and reference it here.
+
+          Until then the hero is its own gradient wash, which is a complete design rather than a placeholder. */}
 
       {/* Cinematic dark wash for legibility */}
       <div className="absolute inset-0 bg-night/55" />

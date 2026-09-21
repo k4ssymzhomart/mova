@@ -1,11 +1,15 @@
-// The exercise library: the twelve exercises a patient can read about on /exercises. Every value is taken from
-// one of two documents and each entry names where in its `source`:
+// The exercise library: the nineteen exercises a patient can read about on /exercises. Every value is taken
+// from one of three sources and each entry names which one in its `source`:
 //
 //  - the scoring specification for eight exercises ("scoring spec"): the summary table in §3 (target,
 //    min_valid_excursion, IMU) and the per-exercise sections of §4 (calibration, valid repetition, live
 //    feedback), plus §10 and §16 where cited;
 //  - the НТЗ v1.2: the Appendix A matrix (phase, quantifiability class, sensors, measurable metrics,
-//    limitations), A.2 (the Heel Slide definition and its feedback whitelist) and §9.1 (the phase table).
+//    limitations), A.2 (the Heel Slide definition and its feedback whitelist) and §9.1 (the phase table);
+//  - Phoenix's `feat/llm-feedback-two-tier` analysis code, vendored into services/imu-tools: the signal
+//    profiles in `src/mova_imu/analysis/exercise_signals.py` and the execution profiles in
+//    `execution_score.py`. Phoenix's own migration 0023_execution_score_exercises.sql was deliberately not
+//    ported (VENDORED.md, "Deliberately not ported"); its content is reused here instead.
 //
 // A field no source states is left empty (null or []), never filled in. The library describes exercises; it does
 // not prescribe them (only Heel Slide is prescribed in this build) and nothing in it is a score.
@@ -524,11 +528,12 @@ export const EXERCISE_CATALOG: readonly ExerciseEntry[] = [
   },
 
   // — from the PHOENIX signal and execution profiles ————————————————————————————————————————————————
-  // The five below come from Phoenix's exercise_signals.py and execution_score.py (vendored into
+  // The seven below come from Phoenix's exercise_signals.py and execution_score.py (vendored into
   // services/imu-tools), not from НТЗ Appendix A or the scoring docx. Phoenix states no recovery phase and no
   // quantifiability class for any of them, so both stay null rather than being invented here — those are clinical
-  // classifications. Each reuses a clinician-recorded clip that was already in public/exercises and attached to
-  // nothing; every pairing is listed in the pull request as a clinical decision to confirm.
+  // classifications. The first five each reuse a clinician-recorded clip that was already in public/exercises
+  // and attached to nothing; every pairing is listed in the pull request as a clinical decision to confirm.
+  // The last two have no clip at all and carry video: null rather than borrowing one.
   {
     slug: "ball-knee-flexion",
     name: { ru: "Сгибание колена с мячом", kk: "Доппен тізені бүгу", en: "Ball knee flexion" },
@@ -793,6 +798,139 @@ export const EXERCISE_CATALOG: readonly ExerciseEntry[] = [
     scored: true,
     source:
       "Phoenix feat/llm-feedback-two-tier: exercise_signals.py (exercise-resisted-ankle-pump-v1), execution_score.py (no ROM target — prescribed cycles only), migration 0023_execution_score_exercises.sql; not in НТЗ v1.2 Appendix A. Minimum excursion follows mova's own ankle-pumps entry (8° per full cycle); Phoenix's profile uses 4° because it counts one direction of the pump only, and says that is unvalidated on hardware",
+  },
+
+  // The two lying partial raises. These were held back once, and exercise_ids.json recorded why: mova has no
+  // clinician-recorded clip of either, so the library would list them with no reference footage. They are here
+  // now because a patient can be prescribed them and the session screen has to have something to run. `video`
+  // and `poster` stay null and the screen shows the honest "no clinician video yet" state rather than borrowing
+  // a clip of a different exercise, which would be a clinical decision and not a refactor. Phoenix measures both
+  // on the THIGH's own angle (exercise_signals.py's _THIGH: "the lift only shows up as the thigh's own angle"),
+  // not on a knee angle — the knee is watched through knee_bend_deg, which Phoenix's own comment says only feeds
+  // features and never the score, so nothing here promises a knee measurement.
+  {
+    slug: "lying-partial-leg-raise",
+    name: {
+      ru: "Частичный подъём ноги лёжа",
+      kk: "Жатып аяқты жартылай көтеру",
+      en: "Lying partial leg raise",
+    },
+    phase: null,
+    quantifiability: null,
+    sensors: ["thigh", "shank"],
+    target: {
+      ru: "Подъём ноги на 15° от исходного положения",
+      kk: "Аяқты бастапқы қалыптан 15°-қа көтеру",
+      en: "Raise the leg 15° from the starting position",
+    },
+    minValidExcursion: {
+      ru: "Подъём ноги не меньше чем на 8°",
+      kk: "Аяқты кемінде 8°-қа көтеру",
+      en: "Raising the leg by at least 8°",
+    },
+    measures: {
+      ru: "Угол подъёма бедра (после калибровки датчиков), число повторений и темп. Насколько прямым остаётся колено, датчики пока измеряют ненадёжно, поэтому это не оценивается.",
+      kk: "Санның көтерілу бұрышы (датчиктер калибрленгеннен кейін), қайталау саны және қарқын. Тізенің қаншалықты түзу қалатынын датчиктер әзірге сенімді өлшемейді, сондықтан ол бағаланбайды.",
+      en: "The angle the thigh is raised to (once the sensors are calibrated), the number of repetitions and tempo. How straight the knee stays is not yet measured reliably, so it is not graded.",
+    },
+    // No clinician-recorded clip of this exercise exists under public/exercises.
+    video: null,
+    poster: null,
+    cues: [
+      {
+        ru: "Лёжа на спине, слегка поднимите прямую ногу над опорой",
+        kk: "Шалқаңыздан жатып, түзу аяғыңызды тіректен сәл жоғары көтеріңіз",
+        en: "Lying on your back, raise the straight leg slightly off the surface",
+      },
+      {
+        ru: "Поднимайте невысоко и плавно, не рывком",
+        kk: "Жоғары емес, бірқалыпты көтеріңіз, жұлқымаңыз",
+        en: "Raise it a little way and smoothly, not with a jerk",
+      },
+      {
+        ru: "Опускайте ногу медленно, не бросайте её",
+        kk: "Аяғыңызды баяу түсіріңіз, тастап жібермеңіз",
+        en: "Lower the leg slowly, don't let it drop",
+      },
+    ],
+    commonErrors: [
+      {
+        ru: "Нога падает при возврате вместо плавного опускания",
+        kk: "Қайтарғанда аяқты баяу түсірудің орнына тастап жіберу",
+        en: "Letting the leg drop on the way back instead of lowering it with control",
+      },
+      {
+        ru: "Колено сгибается во время подъёма",
+        kk: "Көтеру кезінде тізе бүгіледі",
+        en: "The knee bends during the raise",
+      },
+    ],
+    prescribed: false,
+    scored: true,
+    source:
+      "Phoenix feat/llm-feedback-two-tier: exercise_signals.py (exercise-lying-partial-leg-raise-v1: leg_lift, absolute thigh pitch, enter_deg 8.0, exit_deg 4.0), execution_score.py (elevation_target_deg 15.0; tempo 30, controlled_lowering 30 and smooth_rise 40, every one of them with target None — uncalibrated); not in НТЗ v1.2 Appendix A. No clinician-recorded clip exists for it",
+  },
+  {
+    slug: "lying-partial-leg-hold",
+    name: {
+      ru: "Частичный подъём ноги лёжа с удержанием",
+      kk: "Жатып аяқты жартылай көтеріп ұстап тұру",
+      en: "Lying partial leg raise with hold",
+    },
+    phase: null,
+    quantifiability: null,
+    sensors: ["thigh", "shank"],
+    target: {
+      ru: "Подъём ноги на 15° и удержание не меньше 3 секунд",
+      kk: "Аяқты 15°-қа көтеріп, кемінде 3 секунд ұстап тұру",
+      en: "Raise the leg 15° and hold for at least 3 seconds",
+    },
+    minValidExcursion: {
+      ru: "Подъём ноги не меньше чем на 8°",
+      kk: "Аяқты кемінде 8°-қа көтеру",
+      en: "Raising the leg by at least 8°",
+    },
+    measures: {
+      ru: "Угол подъёма бедра (после калибровки датчиков), время удержания, число повторений и темп. Насколько прямым остаётся колено, датчики пока измеряют ненадёжно, поэтому это не оценивается.",
+      kk: "Санның көтерілу бұрышы (датчиктер калибрленгеннен кейін), ұстап тұру уақыты, қайталау саны және қарқын. Тізенің қаншалықты түзу қалатынын датчиктер әзірге сенімді өлшемейді, сондықтан ол бағаланбайды.",
+      en: "The angle the thigh is raised to (once the sensors are calibrated), the hold time, the number of repetitions and tempo. How straight the knee stays is not yet measured reliably, so it is not graded.",
+    },
+    // No clinician-recorded clip of this exercise exists under public/exercises either.
+    video: null,
+    poster: null,
+    cues: [
+      {
+        ru: "Лёжа на спине, слегка поднимите прямую ногу над опорой",
+        kk: "Шалқаңыздан жатып, түзу аяғыңызды тіректен сәл жоғары көтеріңіз",
+        en: "Lying on your back, raise the straight leg slightly off the surface",
+      },
+      {
+        ru: "Задержитесь в верхней точке примерно на 3 секунды",
+        kk: "Жоғарғы нүктеде шамамен 3 секунд тұрыңыз",
+        en: "Hold at the top for about 3 seconds",
+      },
+      {
+        ru: "Опускайте ногу медленно, не бросайте её",
+        kk: "Аяғыңызды баяу түсіріңіз, тастап жібермеңіз",
+        en: "Lower the leg slowly, don't let it drop",
+      },
+    ],
+    commonErrors: [
+      {
+        ru: "Удержание короче назначенного",
+        kk: "Ұстап тұру тағайындалғаннан қысқа",
+        en: "Holding for less time than prescribed",
+      },
+      {
+        ru: "Нога падает при возврате вместо плавного опускания",
+        kk: "Қайтарғанда аяқты баяу түсірудің орнына тастап жіберу",
+        en: "Letting the leg drop on the way back instead of lowering it with control",
+      },
+    ],
+    prescribed: false,
+    scored: true,
+    source:
+      "Phoenix feat/llm-feedback-two-tier: exercise_signals.py (exercise-lying-partial-leg-hold-v1: leg_lift, absolute thigh pitch, enter_deg 8.0, exit_deg 4.0), execution_score.py (elevation_target_deg 15.0; hold 40 with a 3.0 s target — the only calibrated target of the two — plus tempo 15, controlled_lowering 25 and smooth_rise 20, all uncalibrated); not in НТЗ v1.2 Appendix A. No clinician-recorded clip exists for it",
   },
 ];
 

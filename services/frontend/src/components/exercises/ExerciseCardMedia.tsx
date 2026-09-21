@@ -6,13 +6,22 @@
 //    clip that hover started. A click is an explicit request, so it plays either way and the clip stays put after.
 //  - One button covers the media and toggles play and pause; its name carries the exercise.
 //  - The card renders this only when the catalog has a confirmed clip. A clip that fails to load removes the block.
+//
+// The band is CARD_FRAME for every card, and the clip is fitted inside it rather than cropped to it. Half of the
+// attached clips are portrait and half are landscape; showing each at its own shape would leave the two-column grid
+// with rows of wildly different heights, and cropping every clip to one shape is what used to throw two thirds of a
+// portrait recording away. So the library pads, in paper-soft rather than black, and the detail dialog is where a
+// clip is seen at full size. The one exception is a clip with baked-in black bars: containing that would show its
+// own black inside our white chassis, so it is cropped onto its measured band instead, which loses no picture.
 
 import { Pause, Play } from "lucide-react";
 import { type PointerEvent, useEffect, useRef, useState } from "react";
 
+import { CARD_FRAME, clipAspect, clipFocus, clipGeometry } from "@/lib/exercises/clipGeometry";
+import { cn } from "@/lib/utils";
 import { useTranslation } from "@/locales/client";
 
-import { clipObjectPosition, hasFineHoverPointer, prefersReducedMotion } from "./media";
+import { hasFineHoverPointer, prefersReducedMotion } from "./media";
 
 export default function ExerciseCardMedia({
   video,
@@ -64,42 +73,62 @@ export default function ExerciseCardMedia({
     setWantPlay(false);
   }
 
+  // A clip with constant black bars is cropped onto them; everything else, including a clip we have never measured,
+  // is contained. Containing is the safe default: cropping needs a measurement, and we would rather pad than guess.
+  const geometry = clipGeometry(video);
+  const cropped = geometry?.bars === "letterbox";
+  const aspect = clipAspect(geometry);
+  const mediaClass = cn("absolute inset-0 size-full", cropped ? "object-cover" : "object-contain");
+  const mediaStyle = cropped ? { objectPosition: clipFocus(geometry) } : undefined;
+
   return (
     <div
-      className="group relative aspect-video w-full overflow-hidden border-b border-line bg-paper-soft"
+      className={cn("group relative w-full overflow-hidden border-b border-line bg-paper-soft", CARD_FRAME)}
       onPointerEnter={onPointerEnter}
       onPointerLeave={onPointerLeave}
     >
-      {mounted ? (
-        <video
-          ref={videoRef}
-          src={video}
-          poster={poster ?? undefined}
-          loop
-          muted
-          playsInline
-          preload="auto"
-          onPlay={() => setPlaying(true)}
-          onPause={() => setPlaying(false)}
-          onError={() => setFailed(true)}
-          disablePictureInPicture
-          disableRemotePlayback
-          className="absolute inset-0 size-full object-cover"
-          style={{ objectPosition: clipObjectPosition(video) }}
-        />
-      ) : poster ? (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img
-          src={poster}
-          alt={t("exerciseLibrary.media.poster", { name })}
-          width={640}
-          height={360}
-          loading="lazy"
-          decoding="async"
-          className="absolute inset-0 size-full object-cover"
-          style={{ objectPosition: clipObjectPosition(video) }}
-        />
-      ) : null}
+      {/* The inner box is the clip's own content aspect when the clip is cropped, so the crop happens inside a frame
+          that holds exactly the picture and none of the bars. For a contained clip the box is the whole band and the
+          browser centres the picture itself. */}
+      <div className="absolute inset-0 grid place-items-center">
+        <div
+          className={cropped ? "relative w-full" : "relative size-full"}
+          style={cropped && aspect !== null ? { aspectRatio: String(aspect) } : undefined}
+        >
+          {mounted ? (
+            <video
+              ref={videoRef}
+              src={video}
+              poster={poster ?? undefined}
+              loop
+              muted
+              playsInline
+              preload="auto"
+              onPlay={() => setPlaying(true)}
+              onPause={() => setPlaying(false)}
+              onError={() => setFailed(true)}
+              disablePictureInPicture
+              disableRemotePlayback
+              className={mediaClass}
+              style={mediaStyle}
+            />
+          ) : poster ? (
+            // The intrinsic hint is the clip's real pixel size, from the geometry table. 640x360 was declared for
+            // every poster before, including the 576x1024 portrait ones.
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={poster}
+              alt={t("exerciseLibrary.media.poster", { name })}
+              width={geometry?.file.w ?? undefined}
+              height={geometry?.file.h ?? undefined}
+              loading="lazy"
+              decoding="async"
+              className={mediaClass}
+              style={mediaStyle}
+            />
+          ) : null}
+        </div>
+      </div>
       <button
         type="button"
         onClick={onClick}
