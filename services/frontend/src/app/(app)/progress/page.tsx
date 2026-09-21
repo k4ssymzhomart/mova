@@ -9,6 +9,7 @@ import Link from "next/link";
 
 import EmptyState from "@/components/app/EmptyState";
 import PageHeader from "@/components/app/PageHeader";
+import SessionLogTable from "@/components/app/SessionLogTable";
 import {
   card,
   focusRing,
@@ -25,7 +26,9 @@ import { getTranslation } from "@/locales/server";
 
 import LocalDateTime from "@/components/app/LocalDateTime";
 import {
+  type CheckInEntry,
   formatDuration,
+  readCheckIns,
   readSessionHistory,
   ScoresNotAvailableCard,
   type SessionEntry,
@@ -41,6 +44,10 @@ export async function generateMetadata(): Promise<Metadata> {
 export default async function ProgressPage() {
   const { t } = getTranslation();
   const history = await readSessionHistory();
+  // The patient's own answers for the sessions on screen. A failed read leaves those columns empty rather than
+  // claiming nothing was answered.
+  const checkIns =
+    history.status === "ok" ? await readCheckIns(history.sessions.map((session) => session.id)) : new Map();
 
   if (history.status === "error") {
     return (
@@ -109,13 +116,7 @@ export default async function ProgressPage() {
             }
           />
         ) : (
-          <ul className="space-y-3">
-            {sessions.map((session) => (
-              <li key={session.id}>
-                <SessionRow session={session} t={t} />
-              </li>
-            ))}
-          </ul>
+          <SessionLogTable sessions={sessions} checkIns={checkIns} t={t} />
         )}
       </section>
     </div>

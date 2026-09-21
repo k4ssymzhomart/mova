@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 
 import { bodyText, card, cardTitle } from "@/components/app/recipes";
+import { parseSessionSummary, type SessionFacts } from "@/lib/sessions/summary";
 import { createClient } from "@/lib/supabase/server";
 import { cn } from "@/lib/utils";
 import { getTranslation } from "@/locales/server";
@@ -31,7 +32,7 @@ export const HISTORY_LIMIT = 50;
 // Finished sessions: `reviewed` is a completed session a clinician has since looked at.
 const FINISHED_STATUSES = ["completed", "reviewed"];
 
-const SESSION_COLUMNS = "id, status, started_at, ended_at, exercise:exercises(name)";
+const SESSION_COLUMNS = "id, status, started_at, ended_at, summary, exercise:exercises(name)";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -43,6 +44,8 @@ interface SessionRow {
   status: string;
   started_at: string;
   ended_at: string | null;
+  /** What the session itself recorded, written once when it finished. Unrecognised shapes parse to null. */
+  summary: unknown;
   exercise: OneOrMany<{ name: string | null }>;
 }
 
@@ -54,6 +57,8 @@ export interface SessionEntry {
   endedAt: string | null;
   /** exercises.name as stored in the catalogue; null when the session has no exercise. */
   exerciseName: string | null;
+  /** What the session recorded: repetitions, sensors, telemetry. Null for a session that stored nothing. */
+  facts: SessionFacts | null;
 }
 
 function toEntry(row: SessionRow): SessionEntry {
@@ -64,6 +69,7 @@ function toEntry(row: SessionRow): SessionEntry {
     startedAt: row.started_at,
     endedAt: row.ended_at,
     exerciseName: exercise?.name?.trim() || null,
+    facts: parseSessionSummary(row.summary),
   };
 }
 
@@ -135,6 +141,52 @@ export async function readSessionHistory(): Promise<HistoryResult> {
     finished: finished.count,
     lastFinished: newestFinished ? toEntry(newestFinished) : null,
   };
+}
+
+/** One patient's own answers after a session (0034). Absent when they closed the check-in without answering. */
+export interface CheckInEntry {
+  sessionId: string;
+  painBefore: number | null;
+  painAfter: number | null;
+  difficulty: number | null;
+  /** better | same | slightly_worse | much_worse */
+  kneeFeels: string | null;
+  /** swelling | redness | calf_pain | other; an empty list means the patient answered "none". */
+  symptoms: string[];
+}
+
+/**
+ * The check-ins for the sessions on screen, keyed by session. Read straight from session_check_ins, which the
+ * patient's own policy admits (0034). A failed read returns an empty map: the table then shows «—» in those
+ * columns rather than claiming the patient reported nothing.
+ */
+export async function readCheckIns(sessionIds: string[]): Promise<Map<string, CheckInEntry>> {
+  const map = new Map<string, CheckInEntry>();
+  if (sessionIds.length === 0) return map;
+  const supabase = createClient();
+  const { data, error } = await supabase
+    .from("session_check_ins")
+    .select("session_id, pain_before, pain_after, difficulty, knee_feels, symptoms")
+    .in("session_id", sessionIds);
+  if (error || !data) return map;
+  for (const row of data as unknown as {
+    session_id: string;
+    pain_before: number | null;
+    pain_after: number | null;
+    difficulty: number | null;
+    knee_feels: string | null;
+    symptoms: string[] | null;
+  }[]) {
+    map.set(row.session_id, {
+      sessionId: row.session_id,
+      painBefore: row.pain_before,
+      painAfter: row.pain_after,
+      difficulty: row.difficulty,
+      kneeFeels: row.knee_feels?.trim() || null,
+      symptoms: Array.isArray(row.symptoms) ? row.symptoms : [],
+    });
+  }
+  return map;
 }
 
 export type SessionResult = { status: "ok"; session: SessionEntry } | { status: "not-found" } | { status: "error" };

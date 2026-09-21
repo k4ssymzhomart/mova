@@ -909,6 +909,22 @@
     "notFound": {
       "title": "Занятие не найдено",
       "body": "Такого занятия нет в вашей истории. Возможно, ссылка устарела."
+    },
+    "log": {
+      "date": "Дата",
+      "exercise": "Упражнение",
+      "status": "Статус",
+      "reps": "Повторов",
+      "repsOf": "{done} из {target}",
+      "duration": "Длительность",
+      "recording": "Запись",
+      "frames": "{n} кадров",
+      "recordingComplete": "Всё сохранено",
+      "recordingPartial": "Сохранено не всё",
+      "pain": "Боль до → после",
+      "painPair": "{before} → {after}",
+      "difficulty": "Трудность",
+      "feels": "Колено"
     }
   },
   "careTeam": {

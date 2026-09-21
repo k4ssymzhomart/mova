@@ -909,6 +909,22 @@
     "notFound": {
       "title": "Session not found",
       "body": "This session isn't in your history. The link may be out of date."
+    },
+    "log": {
+      "date": "Date",
+      "exercise": "Exercise",
+      "status": "Status",
+      "reps": "Repetitions",
+      "repsOf": "{done} of {target}",
+      "duration": "Length",
+      "recording": "Recording",
+      "frames": "{n} frames",
+      "recordingComplete": "All saved",
+      "recordingPartial": "Not all saved",
+      "pain": "Pain before → after",
+      "painPair": "{before} → {after}",
+      "difficulty": "Difficulty",
+      "feels": "Knee"
     }
   },
   "careTeam": {
