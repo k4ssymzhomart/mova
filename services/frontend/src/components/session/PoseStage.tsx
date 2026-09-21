@@ -23,6 +23,14 @@ interface PoseStageProps {
   side: "left" | "right";
   tempoSpm?: number; // gait cadence target (steps/min)
   difficulty?: number; // 0..1 ability knob seeded from the baseline ROM
+  /**
+   * Flip x, the selfie view. It must be true exactly when the open camera is the front one: derive it
+   * from the facingMode passed to useMediaPipePose and pass the same boolean here. It used to be a
+   * literal `true` repeated at five call sites below, which meant a rear camera drew the scene flipped
+   * left-for-right — the patient's operated leg on the opposite side of the screen from the room.
+   * Defaults to true, which is what the existing caller (SessionStudio, front camera) needs.
+   */
+  mirror?: boolean;
   onStats?: (s: StageStats) => void;
 }
 
@@ -41,6 +49,7 @@ export default function PoseStage({
   side,
   tempoSpm = 67,
   difficulty = 0.5,
+  mirror = true,
   onStats,
 }: PoseStageProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -54,6 +63,7 @@ export default function PoseStage({
   const appliedTempoRef = useRef(-1);
   const difficultyRef = useRef(difficulty);
   const runningRef = useRef(running);
+  const mirrorRef = useRef(mirror);
   const statsTick = useRef(0);
   showVideoRef.current = showVideo;
   modeRef.current = mode;
@@ -61,6 +71,7 @@ export default function PoseStage({
   tempoRef.current = tempoSpm;
   difficultyRef.current = difficulty;
   runningRef.current = running;
+  mirrorRef.current = mirror;
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -92,31 +103,37 @@ export default function PoseStage({
 
       const lm = landmarks.current;
       const video = videoRef.current;
+      // One value for the whole frame: the underlay and the wireframe drawn over it must agree, or the
+      // skeleton lands on the mirror image of the body.
+      const mirrored = mirrorRef.current;
       if (showVideoRef.current && video && video.readyState >= 2) {
         ctx.save();
         ctx.globalAlpha = 0.16;
-        ctx.translate(w, 0);
-        ctx.scale(-1, 1); // mirror (selfie)
+        if (mirrored) {
+          ctx.translate(w, 0);
+          ctx.scale(-1, 1); // selfie view
+        }
         ctx.drawImage(video, 0, 0, w, h);
         ctx.restore();
       }
 
       const now = performance.now();
       if (runningRef.current && lm) {
-        drawSkeleton(ctx, lm, { width: w, height: h, mirror: true, ink: "#121311" });
+        drawSkeleton(ctx, lm, { width: w, height: h, mirror: mirrored, ink: "#121311" });
         if (modeRef.current === "gait") {
-          drawLegAccent(ctx, lm, { width: w, height: h, mirror: true });
+          // No `side` here on purpose: gait watches both legs stepping, so both stay accented.
+          drawLegAccent(ctx, lm, { width: w, height: h, mirror: mirrored });
           gait.lead = sideRef.current;
           gait.hitLift = 0.4 + 0.2 * difficultyRef.current; // limited ROM -> lower lift required
           if (appliedTempoRef.current !== tempoRef.current) {
             gait.setTempoSpm(tempoRef.current);
             appliedTempoRef.current = tempoRef.current;
           }
-          gait.update(sampleLowerBody(lm, w, h), now);
+          gait.update(sampleLowerBody(lm, w, h, mirrored), now);
           gait.draw(ctx, now);
         } else {
           reach.difficulty = difficultyRef.current;
-          const wrist = wristPx(lm, sideRef.current, w, h, true);
+          const wrist = wristPx(lm, sideRef.current, w, h, mirrored);
           reach.update(wrist, now);
           reach.draw(ctx, now);
         }
@@ -145,14 +162,22 @@ export default function PoseStage({
   return (
     <div className="relative aspect-[4/3] w-full overflow-hidden rounded-card border border-line bg-card shadow-soft">
       <canvas ref={canvasRef} className="absolute inset-0 h-full w-full" />
-      {/* hidden source feed — owned here, never shown unless drawn into the canvas */}
-      <video ref={videoRef} className="hidden" playsInline muted />
+      {/* The source feed — owned here, never shown unless drawn into the canvas. Moved off-screen
+          rather than display:none, which Safari and iOS can treat as a reason to stop decoding a
+          MediaStream, freezing the detection loop's `video.currentTime` gate. */}
+      <video
+        ref={videoRef}
+        className="pointer-events-none absolute -left-[9999px] top-0 size-px opacity-0"
+        playsInline
+        muted
+        autoPlay
+      />
     </div>
   );
 }
 
 /** Build the gait engine's lower-body sample from image-space landmarks (mirror only affects foot x). */
-function sampleLowerBody(lm: Landmark[], w: number, h: number) {
+function sampleLowerBody(lm: Landmark[], w: number, h: number, mirror: boolean) {
   const la = lm[POSE_LANDMARKS.leftAnkle];
   const ra = lm[POSE_LANDMARKS.rightAnkle];
   const lk = lm[POSE_LANDMARKS.leftKnee];
@@ -161,8 +186,8 @@ function sampleLowerBody(lm: Landmark[], w: number, h: number) {
   const rh = lm[POSE_LANDMARKS.rightHip];
   if (!la || !ra || !lk || !rk || !lh || !rh) return null;
   const hipY = (lh.y + rh.y) / 2;
-  const leftFoot = landmarkPx(lm, POSE_LANDMARKS.leftAnkle, w, h, true, 0.3);
-  const rightFoot = landmarkPx(lm, POSE_LANDMARKS.rightAnkle, w, h, true, 0.3);
+  const leftFoot = landmarkPx(lm, POSE_LANDMARKS.leftAnkle, w, h, mirror, 0.3);
+  const rightFoot = landmarkPx(lm, POSE_LANDMARKS.rightAnkle, w, h, mirror, 0.3);
   return {
     left: { footX: leftFoot ? leftFoot[0] : NaN, ankleY: la.y, kneeY: lk.y },
     right: { footX: rightFoot ? rightFoot[0] : NaN, ankleY: ra.y, kneeY: rk.y },

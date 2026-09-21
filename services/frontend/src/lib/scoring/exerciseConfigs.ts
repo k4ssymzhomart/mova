@@ -1,4 +1,5 @@
-// The 8 exercise configs, verbatim from docs/PHOENIX_8_Exercises_Targets (1).docx §3/§4/§11. Hardcoded
+// The 15 exercise configs: the 8 verbatim from docs/PHOENIX_8_Exercises_Targets (1).docx §3/§4/§11,
+// then 7 translated from Phoenix's vendored profiles (see the block comment further down). Hardcoded
 // TS rather than a Supabase table — see the plan's reasoning: the formulas themselves (band tables,
 // weighted sub-scores) are logic, not just numeric knobs, so a table would only hold half the picture
 // and risk drifting out of sync with the code that interprets it. Keyed by exercises.slug so it joins
@@ -118,6 +119,152 @@ export const EXERCISE_CONFIGS: Record<ExerciseSlug, ExerciseConfig> = {
     correctnessWeights: { timing: 0.4, stability: 0.4, consistency: 0.2 },
     signalConfidenceMin: "MEDIUM",
     primarySensorRoles: ["thigh", "shank"],
+    prescribedRepsDefault: 10,
+  },
+
+  // — from the PHOENIX profiles ———————————————————————————————————————————————————————————————————
+  // The seven below come from PHOENIX's exercise_signals.py (signal + minimum valid excursion) and
+  // execution_score.py (targets and correctness weights), vendored into services/imu-tools.
+  //
+  // Two rules were followed translating them, and both matter more than the numbers:
+  //
+  //  * A POINT target transfers, a RANGE target does not. PHOENIX calibrates tempo as a single mean
+  //    duration from good reference takes, and for six of these seven it has no calibration at all
+  //    ("no reference recordings yet"). mova's tempoRangeSec is a [min, max] window, and deriving a
+  //    window from a point — or from nothing — would invent the very number PHOENIX left empty. So
+  //    every one of these carries tempoRangeSec: null, and the tempo and controlled-return
+  //    sub-scores abstain and redistribute their weight (correctnessScore.ts). holdTargetSec IS a
+  //    point target in both systems, so it transfers directly where PHOENIX has one.
+  //  * Weights are PHOENIX's, renormalized to sum to 1 as this type requires. PHOENIX's own weights
+  //    sum to 85–100 because it divides by the weight it actually used, and mova does the same thing
+  //    through abstention. That does NOT make the two systems score the same components. They differ
+  //    in two known places, both of them here rather than in the weights: PHOENIX abstains on
+  //    smoothness for every one of its eleven profiles (every log_dimensionless_jerk metric has
+  //    target None) while this file scores smoothness everywhere, and PHOENIX has calibrated tempo
+  //    1.2 s and controlled-return 1.1 s for seated-knee-extension while this file nulls both. Said
+  //    plainly so nobody reads a matching weight table as a matching measurement.
+  //
+  // prescribedRepsDefault is not in PHOENIX; it follows mova's own convention (10, or 15 for ankle
+  // work) and is provisional like the rest of the doses here.
+  ball_knee_flexion: {
+    slug: "ball_knee_flexion",
+    nameRu: "Сгибание колена с мячом",
+    targetType: "at_least",
+    targetValueDeg: 90,
+    minValidExcursionDeg: 22.5, // PHOENIX enter_deg; max(15, 25% * 90)
+    tempoRangeSec: null, // PHOENIX: no reference recordings yet
+    correctnessWeights: { smoothness: 0.34, tempo: 0.28, controlledReturn: 0.22, consistency: 0.16 },
+    signalConfidenceMin: "MEDIUM",
+    primarySensorRoles: ["thigh", "shank"],
+    prescribedRepsDefault: 10,
+  },
+  heel_slide_with_band: {
+    slug: "heel_slide_with_band",
+    nameRu: "Скольжение пятки с лентой",
+    targetType: "at_least",
+    targetValueDeg: 90, // PHOENIX reuses heel slide's target unchanged — confirm clinically
+    minValidExcursionDeg: 22.5,
+    tempoRangeSec: null,
+    correctnessWeights: { smoothness: 0.34, tempo: 0.28, controlledReturn: 0.22, consistency: 0.16 },
+    signalConfidenceMin: "MEDIUM",
+    primarySensorRoles: ["thigh", "shank"],
+    prescribedRepsDefault: 10,
+  },
+  supported_knee_raise: {
+    slug: "supported_knee_raise",
+    nameRu: "Подъём колена с поддержкой",
+    targetType: "at_least",
+    targetValueDeg: 60,
+    minValidExcursionDeg: 15,
+    holdTargetSec: 0.5, // PHOENIX top_hold, a real point target
+    tempoRangeSec: null,
+    correctnessWeights: { smoothness: 0.32, tempo: 0.26, controlledReturn: 0.21, hold: 0.21 },
+    signalConfidenceMin: "MEDIUM",
+    // The knee angle is thigh-to-shank; the foot sensor is worn (catalog.ts lists it, per PHOENIX's
+    // 0023) but is not part of the primary angle.
+    primarySensorRoles: ["thigh", "shank"],
+    prescribedRepsDefault: 10,
+  },
+  seated_knee_extension: {
+    slug: "seated_knee_extension",
+    nameRu: "Разгибание колена сидя",
+    targetType: "at_least",
+    // The movement is extension from the seated ~90deg rest: a final knee angle within 10deg of
+    // straight is an ~80deg excursion. PHOENIX notes the ~90deg rest is assumed, since the sensors
+    // give relative pitch and not an absolute knee angle.
+    targetValueDeg: 80,
+    minValidExcursionDeg: 20, // PHOENIX enter_deg; max(15, 25% * 80)
+    holdTargetSec: 0.8, // calibrated from PHOENIX's good reference reps
+    // PHOENIX calibrated tempo 1.2 s and controlled return 1.1 s from reference takes — the only one
+    // of these five with real tempo numbers. They are still null here because they are point means
+    // and this field is a window; deriving a width would be the invention. Worth revisiting with the
+    // reference takes in hand, which is the one case here where the data to do it properly exists.
+    tempoRangeSec: null,
+    correctnessWeights: { smoothness: 0.33, tempo: 0.28, hold: 0.22, controlledReturn: 0.17 },
+    signalConfidenceMin: "MEDIUM",
+    primarySensorRoles: ["thigh", "shank"],
+    prescribedRepsDefault: 10,
+  },
+  resisted_ankle_pump: {
+    slug: "resisted_ankle_pump",
+    nameRu: "Движения стопой с сопротивлением",
+    targetType: "at_least",
+    // PHOENIX prescribes complete cycles and sets no ROM target, but a null target here scores 0 on
+    // Target (targetScore.ts) rather than abstaining, which would hold this exercise down by 30% of
+    // its Execution Score for having nothing measured. So the target and minimum excursion follow
+    // mova's OWN ankle-pumps entry -- the same ankle movement, with a band added -- rather than
+    // being invented or left to score zero. Clinical confirmation is listed in the pull request.
+    targetValueDeg: 20,
+    minValidExcursionDeg: 8,
+    tempoRangeSec: null,
+    correctnessWeights: { cycleCompleteness: 0.3, tempo: 0.25, smoothness: 0.25, consistency: 0.2 },
+    signalConfidenceMin: "MEDIUM",
+    primarySensorRoles: ["shank", "foot"],
+    prescribedRepsDefault: 15,
+  },
+
+  // PHOENIX's two thigh-absolute raises. The angle is the THIGH's own elevation from the calibration
+  // baseline, not a thigh-to-shank knee angle: exercise_signals.py keys both on _THIGH ("absolute",
+  // role "thigh") and says "the lift only shows up as the thigh's own angle". primarySensorRoles
+  // therefore names ONE role, so jointAngle.ts returns the absolute rotation rather than the
+  // differential; a two-role list would silently hand a 15 deg ELEVATION target a knee-bend angle to
+  // compare it against. (straight_leg_raise has exactly that mismatch today. It is not corrected here:
+  // changing it changes what every existing SLR rep scores, so it is raised in the pull request as a
+  // clinical call rather than fixed in passing.)
+  //
+  // PHOENIX also watches knee extension through a secondary knee_bend_deg signal, but its own comment
+  // says that signal "only feeds features, never the score" because it is not trusted yet. So there is
+  // no knee term in either weight set, and catalog.ts's `measures` says so to the patient in words.
+  lying_partial_leg_raise: {
+    slug: "lying_partial_leg_raise",
+    nameRu: "Частичный подъём ноги лёжа",
+    targetType: "at_least",
+    targetValueDeg: 15, // PHOENIX execution_score.py elevation_target_deg
+    minValidExcursionDeg: 8, // PHOENIX exercise_signals.py enter_deg
+    tempoRangeSec: null, // PHOENIX: no reference recordings yet, so no calibrated tempo
+    // PHOENIX: tempo 30, controlled_lowering 30, smooth_rise 40 (sum 100), renormalized to 1. Every one
+    // of those three has target None upstream, so tempo and controlledLowering abstain here as well
+    // (correctnessScore.ts returns null for both when tempoRangeSec is null) and smoothRise carries
+    // Correctness alone. That is a thin score, and it is the honest one: nothing else was calibrated.
+    correctnessWeights: { smoothRise: 0.4, tempo: 0.3, controlledLowering: 0.3 },
+    signalConfidenceMin: "MEDIUM",
+    primarySensorRoles: ["thigh"],
+    prescribedRepsDefault: 10,
+  },
+  lying_partial_leg_hold: {
+    slug: "lying_partial_leg_hold",
+    nameRu: "Частичный подъём ноги лёжа с удержанием",
+    targetType: "at_least",
+    targetValueDeg: 15, // the same raise as above; PHOENIX states the same elevation_target_deg
+    minValidExcursionDeg: 8,
+    holdTargetSec: 3, // PHOENIX's hold CorrectnessMetric target, a real point target from the spec
+    tempoRangeSec: null,
+    // PHOENIX: hold 40, controlled_lowering 25, smooth_rise 20, tempo 15 (sum 100), renormalized to 1.
+    // Only the hold has an upstream target, so hold and smoothRise carry 0.6 of the weight between them
+    // and the other two abstain.
+    correctnessWeights: { hold: 0.4, controlledLowering: 0.25, smoothRise: 0.2, tempo: 0.15 },
+    signalConfidenceMin: "MEDIUM",
+    primarySensorRoles: ["thigh"],
     prescribedRepsDefault: 10,
   },
 };

@@ -1,11 +1,15 @@
-// The exercise library: the twelve exercises a patient can read about on /exercises. Every value is taken from
-// one of two documents and each entry names where in its `source`:
+// The exercise library: the nineteen exercises a patient can read about on /exercises. Every value is taken
+// from one of three sources and each entry names which one in its `source`:
 //
 //  - the scoring specification for eight exercises ("scoring spec"): the summary table in §3 (target,
 //    min_valid_excursion, IMU) and the per-exercise sections of §4 (calibration, valid repetition, live
 //    feedback), plus §10 and §16 where cited;
 //  - the НТЗ v1.2: the Appendix A matrix (phase, quantifiability class, sensors, measurable metrics,
-//    limitations), A.2 (the Heel Slide definition and its feedback whitelist) and §9.1 (the phase table).
+//    limitations), A.2 (the Heel Slide definition and its feedback whitelist) and §9.1 (the phase table);
+//  - Phoenix's `feat/llm-feedback-two-tier` analysis code, vendored into services/imu-tools: the signal
+//    profiles in `src/mova_imu/analysis/exercise_signals.py` and the execution profiles in
+//    `execution_score.py`. Phoenix's own migration 0023_execution_score_exercises.sql was deliberately not
+//    ported (VENDORED.md, "Deliberately not ported"); its content is reused here instead.
 //
 // A field no source states is left empty (null or []), never filled in. The library describes exercises; it does
 // not prescribe them (only Heel Slide is prescribed in this build) and nothing in it is a score.
@@ -521,6 +525,412 @@ export const EXERCISE_CATALOG: readonly ExerciseEntry[] = [
     prescribed: false,
     scored: false,
     source: "НТЗ v1.2 Appendix A (Standing Hip Abduction); not in the scoring spec",
+  },
+
+  // — from the PHOENIX signal and execution profiles ————————————————————————————————————————————————
+  // The seven below come from Phoenix's exercise_signals.py and execution_score.py (vendored into
+  // services/imu-tools), not from НТЗ Appendix A or the scoring docx. Phoenix states no recovery phase and no
+  // quantifiability class for any of them, so both stay null rather than being invented here — those are clinical
+  // classifications. The first five each reuse a clinician-recorded clip that was already in public/exercises
+  // and attached to nothing; every pairing is listed in the pull request as a clinical decision to confirm.
+  // The last two have no clip at all and carry video: null rather than borrowing one.
+  {
+    slug: "ball-knee-flexion",
+    name: { ru: "Сгибание колена с мячом", kk: "Доппен тізені бүгу", en: "Ball knee flexion" },
+    phase: null,
+    quantifiability: null,
+    sensors: ["thigh", "shank"],
+    target: SLIDE_TO_90,
+    minValidExcursion: BEND_22_5,
+    measures: {
+      ru: "Амплитуда сгибания колена (после калибровки датчиков), число повторений и темп",
+      kk: "Тізенің бүгілу ауқымы (датчиктер калибрленгеннен кейін), қайталау саны және қарқын",
+      en: "How far the knee bends (once the sensors are calibrated), the number of repetitions and tempo",
+    },
+    video: "/exercises/seated-ball-roll.mp4",
+    poster: "/exercises/seated-ball-roll.jpg",
+    cues: [
+      {
+        ru: "Сидя, катите мяч стопой к себе, сгибая колено",
+        kk: "Отырып, допты аяғыңызбен өзіңізге қарай домалатып, тізеңізді бүгіңіз",
+        en: "Seated, roll the ball towards you with your foot, bending the knee",
+      },
+      { ru: "Двигайтесь медленно", kk: "Баяу қозғалыңыз", en: "Move slowly" },
+      {
+        ru: "Возвращайте ногу в исходное положение так же плавно",
+        kk: "Аяқты бастапқы қалпына дәл сондай бірқалыпты қайтарыңыз",
+        en: "Return the leg to the starting position just as smoothly",
+      },
+    ],
+    commonErrors: [
+      {
+        ru: "Стопа соскальзывает с мяча",
+        kk: "Аяқ доптан сырғып кетеді",
+        en: "The foot slips off the ball",
+      },
+      {
+        ru: "Рывок вместо плавного движения",
+        kk: "Бірқалыпты қозғалыстың орнына кенет жұлқу",
+        en: "A jerk instead of a smooth movement",
+      },
+    ],
+    prescribed: false,
+    scored: true,
+    source:
+      "Phoenix feat/llm-feedback-two-tier: exercise_signals.py (exercise-ball-knee-flexion-v1), execution_score.py, migration 0023_execution_score_exercises.sql; not in НТЗ v1.2 Appendix A",
+  },
+  {
+    slug: "heel-slide-with-band",
+    name: { ru: "Скольжение пятки с лентой", kk: "Таспамен өкшені сырғыту", en: "Heel slide with band" },
+    phase: null,
+    quantifiability: null,
+    sensors: ["thigh", "shank"],
+    target: SLIDE_TO_90,
+    minValidExcursion: BEND_22_5,
+    measures: {
+      ru: "Амплитуда сгибания колена (после калибровки датчиков), число повторений, темп и удержание",
+      kk: "Тізенің бүгілу ауқымы (датчиктер калибрленгеннен кейін), қайталау саны, қарқын және ұстап тұру",
+      en: "How far the knee bends (once the sensors are calibrated), the number of repetitions, tempo and hold",
+    },
+    video: "/exercises/supine-knee-flexion-strap.mp4",
+    poster: "/exercises/supine-knee-flexion-strap.jpg",
+    cues: [
+      {
+        ru: "Лёжа на спине, подтягивайте пятку к себе, помогая себе лентой",
+        kk: "Шалқаңыздан жатып, таспаның көмегімен өкшеңізді өзіңізге қарай тартыңыз",
+        en: "Lying on your back, slide your heel towards you, helping yourself with the band",
+      },
+      {
+        ru: "Лента помогает движению, а не тянет ногу за вас",
+        kk: "Таспа қозғалысқа көмектеседі, аяқты сіздің орныңызға тартпайды",
+        en: "The band assists the movement; it does not pull the leg for you",
+      },
+      {
+        ru: "Не форсируйте движение через резкую боль",
+        kk: "Қатты ауырсыну болса, қозғалысты күшпен жалғастырмаңыз",
+        en: "Don't force the movement through sharp pain",
+      },
+    ],
+    commonErrors: [
+      {
+        ru: "Лента тянет ногу вместо работы мышц",
+        kk: "Бұлшықеттің жұмысының орнына аяқты таспа тартады",
+        en: "The band pulls the leg instead of the muscles working",
+      },
+      {
+        ru: "Нога не возвращается в исходное положение",
+        kk: "Аяқ бастапқы қалпына қайтпайды",
+        en: "The leg does not return to the starting position",
+      },
+    ],
+    prescribed: false,
+    scored: true,
+    source:
+      "Phoenix feat/llm-feedback-two-tier: exercise_signals.py (exercise-heel-slide-with-band-v1), execution_score.py, migration 0023_execution_score_exercises.sql; not in НТЗ v1.2 Appendix A",
+  },
+  {
+    slug: "supported-knee-raise",
+    name: { ru: "Подъём колена с поддержкой", kk: "Тіректі тізе көтеру", en: "Supported knee raise" },
+    phase: null,
+    quantifiability: null,
+    sensors: ["thigh", "shank", "foot"],
+    target: {
+      ru: "Сгибание колена до 60° с удержанием в верхней точке",
+      kk: "Тізені 60°-қа дейін бүгіп, жоғарғы нүктеде ұстап тұру",
+      en: "Knee bend to 60°, held at the top",
+    },
+    minValidExcursion: {
+      ru: "Сгибание не меньше 15° от исходного положения",
+      kk: "Бастапқы қалыптан кемінде 15° бүгу",
+      en: "A bend of at least 15° from the starting position",
+    },
+    measures: {
+      ru: "Амплитуда сгибания колена (после калибровки датчиков), удержание в верхней точке, число повторений и темп",
+      kk: "Тізенің бүгілу ауқымы (датчиктер калибрленгеннен кейін), жоғарғы нүктеде ұстап тұру, қайталау саны және қарқын",
+      en: "How far the knee bends (once the sensors are calibrated), the hold at the top, the number of repetitions and tempo",
+    },
+    video: "/exercises/supine-bend-and-raise-strap.mp4",
+    poster: "/exercises/supine-bend-and-raise-strap.jpg",
+    cues: [
+      {
+        ru: "Лёжа на спине, поднимайте согнутое колено, придерживая ногу",
+        kk: "Шалқаңыздан жатып, бүгілген тізеңізді аяқты ұстап тұрып көтеріңіз",
+        en: "Lying on your back, raise the bent knee while supporting the leg",
+      },
+      {
+        ru: "Задержитесь в верхней точке, затем медленно опустите",
+        kk: "Жоғарғы нүктеде сәл тұрыңыз, содан кейін баяу түсіріңіз",
+        en: "Pause at the top, then lower slowly",
+      },
+      {
+        ru: "Не задерживайте дыхание",
+        kk: "Тыныс алуды тоқтатпаңыз",
+        en: "Don't hold your breath",
+      },
+    ],
+    commonErrors: [
+      {
+        ru: "Нога опускается рывком",
+        kk: "Аяқ кенет түсіп кетеді",
+        en: "The leg drops instead of lowering",
+      },
+      {
+        ru: "Нет паузы в верхней точке",
+        kk: "Жоғарғы нүктеде кідіріс жоқ",
+        en: "No pause at the top",
+      },
+    ],
+    prescribed: false,
+    scored: true,
+    source:
+      "Phoenix feat/llm-feedback-two-tier: exercise_signals.py (exercise-supported-knee-raise-v1), execution_score.py (top hold 0.5 s), migration 0023_execution_score_exercises.sql; not in НТЗ v1.2 Appendix A",
+  },
+  {
+    slug: "seated-knee-extension",
+    name: { ru: "Разгибание колена сидя", kk: "Отырып тізені жазу", en: "Seated knee extension" },
+    phase: null,
+    quantifiability: null,
+    sensors: ["thigh", "shank"],
+    target: {
+      ru: "Разгибание колена до угла не больше 10° сгибания",
+      kk: "Тізені бүгілуі 10°-тан аспайтындай етіп жазу",
+      en: "Knee straightening to within 10° of full extension",
+    },
+    minValidExcursion: {
+      ru: "Разгибание не меньше 20° от исходного положения",
+      kk: "Бастапқы қалыптан кемінде 20° жазу",
+      en: "A straightening of at least 20° from the starting position",
+    },
+    measures: {
+      ru: "Амплитуда разгибания колена (после калибровки датчиков), удержание, число повторений и темп",
+      kk: "Тізенің жазылу ауқымы (датчиктер калибрленгеннен кейін), ұстап тұру, қайталау саны және қарқын",
+      en: "How far the knee straightens (once the sensors are calibrated), the hold, the number of repetitions and tempo",
+    },
+    video: "/exercises/seated-knee-extension.mp4",
+    poster: "/exercises/seated-knee-extension.jpg",
+    cues: [
+      {
+        ru: "Сидя на стуле, выпрямляйте колено до горизонтали",
+        kk: "Орындықта отырып, тізеңізді көлденең күйге дейін жазыңыз",
+        en: "Sitting on a chair, straighten the knee to horizontal",
+      },
+      {
+        ru: "Задержитесь в конце движения, затем медленно опустите",
+        kk: "Қозғалыс соңында сәл тұрыңыз, содан кейін баяу түсіріңіз",
+        en: "Hold at the end of the movement, then lower slowly",
+      },
+      {
+        ru: "Держите бедро прижатым к сиденью",
+        kk: "Саныңызды отырғышқа тигізіп ұстаңыз",
+        en: "Keep the thigh resting on the seat",
+      },
+    ],
+    commonErrors: [
+      {
+        ru: "Бедро поднимается вместе с голенью",
+        kk: "Сан балтырмен бірге көтеріледі",
+        en: "The thigh lifts along with the shin",
+      },
+      {
+        ru: "Колено не доходит до конца движения",
+        kk: "Тізе қозғалыстың соңына жетпейді",
+        en: "The knee does not reach the end of the movement",
+      },
+    ],
+    prescribed: false,
+    scored: true,
+    source:
+      "Phoenix feat/llm-feedback-two-tier: exercise_signals.py (exercise-seated-knee-extension-v1), execution_score.py (tempo 1.2 s, hold 0.8 s, return 1.1 s — the only one of these five with targets calibrated from reference takes); not in НТЗ v1.2 Appendix A",
+  },
+  {
+    slug: "resisted-ankle-pump",
+    name: { ru: "Движения стопой с сопротивлением", kk: "Кедергімен аяқ басының қозғалысы", en: "Resisted ankle pump" },
+    phase: null,
+    quantifiability: null,
+    sensors: ["shank", "foot"],
+    target: {
+      ru: "Полные циклы движения стопы с размахом не меньше 20°",
+      kk: "Аяқ басының ауқымы кемінде 20° болатын толық циклдері",
+      en: "Full ankle cycles with a range of at least 20°",
+    },
+    minValidExcursion: {
+      ru: "Движение стопы не меньше 8° за полный цикл",
+      kk: "Толық циклде аяқ басының қозғалысы кемінде 8°",
+      en: "Ankle movement of at least 8° over a full cycle",
+    },
+    measures: {
+      ru: "Размах движения стопы (после калибровки датчиков), число полных циклов и темп",
+      kk: "Аяқ басының қозғалыс ауқымы (датчиктер калибрленгеннен кейін), толық цикл саны және қарқын",
+      en: "How far the ankle moves (once the sensors are calibrated), the number of full cycles and tempo",
+    },
+    video: "/exercises/ankle-dorsiflexion-band.mp4",
+    poster: "/exercises/ankle-dorsiflexion-band.jpg",
+    cues: [
+      {
+        ru: "Тяните носок на себя и от себя, преодолевая сопротивление ленты",
+        kk: "Таспаның кедергісін жеңе отырып, ұшыңызды өзіңізге және өзіңізден тартыңыз",
+        en: "Pull the toes towards you and away, working against the band",
+      },
+      {
+        ru: "Двигайте только стопой, голень остаётся на месте",
+        kk: "Тек аяқ басын қозғалтыңыз, балтыр орнында қалады",
+        en: "Move only the foot; the shin stays where it is",
+      },
+      {
+        ru: "Проходите полный размах в обе стороны",
+        kk: "Екі бағытта да толық ауқымды өтіңіз",
+        en: "Go through the full range in both directions",
+      },
+    ],
+    commonErrors: [
+      {
+        ru: "Движение идёт за счёт всей ноги, а не стопы",
+        kk: "Қозғалыс аяқ басының емес, бүкіл аяқтың есебінен болады",
+        en: "The whole leg moves instead of the foot",
+      },
+      {
+        ru: "Неполный размах движения",
+        kk: "Қозғалыс ауқымы толық емес",
+        en: "An incomplete range of movement",
+      },
+    ],
+    prescribed: false,
+    scored: true,
+    source:
+      "Phoenix feat/llm-feedback-two-tier: exercise_signals.py (exercise-resisted-ankle-pump-v1), execution_score.py (no ROM target — prescribed cycles only), migration 0023_execution_score_exercises.sql; not in НТЗ v1.2 Appendix A. Minimum excursion follows mova's own ankle-pumps entry (8° per full cycle); Phoenix's profile uses 4° because it counts one direction of the pump only, and says that is unvalidated on hardware",
+  },
+
+  // The two lying partial raises. These were held back once, and exercise_ids.json recorded why: mova has no
+  // clinician-recorded clip of either, so the library would list them with no reference footage. They are here
+  // now because a patient can be prescribed them and the session screen has to have something to run. `video`
+  // and `poster` stay null and the screen shows the honest "no clinician video yet" state rather than borrowing
+  // a clip of a different exercise, which would be a clinical decision and not a refactor. Phoenix measures both
+  // on the THIGH's own angle (exercise_signals.py's _THIGH: "the lift only shows up as the thigh's own angle"),
+  // not on a knee angle — the knee is watched through knee_bend_deg, which Phoenix's own comment says only feeds
+  // features and never the score, so nothing here promises a knee measurement.
+  {
+    slug: "lying-partial-leg-raise",
+    name: {
+      ru: "Частичный подъём ноги лёжа",
+      kk: "Жатып аяқты жартылай көтеру",
+      en: "Lying partial leg raise",
+    },
+    phase: null,
+    quantifiability: null,
+    sensors: ["thigh", "shank"],
+    target: {
+      ru: "Подъём ноги на 15° от исходного положения",
+      kk: "Аяқты бастапқы қалыптан 15°-қа көтеру",
+      en: "Raise the leg 15° from the starting position",
+    },
+    minValidExcursion: {
+      ru: "Подъём ноги не меньше чем на 8°",
+      kk: "Аяқты кемінде 8°-қа көтеру",
+      en: "Raising the leg by at least 8°",
+    },
+    measures: {
+      ru: "Угол подъёма бедра (после калибровки датчиков), число повторений и темп. Насколько прямым остаётся колено, датчики пока измеряют ненадёжно, поэтому это не оценивается.",
+      kk: "Санның көтерілу бұрышы (датчиктер калибрленгеннен кейін), қайталау саны және қарқын. Тізенің қаншалықты түзу қалатынын датчиктер әзірге сенімді өлшемейді, сондықтан ол бағаланбайды.",
+      en: "The angle the thigh is raised to (once the sensors are calibrated), the number of repetitions and tempo. How straight the knee stays is not yet measured reliably, so it is not graded.",
+    },
+    // No clinician-recorded clip of this exercise exists under public/exercises.
+    video: null,
+    poster: null,
+    cues: [
+      {
+        ru: "Лёжа на спине, слегка поднимите прямую ногу над опорой",
+        kk: "Шалқаңыздан жатып, түзу аяғыңызды тіректен сәл жоғары көтеріңіз",
+        en: "Lying on your back, raise the straight leg slightly off the surface",
+      },
+      {
+        ru: "Поднимайте невысоко и плавно, не рывком",
+        kk: "Жоғары емес, бірқалыпты көтеріңіз, жұлқымаңыз",
+        en: "Raise it a little way and smoothly, not with a jerk",
+      },
+      {
+        ru: "Опускайте ногу медленно, не бросайте её",
+        kk: "Аяғыңызды баяу түсіріңіз, тастап жібермеңіз",
+        en: "Lower the leg slowly, don't let it drop",
+      },
+    ],
+    commonErrors: [
+      {
+        ru: "Нога падает при возврате вместо плавного опускания",
+        kk: "Қайтарғанда аяқты баяу түсірудің орнына тастап жіберу",
+        en: "Letting the leg drop on the way back instead of lowering it with control",
+      },
+      {
+        ru: "Колено сгибается во время подъёма",
+        kk: "Көтеру кезінде тізе бүгіледі",
+        en: "The knee bends during the raise",
+      },
+    ],
+    prescribed: false,
+    scored: true,
+    source:
+      "Phoenix feat/llm-feedback-two-tier: exercise_signals.py (exercise-lying-partial-leg-raise-v1: leg_lift, absolute thigh pitch, enter_deg 8.0, exit_deg 4.0), execution_score.py (elevation_target_deg 15.0; tempo 30, controlled_lowering 30 and smooth_rise 40, every one of them with target None — uncalibrated); not in НТЗ v1.2 Appendix A. No clinician-recorded clip exists for it",
+  },
+  {
+    slug: "lying-partial-leg-hold",
+    name: {
+      ru: "Частичный подъём ноги лёжа с удержанием",
+      kk: "Жатып аяқты жартылай көтеріп ұстап тұру",
+      en: "Lying partial leg raise with hold",
+    },
+    phase: null,
+    quantifiability: null,
+    sensors: ["thigh", "shank"],
+    target: {
+      ru: "Подъём ноги на 15° и удержание не меньше 3 секунд",
+      kk: "Аяқты 15°-қа көтеріп, кемінде 3 секунд ұстап тұру",
+      en: "Raise the leg 15° and hold for at least 3 seconds",
+    },
+    minValidExcursion: {
+      ru: "Подъём ноги не меньше чем на 8°",
+      kk: "Аяқты кемінде 8°-қа көтеру",
+      en: "Raising the leg by at least 8°",
+    },
+    measures: {
+      ru: "Угол подъёма бедра (после калибровки датчиков), время удержания, число повторений и темп. Насколько прямым остаётся колено, датчики пока измеряют ненадёжно, поэтому это не оценивается.",
+      kk: "Санның көтерілу бұрышы (датчиктер калибрленгеннен кейін), ұстап тұру уақыты, қайталау саны және қарқын. Тізенің қаншалықты түзу қалатынын датчиктер әзірге сенімді өлшемейді, сондықтан ол бағаланбайды.",
+      en: "The angle the thigh is raised to (once the sensors are calibrated), the hold time, the number of repetitions and tempo. How straight the knee stays is not yet measured reliably, so it is not graded.",
+    },
+    // No clinician-recorded clip of this exercise exists under public/exercises either.
+    video: null,
+    poster: null,
+    cues: [
+      {
+        ru: "Лёжа на спине, слегка поднимите прямую ногу над опорой",
+        kk: "Шалқаңыздан жатып, түзу аяғыңызды тіректен сәл жоғары көтеріңіз",
+        en: "Lying on your back, raise the straight leg slightly off the surface",
+      },
+      {
+        ru: "Задержитесь в верхней точке примерно на 3 секунды",
+        kk: "Жоғарғы нүктеде шамамен 3 секунд тұрыңыз",
+        en: "Hold at the top for about 3 seconds",
+      },
+      {
+        ru: "Опускайте ногу медленно, не бросайте её",
+        kk: "Аяғыңызды баяу түсіріңіз, тастап жібермеңіз",
+        en: "Lower the leg slowly, don't let it drop",
+      },
+    ],
+    commonErrors: [
+      {
+        ru: "Удержание короче назначенного",
+        kk: "Ұстап тұру тағайындалғаннан қысқа",
+        en: "Holding for less time than prescribed",
+      },
+      {
+        ru: "Нога падает при возврате вместо плавного опускания",
+        kk: "Қайтарғанда аяқты баяу түсірудің орнына тастап жіберу",
+        en: "Letting the leg drop on the way back instead of lowering it with control",
+      },
+    ],
+    prescribed: false,
+    scored: true,
+    source:
+      "Phoenix feat/llm-feedback-two-tier: exercise_signals.py (exercise-lying-partial-leg-hold-v1: leg_lift, absolute thigh pitch, enter_deg 8.0, exit_deg 4.0), execution_score.py (elevation_target_deg 15.0; hold 40 with a 3.0 s target — the only calibrated target of the two — plus tempo 15, controlled_lowering 25 and smooth_rise 20, all uncalibrated); not in НТЗ v1.2 Appendix A. No clinician-recorded clip exists for it",
   },
 ];
 

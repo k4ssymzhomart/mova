@@ -8,3 +8,7 @@ export function prefersReducedMotion(): boolean {
 export function hasFineHoverPointer(): boolean {
   return typeof window !== "undefined" && window.matchMedia("(hover: hover) and (pointer: fine)").matches;
 }
+
+// Where a clip is centred and what shape its frame is are NOT here. That is per-clip geometry measured from the
+// files themselves, and it lives in @/lib/exercises/clipGeometry so that the session screen — which is not part of
+// the library — can read the same table. This file stays what its name says: the media queries.

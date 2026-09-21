@@ -144,3 +144,27 @@ is the exercise-screen issue's job, not repeated here.
 | Raw-count → physical-unit scale factor | calibration-maths issue |
 | Wiring real BLE into `SessionStudio`, enforcing the AC-03 pre-exercise gate | exercise-screen issue |
 | Enforcing `scoring_permitted` against an actual score | scoring issue |
+
+## 10. Offline tooling for the same frames
+
+`services/imu-tools/` is a Python port of PHOENIX's IMU tooling: BLE capture, rig-health
+diagnostics (a guided self-test that catches a swapped thigh/shank mapping), rep segmentation, the
+deterministic Execution Score, and a localhost browser page over all of it with a simulator and
+capture replay, so it works with no sensors.
+
+It reads mova's own data: `tools/frames_to_capture.py` converts a `session_frames` export into the
+capture shape the rest of the tools understand, mapping `imu.euler_deg`, `imu.ax`…`gz` and
+`recorded_at` straight across with no arithmetic. A row with no usable orientation is dropped and
+counted rather than zero-filled, a session with `imu.origin: "simulated"` is marked as such in every
+tool's output, and a `clinician_session_result` payload is refused by name because its pitch-only
+series cannot feed segmentation or signal quality.
+
+Two items from §3 and §9 above are unchanged by it: raw counts are still raw counts, and nothing
+there calibrates to physical units. Its angles are the same uncalibrated orientation proxy this
+document describes, and its Execution Score stays inside that package and the localhost page —
+[`services/imu-tools/README.md`](../../services/imu-tools/README.md) has the full "what is real"
+table.
+
+`tools/tune_reps.py` is also the tool that answers the open axis question from §3: it sweeps every
+segment pair and roll/pitch axis against a recording with a known rep count, which is how to settle
+whether pitch is really the axis that moves on the strap mounting.

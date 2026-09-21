@@ -43,4 +43,15 @@ describe("volumeScore", () => {
     ];
     expect(volumeScore(reps, 10)).toBe(40);
   });
+
+  it("abstains rather than scoring zero when no reps were prescribed", () => {
+    // A zero would tell the patient they completed none of their work when nobody had said how much
+    // work there was. PHOENIX calls this case "no_prescribed_reps" (execution_score.py:250-251).
+    expect(volumeScore(Array.from({ length: 5 }, () => rep()), 0)).toBeNull();
+    expect(volumeScore([], 0)).toBeNull();
+  });
+
+  it("still scores a real zero when reps were prescribed and none were valid", () => {
+    expect(volumeScore([rep({ validForVolume: false, lossReason: "sensor" })], 10)).toBe(0);
+  });
 });

@@ -80,6 +80,11 @@ services/frontend/dist/
 services/frontend/.turbo/
 *.tsbuildinfo
 
+# MediaPipe Pose runtime assets. scripts/fetch-models.mjs copies the wasm out of node_modules and
+# downloads the .task on prebuild, so these are build outputs (~39 MB), never sources. See
+# services/frontend/public/models/README.md.
+services/frontend/public/mediapipe/
+
 # ── Supabase CLI local state ───────────────────────────────────────────────
 supabase/.branches/
 supabase/.temp/
@@ -94,3 +99,5 @@ supabase/.temp/
 .vercel
 
 CLAUDE.md
+# Claude Code session config for this worktree — not part of the change.
+.claude/

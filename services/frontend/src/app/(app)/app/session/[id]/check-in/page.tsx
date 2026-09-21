@@ -10,7 +10,6 @@
 // The answers are stored as given and nothing is triaged from them here. The RED safety check (НТЗ §15) is out of
 // scope for this path, so no answer changes what the patient sees next.
 
-import { ClipboardList } from "lucide-react";
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 
@@ -19,8 +18,7 @@ import { stepHref } from "@/components/flow/steps";
 import { getTranslation } from "@/locales/server";
 
 import FlowUnavailable from "../../_flow/FlowUnavailable";
-import { HEEL_SLIDE_SLUG, loadSessionExercise } from "../../_flow/load";
-import StepPending from "../../_flow/StepPending";
+import { loadSessionExercise } from "../../_flow/load";
 import CheckInForm from "./CheckInForm";
 import { loadCheckInSubmitted } from "./load";
 
@@ -38,19 +36,10 @@ export default async function CheckInStep({ params }: { params: { id: string } }
     return <FlowUnavailable eyebrow={eyebrow} reason={session.kind === "error" ? "loadError" : "sessionNotFound"} />;
   }
 
-  const { id, status, exerciseName, exerciseSlug } = session.value;
-  if (exerciseSlug !== HEEL_SLIDE_SLUG) {
-    // TODO(#22): the post-session questionnaire of the other exercises replaces this placeholder.
-    return (
-      <StepPending
-        step="checkIn"
-        icon={ClipboardList}
-        exerciseName={exerciseName}
-        nextStep="summary"
-        nextHref={stepHref(id, "summary")}
-      />
-    );
-  }
+  // The check-in asks about pain, swelling and how the set felt — nothing in it is specific to one exercise, and
+  // its RPC (submit_session_check_in, migration 0034) takes only a session id and the answers. It used to be gated
+  // to Heel Slide only because Heel Slide was the only exercise that could reach it.
+  const { id, status, exerciseName } = session.value;
 
   // Still in progress: the exercise has not been finished. Stopped or already reviewed: only the summary is left.
   if (status === "in_progress") redirect(stepHref(id, "exercise"));

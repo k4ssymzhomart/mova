@@ -28,6 +28,9 @@ interface Sample {
 const DEFAULT_NOISE_BAND_DEG = 3;
 const DEFAULT_ABANDON_MULTIPLIER = 3;
 const HOLD_ENGAGE_WINDOW_MS = 300;
+/** Used only for the abandon timeout of an exercise with no calibrated tempoRangeSec; it is the
+ *  widest max among the exercises that do have one, so it abandons no sooner than any of them. */
+const DEFAULT_ABANDON_TEMPO_MAX_SEC = 8;
 
 export interface RepDetectorOptions {
   config: ExerciseConfig;
@@ -59,7 +62,11 @@ export class RepDetector {
   constructor(options: RepDetectorOptions) {
     this.config = options.config;
     this.noiseBandDeg = options.noiseBandDeg ?? DEFAULT_NOISE_BAND_DEG;
-    this.abandonMs = (options.abandonMultiplier ?? DEFAULT_ABANDON_MULTIPLIER) * options.config.tempoRangeSec[1] * 1000;
+    // The abandon timeout is mechanical — when to stop waiting for a rep to come back — not a
+    // scored target, so an exercise with no calibrated tempo still needs one. Fall back to the
+    // widest calibrated max in the catalog rather than leaving a rep open forever.
+    const tempoMaxSec = options.config.tempoRangeSec?.[1] ?? DEFAULT_ABANDON_TEMPO_MAX_SEC;
+    this.abandonMs = (options.abandonMultiplier ?? DEFAULT_ABANDON_MULTIPLIER) * tempoMaxSec * 1000;
     this.calibrationBaselineAbsoluteDeg = options.calibrationBaselineAbsoluteDeg;
   }
 

@@ -8,6 +8,8 @@
 //  - Every section comes from the static catalog and is omitted when the catalog has nothing for it. No section is
 //    filled in from elsewhere.
 //  - The clip loops muted and inline. Under prefers-reduced-motion it does not start by itself; the play button does.
+//    This is the screen the patient opens to STUDY the movement, so the clip is shown at its own shape here — the
+//    library's uniform band is a grid concern and has no business cropping the picture a patient came to look at.
 //  - Only Heel Slide with the patient's own active prescription offers «Начать» (library.ts startActionFor).
 
 import { Pause, Play, X } from "lucide-react";
@@ -16,7 +18,7 @@ import { type KeyboardEvent, type MouseEvent, useEffect, useRef, useState } from
 
 import { bodyText, eyebrow, focusRing, sectionTitle, tileLabel } from "@/components/app/recipes";
 import { exerciseBySlug } from "@/lib/exercises/catalog";
-import { clipFrame } from "@/lib/exercises/clipFrames";
+import { clipFitClass, clipFocus, clipGeometry } from "@/lib/exercises/clipGeometry";
 import { cn } from "@/lib/utils";
 import { useTranslation } from "@/locales/client";
 
@@ -239,7 +241,18 @@ function Fact({ label, value, wide = false }: { label: string; value: string; wi
   );
 }
 
-/** The reference clip, looping muted and inline. It starts by itself unless reduced motion is asked for. */
+/**
+ * The reference clip, looping muted and inline. It starts by itself unless reduced motion is asked for.
+ *
+ * The frame is the clip's own content aspect, so the cover fit crops nothing: a 9:16 recording sits in a 9:16
+ * frame, a 16:9 one in aspect-video, and heel-slide's letterboxed picture in a frame of exactly its measured band,
+ * pushed onto that band by clipFocus. A portrait clip is capped in WIDTH rather than in height: at the dialog's full
+ * sm:max-w-2xl (42rem) a 9:16 frame would stand 74.7rem tall and bury everything under it below the dialog's own
+ * sm:max-h-[calc(100dvh-4rem)] cap. Capping the height instead does not work — width:auto on a block box still
+ * stretches to the container, so the box would keep its full width, lose its ratio, and the cover fit would crop
+ * exactly the picture this screen exists to show. max-w-[18rem] gives 18 x 16/9 = 32rem of height, which is the
+ * shape and roughly the size of the phone the clip was recorded on.
+ */
 function DetailVideo({ video, poster, name }: { video: string; poster: string | null; name: string }) {
   const { t } = useTranslation();
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -282,54 +295,36 @@ function DetailVideo({ video, poster, name }: { video: string; poster: string | 
   // A clip that fails to load is left out, like one the catalog does not have.
   if (failed) return null;
 
-  // The clip is shown in a box of its own shape, so the whole picture is visible: upright clips keep a fixed height
-  // and sit on a blurred copy of their own poster, sideways ones run the full width. See lib/exercises/clipFrames.ts.
-  const frame = clipFrame(video);
-  const element = (
-    <video
-      ref={videoRef}
-      src={video}
-      poster={poster ?? undefined}
-      loop
-      muted
-      playsInline
-      preload="none"
-      aria-label={t("exerciseLibrary.media.video", { name })}
-      onPlay={() => setPlaying(true)}
-      onPause={() => setPlaying(false)}
-      onError={() => setFailed(true)}
-      disablePictureInPicture
-      disableRemotePlayback
-      className="absolute inset-0 size-full rounded-sm object-cover"
-      style={{ objectPosition: frame.objectPosition }}
-    />
-  );
+  const geometry = clipGeometry(video);
+  // A clip the geometry table has never been told about keeps the old 16:9 frame, but is contained inside it rather
+  // than cropped to it: without a measurement there is no crop we can justify.
+  const frame = geometry?.frameClass ?? "aspect-video";
 
   return (
     <div
       className={cn(
         "relative w-full overflow-hidden rounded-card bg-paper-soft ring-1 ring-line",
-        frame.wide ? "" : "h-[22rem] sm:h-[26rem]",
+        frame,
+        geometry?.shape === "portrait" && "mx-auto max-w-[18rem]",
       )}
-      style={frame.wide ? { aspectRatio: frame.ratio } : undefined}
     >
-      {!frame.wide && poster && (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img
-          src={poster}
-          alt=""
-          aria-hidden="true"
-          className="absolute inset-0 size-full scale-125 object-cover opacity-30 blur-2xl"
-          style={{ objectPosition: frame.objectPosition }}
-        />
-      )}
-      {frame.wide ? (
-        element
-      ) : (
-        <div className="relative mx-auto h-full" style={{ aspectRatio: frame.ratio }}>
-          {element}
-        </div>
-      )}
+      <video
+        ref={videoRef}
+        src={video}
+        poster={poster ?? undefined}
+        loop
+        muted
+        playsInline
+        preload="none"
+        aria-label={t("exerciseLibrary.media.video", { name })}
+        onPlay={() => setPlaying(true)}
+        onPause={() => setPlaying(false)}
+        onError={() => setFailed(true)}
+        disablePictureInPicture
+        disableRemotePlayback
+        className={cn("size-full", clipFitClass(geometry))}
+        style={{ objectPosition: clipFocus(geometry) }}
+      />
       <button
         type="button"
         onClick={toggle}

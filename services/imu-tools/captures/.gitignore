@@ -1,0 +1,4 @@
+# Captures are recordings of a person moving. They stay on the machine that made
+# them: never commit one, and never put a patient identifier in a filename.
+*
+!.gitignore

@@ -25,6 +25,16 @@ const SLUGS = [
   "step-up",
   "walking-gait",
   "standing-hip-abduction",
+  // From the PHOENIX signal/execution profiles rather than НТЗ Appendix A — see the note in catalog.ts.
+  "ball-knee-flexion",
+  "heel-slide-with-band",
+  "supported-knee-raise",
+  "seated-knee-extension",
+  "resisted-ankle-pump",
+  // The two PHOENIX profiles mova had no clinician clip for. They are in the library anyway; the missing
+  // footage shows up as their absence from CONFIRMED_CLIPS below, which pins video and poster to null.
+  "lying-partial-leg-raise",
+  "lying-partial-leg-hold",
 ];
 
 const SCORED = [
@@ -36,6 +46,16 @@ const SCORED = [
   "ankle-pumps",
   "mini-squat",
   "quad-set",
+  // The seven PHOENIX-profile exercises: each has a target, so each is scored. The two lying partial raises
+  // are scored on thigh elevation, which is a target Phoenix states; having no reference clip does not make an
+  // exercise unscorable, it only means the patient has nothing to watch.
+  "ball-knee-flexion",
+  "heel-slide-with-band",
+  "supported-knee-raise",
+  "seated-knee-extension",
+  "resisted-ankle-pump",
+  "lying-partial-leg-raise",
+  "lying-partial-leg-hold",
 ];
 
 const LOCALES = ["ru", "kk", "en"] as const;
@@ -57,7 +77,7 @@ function texts(e: ExerciseEntry): Localized[] {
   ];
 }
 
-test("the catalog holds exactly the twelve slugs, each once", () => {
+test("the catalog holds exactly the nineteen slugs, each once", () => {
   const slugs = EXERCISE_CATALOG.map((e) => e.slug);
   assert.equal(new Set(slugs).size, slugs.length);
   assert.deepEqual([...slugs].sort(), [...SLUGS].sort());
@@ -81,7 +101,7 @@ test("only heel-slide is prescribed", () => {
   );
 });
 
-test("the eight exercises of the scoring spec are the scored ones", () => {
+test("the scored exercises are the eight of the scoring spec plus the seven PHOENIX-profile ones", () => {
   assert.deepEqual(
     EXERCISE_CATALOG.filter((e) => e.scored)
       .map((e) => e.slug)
@@ -149,7 +169,8 @@ test("sensors are known roles, listed once each in role order", () => {
 });
 
 // The clips confirmed against the exercise. A clip on the wrong exercise is worse than none, so a change here is a
-// clinical decision, not a refactor. Clips 2, 3, 8, 13 and 14 of the set are in public/exercises but on no entry.
+// clinical decision, not a refactor. walking-gait.mp4 is a second camera angle of walking-gait-front-side, so it
+// is deliberately on no entry.
 const CONFIRMED_CLIPS: Record<string, string> = {
   "heel-slide": "heel-slide",
   "seated-knee-flexion": "seated-knee-flexion",
@@ -158,6 +179,15 @@ const CONFIRMED_CLIPS: Record<string, string> = {
   "quad-set": "quad-set",
   "step-up": "step-up",
   "walking-gait": "walking-gait-front-side",
+  // Clips 2, 3, 8, 13 and 14 were the unattached ones. Five are now paired with the PHOENIX-profile
+  // exercises; each pairing is a clinical decision listed in the pull request, not a refactor.
+  // lying-partial-leg-raise and lying-partial-leg-hold are deliberately absent from this map: no clip of
+  // either exercise was ever recorded, and their absence here is what pins their video and poster to null.
+  "ball-knee-flexion": "seated-ball-roll",
+  "heel-slide-with-band": "supine-knee-flexion-strap",
+  "supported-knee-raise": "supine-bend-and-raise-strap",
+  "seated-knee-extension": "seated-knee-extension",
+  "resisted-ankle-pump": "ankle-dorsiflexion-band",
 };
 
 test("only the confirmed clips are attached, each with its own poster", () => {

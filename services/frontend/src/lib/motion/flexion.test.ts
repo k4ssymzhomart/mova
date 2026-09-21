@@ -4,9 +4,14 @@ import { test } from "node:test";
 import {
   DEFAULT_MAX_PAIR_SKEW_MS,
   FLEXION_PROXY_AXIS,
+  KNEE_SIGNAL,
   PROXY_BASELINE_MS,
+  PROXY_DEFINITION,
   buildStoredProxySeries,
   createPairer,
+  createSignalPairer,
+  signalDefinition,
+  signalRoles,
   createProxyOrienter,
   orientProxySeries,
   proxyPitchDeg,
@@ -416,4 +421,71 @@ test("a start whose window holds no stored pair is kept for drawing on its own z
   for (const sample of second.uncounted) assert.equal(sample.value, 0);
   // The top level is the latest start, which has nothing to count.
   assert.deepEqual(series.samples, []);
+});
+
+// — signals other than Heel Slide's ————————————————————————————————————————————————————
+
+test("the Heel Slide pairer is exactly the knee signal, and PROXY_DEFINITION still describes it", () => {
+  assert.equal(signalDefinition(KNEE_SIGNAL), PROXY_DEFINITION);
+  assert.deepEqual(signalRoles(KNEE_SIGNAL), ["thigh", "shank"]);
+});
+
+test("an ankle signal pairs foot with shank, and ignores the thigh the heel-slide pairer needs", () => {
+  const ankle = { kind: "relative", distal: "foot", proximal: "shank" } as const;
+  assert.deepEqual(signalRoles(ankle), ["shank", "foot"]);
+  assert.equal(signalDefinition(ankle), "wrap(foot.pitch - shank.pitch), baseline-zeroed, oriented");
+
+  const pairer = createSignalPairer(ankle);
+  assert.equal(pairer.push("thigh", 1000, 40), null, "the thigh takes no part in an ankle pump");
+  assert.equal(pairer.push("shank", 1000, 10), null, "one segment alone is not a sample");
+  const paired = pairer.push("foot", 1020, 25);
+  assert.ok(paired);
+  assert.equal(paired.relativeDeg, 15);
+  assert.equal(paired.skewMs, 20);
+  assert.equal(paired.tMs, 1020);
+});
+
+test("readings further apart than the skew tolerance are not combined", () => {
+  const pairer = createSignalPairer({ kind: "relative", distal: "foot", proximal: "shank" }, 100);
+  pairer.push("shank", 1000, 0);
+  assert.equal(pairer.push("foot", 1000 + 101, 30), null);
+  assert.ok(pairer.push("foot", 1000 + 99, 30));
+});
+
+test("an absolute thigh signal needs no pairing, because the knee stays straight and only the thigh moves", () => {
+  // PHOENIX's straight-leg-raise and both lying-partial profiles use an absolute thigh pitch for this reason
+  // (exercise_signals.py). Pairing thigh with shank there would measure a knee bend that is not the movement.
+  const thigh = { kind: "absolute", role: "thigh" } as const;
+  assert.deepEqual(signalRoles(thigh), ["thigh"]);
+  assert.equal(signalDefinition(thigh), "thigh.pitch, baseline-zeroed, oriented");
+
+  const pairer = createSignalPairer(thigh);
+  assert.equal(pairer.push("shank", 1000, 50), null, "a role the signal does not use is ignored");
+  const sample = pairer.push("thigh", 1000, 32);
+  assert.ok(sample);
+  assert.equal(sample.relativeDeg, 32);
+  assert.equal(sample.skewMs, 0);
+  assert.equal(sample.tMs, 1000);
+});
+
+test("an absolute signal wraps at the seam rather than reading 190 degrees", () => {
+  const pairer = createSignalPairer({ kind: "absolute", role: "thigh" });
+  assert.equal(pairer.push("thigh", 1000, 190)?.relativeDeg, -170);
+});
+
+test("non-finite readings never become samples, on either kind of signal", () => {
+  const relative = createSignalPairer(KNEE_SIGNAL);
+  relative.push("thigh", 1000, 0);
+  assert.equal(relative.push("shank", 1000, Number.NaN), null);
+  assert.equal(relative.push("shank", Number.POSITIVE_INFINITY, 20), null);
+
+  const absolute = createSignalPairer({ kind: "absolute", role: "thigh" });
+  assert.equal(absolute.push("thigh", 1000, Number.NaN), null);
+});
+
+test("reset clears a relative pairer's half-finished pair", () => {
+  const pairer = createSignalPairer(KNEE_SIGNAL);
+  pairer.push("thigh", 1000, 10);
+  pairer.reset();
+  assert.equal(pairer.push("shank", 1000, 30), null, "the thigh reading before the reset must not be reused");
 });

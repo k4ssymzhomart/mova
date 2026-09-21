@@ -28,10 +28,20 @@ export interface CueContext {
 function ladderForRep(config: ExerciseConfig, rep: RepResult): { priority: 2 | 3 | 4 | 5 | 6 | 7; code: CueCode } {
   if (!rep.completed) return { priority: 2, code: "rep_incomplete" };
 
+  // A null target score means the exercise has nothing to measure the rep against (no configured
+  // target, no band table, no calibration angles). Both target rungs are skipped in that case and the
+  // ladder falls through to tempo and smoothness — telling the patient to "bend further" against a
+  // target nobody set is the same mistake line 36 already avoids for an uncalibrated tempo window.
   const targetScore = perRepTargetScore(config, rep);
-  if (targetScore < TARGET_CLOSE_THRESHOLD) return { priority: 3, code: "target_far" };
-  if (targetScore < 100) return { priority: 4, code: "target_close" };
-  if (rep.tempoSec < config.tempoRangeSec[0]) return { priority: 5, code: "too_fast" };
+  if (targetScore !== null) {
+    if (targetScore < TARGET_CLOSE_THRESHOLD) return { priority: 3, code: "target_far" };
+    if (targetScore < 100) return { priority: 4, code: "target_close" };
+  }
+  // No calibrated tempo range means there is no pace to be "too fast" for; skip the cue rather than
+  // telling the patient to slow down against a number nobody has measured.
+  if (config.tempoRangeSec !== null && rep.tempoSec < config.tempoRangeSec[0]) {
+    return { priority: 5, code: "too_fast" };
+  }
   if (rep.smoothness01 < SMOOTHNESS_FLOOR) return { priority: 6, code: "low_smoothness" };
   return { priority: 7, code: "all_good" };
 }

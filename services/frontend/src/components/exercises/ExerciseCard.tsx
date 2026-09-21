@@ -1,6 +1,8 @@
 // One exercise in the library. Server-rendered; the media and the detail link are the only client parts.
 //  - The media block plays the catalog's clip when one is confirmed. Without one it is a plain labelled frame
-//    saying the video is coming: no spinner, no empty <video>, and never another exercise's clip.
+//    saying the video is coming: no spinner, no empty <video>, and never another exercise's clip. Both bands are
+//    CARD_FRAME, from the geometry module, so the card with a clip and the card without it are exactly the same
+//    height and a grid row stays level. They used to be two copy-pasted aspect-video strings.
 //  - Phase, name, sensors, the target where the catalog has one, and the quantifiability class in plain words. A
 //    field the catalog leaves empty has no row. The target is what the exercise aims for, never a measured value.
 //  - The start slot is StartControl: «Начать» only for Heel Slide with the patient's own prescription.
@@ -10,6 +12,7 @@ import type { ReactNode } from "react";
 
 import { card, cardTitle, secondaryButton, tileLabel } from "@/components/app/recipes";
 import type { ExerciseEntry } from "@/lib/exercises/catalog";
+import { CARD_FRAME } from "@/lib/exercises/clipGeometry";
 import { cn } from "@/lib/utils";
 import type { Locale } from "@/locales";
 
@@ -51,7 +54,7 @@ export default function ExerciseCard({
       {entry.video ? (
         <ExerciseCardMedia video={entry.video} poster={entry.poster} name={name} />
       ) : (
-        <div className="grid h-72 w-full place-items-center border-b border-line bg-paper-soft sm:h-80">
+        <div className={cn("grid w-full place-items-center border-b border-line bg-paper-soft", CARD_FRAME)}>
           <p className="flex items-center gap-2 text-base font-medium text-ink-soft">
             <Clapperboard className="size-5 text-ink-faint" strokeWidth={1.8} aria-hidden="true" />
             {t("exerciseLibrary.media.comingSoon")}

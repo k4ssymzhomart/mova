@@ -11,17 +11,64 @@ map: [`docs/PHASE_1_ERD.md`](../docs/PHASE_1_ERD.md).
 ```
 supabase/
 ├── config.toml                  # project config: API, Auth (email/OAuth/MFA), Storage, Realtime, hook
-├── migrations/                  # applied in lexical order, 0001 → 0016
-│   ├── 0001_extensions.sql      0002_schemas_and_enums.sql   0003_helpers.sql
-│   ├── 0004_identity.sql        0005_programs.sql            0006_sessions.sql
-│   ├── 0007_gamification.sql    0008_comms.sql               0009_content.sql
-│   ├── 0010_audit.sql           0011_rls_helpers.sql         0012_rls_policies.sql
-│   ├── 0013_storage.sql         0014_realtime.sql            0015_auth_hooks.sql
-│   └── 0016_inference_contract.sql
+├── migrations/                  # applied in lexical order, 0001 → 0042 (see the table below: not all are applied)
 ├── seed.sql                     # reference catalogs + a demo clinic, clinician, patient
-├── tests/rls_isolation_test.sql # pgTAP proof of the DoD (cross-patient + cross-clinic isolation)
+├── tests/                       # pgTAP proofs (RLS isolation, the heel-slide path)
 └── README.md
 ```
+
+## Applied to the hosted project
+
+The numbers are not contiguous — 0024–0033 were used on a branch that was never merged, and 0037–0040
+were renumbered past the applied 0036 without being applied. There is no ledger in the database that
+this file can be generated from, so this table is maintained by hand, and each migration also states
+its own status in its first line. **Update both when you apply something.**
+
+| Migrations | Applied to hosted? | What they are |
+|---|---|---|
+| `0001` – `0023` | yes | Phase 1: schema, RLS, auth hooks, self-serve RPCs, telemetry streaming, the clinician portal, BLE devices. |
+| `0024` – `0033` | — | Do not exist. The numbers were burned on `feature/exercise-screen-rebuild` before the renumber. |
+| `0034_heel_slide_path.sql` | yes | The heel-slide session path, and the `knee_flexion_extension` exercise modality every knee row uses. |
+| `0035_signup_role_hotfix.sql` | yes | Signup role assignment. |
+| `0036_tenancy_fix.sql` | yes | Per-signup clinic; the PHI fix. Everything after this was renumbered past it. |
+| `0037_patient_session_history.sql` | **no** | Patient-facing session history. |
+| `0038_knee_rehab_exercises.sql` | **no — do not apply as-is** | Seeds eight knee exercises under `snake_case` slugs. Production already has `heel-slide`; this file inserts `heel_slide`, so applying it creates a second Heel Slide. `0042` supersedes it. |
+| `0039_exercise_media.sql` | **no** | Adds `exercises.demo_video_url`. Nothing reads it: the reference clip is sourced from `services/frontend/src/lib/exercises/catalog.ts`, and applying this file must not turn that into two sources of truth. |
+| `0040_invitations.sql` | **no** | Clinician invitations. |
+| `0041_lying_partial_leg_exercises.sql` | yes (2026-09-21) | The two Phoenix lying partial leg raises, kebab-case. |
+| `0042_seed_catalog_exercises.sql` | yes (2026-09-21) | The other sixteen catalog exercises, kebab-case, so the session flow can resolve them. Excludes `heel-slide`, which production already holds. |
+
+Note also that the production `heel-slide` row was **not** written by a migration at all: it came from
+`services/frontend/scripts/seed-heel-slide.mjs`, with `is_published` false and an empty `target_joints`.
+It is still the only unpublished exercise row, and 0042 deliberately left it alone rather than rewrite a
+row real patients are prescribed. Publishing it is a one-line change and its own decision.
+
+After 0041 and 0042, `public.exercises` holds 25 rows: the nineteen the catalog describes, plus the six
+Phase-1 camera-era rows (`cross-body-reach`, `heel-toe-walk`, `march-in-place`, `overhead-reach`,
+`reach-to-target`, `tandem-stand`) that predate the TKA pivot and are not in `catalog.ts`. Those six have
+no scoring config, so the exercise screen runs them unscored — which is the honest state for them, not a
+bug. Nothing yet keeps `catalog.ts` and `public.exercises` in step; see 0042's header.
+
+### Applying to the hosted project
+
+Port 5432 is blocked from here, so migrations go over HTTPS through the Management API rather than
+`supabase db push` (the same route `docs/heel-slide-path.md` uses). Apply one file at a time, in
+order, and update the table above in the same commit.
+
+```bash
+export SUPABASE_ACCESS_TOKEN=…   # personal access token; never commit it
+sq() {
+  jq -Rs '{query:.}' < "$1" | curl -sS -X POST \
+    "https://api.supabase.com/v1/projects/sbdtujkpklqyevaoxfph/database/query" \
+    -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" -H "Content-Type: application/json" --data-binary @-
+  echo
+}
+sq supabase/migrations/0041_lying_partial_leg_exercises.sql
+sq supabase/migrations/0042_seed_catalog_exercises.sql
+```
+
+Before applying anything, run the offline syntax gate below — it parses every file against the real
+PostgreSQL grammar without a database.
 
 ## Prerequisites
 

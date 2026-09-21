@@ -29,6 +29,9 @@ export interface UseLiveScoringResult {
 }
 
 function buildResult(config: ExerciseConfig, reps: RepResult[], prescribedReps: number, everFrozen: boolean, frozenReasons: string[]): SessionResult {
+  // vol is number | null, tgt and cor are ComponentScore. All three carry their own abstention, and
+  // executionEffectiveness is what redistributes the rollup weight over whichever of them reported —
+  // this function does no arithmetic of its own on them.
   const vol = volumeScore(reps, prescribedReps);
   const tgt = sessionTargetScore(config, reps);
   const cor = sessionCorrectnessScore(config, reps);
@@ -40,7 +43,7 @@ function buildResult(config: ExerciseConfig, reps: RepResult[], prescribedReps: 
     volumeScore: vol,
     targetScore: tgt,
     correctnessScore: cor,
-    executionEffectiveness: executionEffectiveness(cor, vol, tgt),
+    execution: executionEffectiveness(cor, vol, tgt),
     romMaxDeg: peaks.length ? Math.max(...peaks) : null,
     romMeanDeg: peaks.length ? Math.round((peaks.reduce((a, b) => a + b, 0) / peaks.length) * 10) / 10 : null,
     targetReachedCount: targetReachedCount(config, reps),

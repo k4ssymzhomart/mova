@@ -1,0 +1,70 @@
+{
+  "$comment": [
+    "The single source of truth for exercise identity across mova and Phoenix.",
+    "Python reads this file via src/mova_imu/exercises/ids.py.",
+    "TypeScript mirrors it in services/frontend/src/lib/exercises/ids.ts, and",
+    "src/lib/exercises/ids.test.ts reads THIS file and fails if the two drift.",
+    "",
+    "Three id spaces exist and none of them can be derived from another by",
+    "string transformation. Guessing is exactly how 'heel-slide' and",
+    "'heel_slide' became two different things, so a missing row raises rather",
+    "than being computed.",
+    "",
+    "  catalog  kebab-case. services/frontend/src/lib/exercises/catalog.ts and",
+    "           the public.exercises table. This is the canonical id: it is what",
+    "           the hosted database holds and what every runtime path resolves.",
+    "  scoring  snake_case. The ExerciseSlug union in lib/scoring/types.ts.",
+    "           null when the exercise has no scoring config.",
+    "  phoenix  Phoenix's exercise_signals.SIGNAL_PROFILES key, which is what the",
+    "           vendored analysis in services/imu-tools is keyed on.",
+    "           null when Phoenix has no signal profile for it.",
+    "",
+    "This table maps IDENTITY ONLY. It never carries a threshold, a target or a",
+    "sensor list: those live in each system's own config, and the two do not",
+    "always agree. mova's catalog states a 20 deg total cycle and an 8 deg",
+    "minimum valid excursion for ankle-pumps, while Phoenix's profile uses",
+    "enter_deg 4.0 because it counts one direction of the pump only, with its",
+    "own comment saying that is unvalidated on hardware. Both are true of their",
+    "own system; neither may be copied into the other without a clinician."
+  ],
+
+  "exercises": [
+    { "catalog": "heel-slide",            "scoring": "heel_slide",            "phoenix": "exercise-heel-slide-v1" },
+    { "catalog": "straight-leg-raise",    "scoring": "straight_leg_raise",    "phoenix": "exercise-straight-leg-raise-v1" },
+    { "catalog": "ankle-pumps",           "scoring": "ankle_pumps",           "phoenix": "exercise-ankle-pumps-active-v1" },
+    { "catalog": "step-up",               "scoring": null,                    "phoenix": "exercise-step-up-v1" },
+    { "catalog": "seated-knee-extension", "scoring": "seated_knee_extension", "phoenix": "exercise-seated-knee-extension-v1" },
+    { "catalog": "ball-knee-flexion",     "scoring": "ball_knee_flexion",     "phoenix": "exercise-ball-knee-flexion-v1" },
+    { "catalog": "heel-slide-with-band",  "scoring": "heel_slide_with_band",  "phoenix": "exercise-heel-slide-with-band-v1" },
+    { "catalog": "supported-knee-raise",  "scoring": "supported_knee_raise",  "phoenix": "exercise-supported-knee-raise-v1" },
+    { "catalog": "resisted-ankle-pump",   "scoring": "resisted_ankle_pump",   "phoenix": "exercise-resisted-ankle-pump-v1" },
+    { "catalog": "lying-partial-leg-raise", "scoring": "lying_partial_leg_raise", "phoenix": "exercise-lying-partial-leg-raise-v1" },
+    { "catalog": "lying-partial-leg-hold",  "scoring": "lying_partial_leg_hold",  "phoenix": "exercise-lying-partial-leg-hold-v1" },
+
+    { "catalog": "seated-knee-flexion",     "scoring": "seated_knee_flexion",     "phoenix": null },
+    { "catalog": "prone-knee-bend",         "scoring": "prone_knee_bend",         "phoenix": null },
+    { "catalog": "short-arc-quad",          "scoring": "short_arc_quad",          "phoenix": null },
+    { "catalog": "mini-squat",              "scoring": "mini_squat",              "phoenix": null },
+    { "catalog": "quad-set",                "scoring": "quad_set",                "phoenix": null },
+    { "catalog": "calf-raise",              "scoring": null,                      "phoenix": null },
+    { "catalog": "walking-gait",            "scoring": null,                      "phoenix": null },
+    { "catalog": "standing-hip-abduction",  "scoring": null,                      "phoenix": null }
+  ],
+
+  "phoenix_unmapped": {
+    "$why": [
+      "Phoenix signal profiles with no mova catalog entry. Listed explicitly so",
+      "tests/test_ids.py can assert that the table plus this list partitions",
+      "SIGNAL_PROFILES exactly -- a profile added upstream and forgotten here",
+      "fails a test instead of silently having no mova exercise.",
+      "",
+      "The list is empty right now: every Phoenix signal profile has a mova",
+      "catalog entry. The two thigh-absolute raises that used to sit here,",
+      "exercise-lying-partial-leg-raise-v1 and exercise-lying-partial-leg-hold-v1,",
+      "were mapped in September 2026. mova still has no clinician-recorded clip",
+      "of either -- that is recorded where it belongs, as video: null on their",
+      "catalog.ts entries, not as an absent mapping."
+    ],
+    "ids": []
+  }
+}

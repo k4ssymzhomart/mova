@@ -1,0 +1,4 @@
+# Rep-quality KNN reference sets, built by tools/build_rep_quality_reference.py.
+# None ships with the repo: `assess_reps` abstains until one exists here.
+# Directory kept so the abstain path has somewhere to look.
+!.gitignore

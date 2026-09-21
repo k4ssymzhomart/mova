@@ -45,10 +45,11 @@ the hardware protocol, and it confirms or kills this claim with a single number.
 - **Check-in** — pain before and after, difficulty, how the knee feels, new symptoms; every scale starts unanswered.
 - **Clinician view** — the session's repetitions recounted on the server from the stored frames, the movement series,
   per-sensor technical data and the check-in answers.
-- **Exercise library** — `/exercises` shows the twelve exercises from the НТЗ and the scoring spec, with the
-  clinician-recorded reference videos (R-05, НТЗ §9.3) on the 7 exercises a clip is confirmed to show, and a one-minute
-  overview at the top. Eight of the twelve have scoring targets; the five with no confirmed clip say the video is
-  coming. The catalogue and videos are static files; only a prescribed Heel Slide can be started from the page.
+- **Exercise library** — `/exercises` shows seventeen exercises: the twelve from the НТЗ and the scoring spec, plus
+  five taken from the PHOENIX signal and execution profiles. Clinician-recorded reference videos (R-05, НТЗ §9.3)
+  are on the 12 a clip is confirmed to show, and a one-minute overview sits at the top. Thirteen of the seventeen
+  have scoring targets; the rest say the video is coming. The catalogue and videos are static files; only a
+  prescribed Heel Slide can be started from the page.
 
 ## What is deliberately not claimed
 
@@ -82,6 +83,6 @@ unvalidated number is worth more than one that shows a confident wrong one.
 ## What is next
 
 1. Calibration to an anatomical knee angle, validated against a goniometer.
-2. Wiring the scoring engine for the eight exercises. It is in the branch (`lib/scoring`, 40 tests) but no screen
+2. Wiring the scoring engine for the thirteen exercises. It is in the branch (`lib/scoring`) but no screen
    uses it yet, so nothing is scored.
 3. The clinician prescription builder.

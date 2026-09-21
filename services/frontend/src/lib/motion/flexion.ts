@@ -264,40 +264,105 @@ export interface PairedProxySample {
 }
 
 export interface ProxyPairer {
-  /** Feed any role's reading; returns a paired sample when thigh and shank are both fresh enough. */
+  /** Feed any role's reading; returns a paired sample when the signal's segments are both fresh enough. */
   push(role: SensorRole, tMs: number, pitchDeg: number): PairedProxySample | null;
   reset(): void;
 }
 
 /**
- * Live pairing. The three sensors notify on independent BLE links, so there is no shared frame to read
- * both segments from: each new thigh or shank reading is combined with the other segment's latest one,
- * unless the two are more than `maxSkewMs` apart. Foot readings are not part of the proxy and are ignored.
+ * Which orientation signal carries an exercise's movement, in the same two shapes PHOENIX's
+ * `exercise_signals.SignalSpec` uses (services/imu-tools/src/mova_imu/analysis/exercise_signals.py):
+ *
+ *  - `relative`: one segment's pitch minus another's, written distal minus proximal. Heel Slide's knee bend is
+ *    shank minus thigh; an ankle pump is foot minus shank.
+ *  - `absolute`: one segment's own pitch. A straight leg raise needs this and only this: the knee stays straight,
+ *    so every segment-pair difference stays near zero and the lift shows up only in the thigh's own angle. Pairing
+ *    thigh and shank for that exercise would measure a knee bend that is not the movement being asked for.
+ *
+ * Yaw is never a choice here for the same reason exercise_signals.py refuses it: without a magnetometer it drifts.
  */
-export function createPairer(maxSkewMs: number = DEFAULT_MAX_PAIR_SKEW_MS): ProxyPairer {
-  let thigh: { tMs: number; pitchDeg: number } | null = null;
-  let shank: { tMs: number; pitchDeg: number } | null = null;
+export type FlexionSignal =
+  | { kind: "relative"; distal: SensorRole; proximal: SensorRole }
+  | { kind: "absolute"; role: SensorRole };
+
+/** Heel Slide's signal, and the default for every knee-flexion exercise. */
+export const KNEE_SIGNAL: FlexionSignal = { kind: "relative", distal: "shank", proximal: "thigh" };
+
+/** The sensor roles a signal needs before it can produce a sample. Counting pauses while any of them is missing. */
+export function signalRoles(signal: FlexionSignal): SensorRole[] {
+  return signal.kind === "relative" ? [signal.proximal, signal.distal] : [signal.role];
+}
+
+/**
+ * How a signal is written down, in the same words PROXY_DEFINITION uses, so a stored count always says what it was
+ * counted on. PROXY_DEFINITION itself is left untouched: it is written into every Heel Slide summary already and the
+ * clinician recount reads it back.
+ */
+export function signalDefinition(signal: FlexionSignal): string {
+  const measured =
+    signal.kind === "relative"
+      ? `wrap(${signal.distal}.pitch - ${signal.proximal}.pitch)`
+      : `${signal.role}.pitch`;
+  return `${measured}, baseline-zeroed, oriented`;
+}
+
+/**
+ * Live pairing for any signal. The three sensors notify on independent BLE links, so there is no shared frame to
+ * read both segments from: each new reading from one of the signal's segments is combined with the other's latest,
+ * unless the two are more than `maxSkewMs` apart. A reading from a role the signal does not use is ignored.
+ *
+ * An absolute signal has nothing to pair with, so every finite reading from its role is a sample with zero skew.
+ */
+export function createSignalPairer(
+  signal: FlexionSignal,
+  maxSkewMs: number = DEFAULT_MAX_PAIR_SKEW_MS,
+): ProxyPairer {
+  if (signal.kind === "absolute") {
+    const { role } = signal;
+    return {
+      push(pushedRole, tMs, pitchDeg) {
+        if (pushedRole !== role) return null;
+        if (!Number.isFinite(tMs) || !Number.isFinite(pitchDeg)) return null;
+        return { tMs, relativeDeg: wrapDeg(pitchDeg), skewMs: 0 };
+      },
+      reset() {
+        /* an absolute signal holds no state between samples */
+      },
+    };
+  }
+
+  const { distal, proximal } = signal;
+  let distalReading: { tMs: number; pitchDeg: number } | null = null;
+  let proximalReading: { tMs: number; pitchDeg: number } | null = null;
 
   return {
     push(role, tMs, pitchDeg) {
       if (!Number.isFinite(tMs) || !Number.isFinite(pitchDeg)) return null;
-      if (role === "thigh") thigh = { tMs, pitchDeg };
-      else if (role === "shank") shank = { tMs, pitchDeg };
+      if (role === distal) distalReading = { tMs, pitchDeg };
+      else if (role === proximal) proximalReading = { tMs, pitchDeg };
       else return null;
-      if (thigh === null || shank === null) return null;
-      const skewMs = Math.abs(thigh.tMs - shank.tMs);
+      if (distalReading === null || proximalReading === null) return null;
+      const skewMs = Math.abs(distalReading.tMs - proximalReading.tMs);
       if (skewMs > maxSkewMs) return null;
       return {
-        tMs: Math.max(thigh.tMs, shank.tMs),
-        relativeDeg: relativePitchDeg(thigh.pitchDeg, shank.pitchDeg),
+        tMs: Math.max(distalReading.tMs, proximalReading.tMs),
+        relativeDeg: relativePitchDeg(proximalReading.pitchDeg, distalReading.pitchDeg),
         skewMs,
       };
     },
     reset() {
-      thigh = null;
-      shank = null;
+      distalReading = null;
+      proximalReading = null;
     },
   };
+}
+
+/**
+ * Heel Slide's pairer: shank minus thigh, foot readings ignored. Kept as its own name because it is what the
+ * shipping screen, the stored summaries and the clinician recount are all written against.
+ */
+export function createPairer(maxSkewMs: number = DEFAULT_MAX_PAIR_SKEW_MS): ProxyPairer {
+  return createSignalPairer(KNEE_SIGNAL, maxSkewMs);
 }
 
 /** One stored reading as the clinician RPC returns it: [epoch ms, pitch degrees]. Pitch may be missing. */
