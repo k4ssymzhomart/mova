@@ -1,4 +1,4 @@
--- 0042_seed_catalog_exercises.sql (not applied)
+-- 0042_seed_catalog_exercises.sql (APPLIED to the hosted project 2026-09-21)
 -- The rest of the exercise library, so the session flow has something to resolve.
 --
 -- WHY THIS EXISTS. services/frontend/src/lib/exercises/catalog.ts is the source of truth for

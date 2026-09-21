@@ -35,11 +35,19 @@ its own status in its first line. **Update both when you apply something.**
 | `0038_knee_rehab_exercises.sql` | **no — do not apply as-is** | Seeds eight knee exercises under `snake_case` slugs. Production already has `heel-slide`; this file inserts `heel_slide`, so applying it creates a second Heel Slide. `0042` supersedes it. |
 | `0039_exercise_media.sql` | **no** | Adds `exercises.demo_video_url`. Nothing reads it: the reference clip is sourced from `services/frontend/src/lib/exercises/catalog.ts`, and applying this file must not turn that into two sources of truth. |
 | `0040_invitations.sql` | **no** | Clinician invitations. |
-| `0041_lying_partial_leg_exercises.sql` | **no** | The two Phoenix lying partial leg raises, kebab-case. |
-| `0042_seed_catalog_exercises.sql` | **no** | The other sixteen catalog exercises, kebab-case, so the session flow can resolve them. Excludes `heel-slide`, which production already holds. |
+| `0041_lying_partial_leg_exercises.sql` | yes (2026-09-21) | The two Phoenix lying partial leg raises, kebab-case. |
+| `0042_seed_catalog_exercises.sql` | yes (2026-09-21) | The other sixteen catalog exercises, kebab-case, so the session flow can resolve them. Excludes `heel-slide`, which production already holds. |
 
 Note also that the production `heel-slide` row was **not** written by a migration at all: it came from
 `services/frontend/scripts/seed-heel-slide.mjs`, with `is_published` false and an empty `target_joints`.
+It is still the only unpublished exercise row, and 0042 deliberately left it alone rather than rewrite a
+row real patients are prescribed. Publishing it is a one-line change and its own decision.
+
+After 0041 and 0042, `public.exercises` holds 25 rows: the nineteen the catalog describes, plus the six
+Phase-1 camera-era rows (`cross-body-reach`, `heel-toe-walk`, `march-in-place`, `overhead-reach`,
+`reach-to-target`, `tandem-stand`) that predate the TKA pivot and are not in `catalog.ts`. Those six have
+no scoring config, so the exercise screen runs them unscored — which is the honest state for them, not a
+bug. Nothing yet keeps `catalog.ts` and `public.exercises` in step; see 0042's header.
 
 ### Applying to the hosted project
 

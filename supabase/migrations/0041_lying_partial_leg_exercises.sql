@@ -1,4 +1,4 @@
--- 0041_lying_partial_leg_exercises.sql (not applied)
+-- 0041_lying_partial_leg_exercises.sql (APPLIED to the hosted project 2026-09-21)
 -- The two Phoenix exercises mova's catalog was missing: the partial lying leg raise and its hold
 -- variant. Sources: services/imu-tools/src/mova_imu/analysis/exercise_signals.py (both keyed on the
 -- ABSOLUTE thigh pitch, enter_deg 8.0, exit_deg 4.0) and execution_score.py (elevation_target_deg 15.0

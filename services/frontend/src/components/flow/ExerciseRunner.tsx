@@ -565,6 +565,18 @@ function RunnerBody({
                 <LiveCuePanel cue={scoring.liveCue} signal={mode === "sensors" ? recorder.lastQuality() : null} />
               ) : null}
 
+              {/* ScorePanel sizes its four tiles on the viewport breakpoint, so it needs the full column rather
+                  than the sidebar: at 20rem it lays four tiles across 320px and clips its own labels. */}
+              {config && scoring ? (
+                <ScorePanel
+                  config={config}
+                  result={scoring.result}
+                  signal={mode === "sensors" ? recorder.lastQuality() : null}
+                />
+              ) : (
+                <p className={cn(card, "p-5", bodyText, "text-[15px]")}>{t("flow.exercise.notScored")}</p>
+              )}
+
               <div className="flex flex-wrap gap-3">
                 {stage === "waiting" || stage === "choosing" ? (
                   <button type="button" className={primaryButton} onClick={() => void begin()} disabled={!canBegin}>
@@ -639,16 +651,6 @@ function RunnerBody({
                   </ul>
                 </section>
               ) : null}
-
-              {config && scoring ? (
-                <ScorePanel
-                  config={config}
-                  result={scoring.result}
-                  signal={mode === "sensors" ? recorder.lastQuality() : null}
-                />
-              ) : (
-                <p className={cn(card, "p-5", bodyText, "text-[15px]")}>{t("flow.exercise.notScored")}</p>
-              )}
             </aside>
           </div>
         </>

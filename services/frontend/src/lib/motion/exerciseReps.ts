@@ -19,8 +19,14 @@
 
 import type { RepThresholds } from "./reps";
 
-/** Where an exercise's entry threshold came from, so a screen or a summary can say rather than imply. */
-export type ThresholdSource = "rubric" | "exercise" | "fallback";
+/**
+ * Where an exercise's entry threshold came from, so a screen or a summary can say rather than imply.
+ *  - rubric:   the clinician's `exercises.scoring_rubric` raised it.
+ *  - exercise: the exercise's own declared minimum excursion.
+ *  - static:   the exercise declared ZERO excursion, which is a statement, not a blank — see STATIC_ENTER_DEG.
+ *  - fallback: nothing stated one at all.
+ */
+export type ThresholdSource = "rubric" | "exercise" | "static" | "fallback";
 
 export interface ResolvedThresholds extends RepThresholds {
   source: ThresholdSource;
@@ -39,6 +45,20 @@ const MIN_REP_MS = 250;
 
 /** Used only when an exercise declares no minimum excursion at all, so something still has to be chosen. */
 const FALLBACK_ENTER_DEG = 18;
+
+/**
+ * The entry threshold for an exercise that declares a minimum excursion of ZERO.
+ *
+ * Zero is not a missing value there, it is a statement: Quad Set's config records `minValidExcursionDeg: 0` with the
+ * spec's own words, "static exercise ... Не применяется". The joint is meant to stay still, so there is no excursion
+ * to clear. Treating that zero as "unstated" and falling back to 18° would mean no repetition of an isometric hold
+ * could ever be counted; using the zero itself would count every tremor.
+ *
+ * So a static exercise gets a small stillness band instead, matching the noise band lib/scoring/repDetector.ts
+ * already uses to decide that a movement has begun (DEFAULT_NOISE_BAND_DEG). The two have to agree, or the screen
+ * and the scoring engine disagree about when the patient started moving.
+ */
+export const STATIC_ENTER_DEG = 3;
 
 /** `min_valid_excursion_deg` from an `exercises.scoring_rubric`, when it holds a usable positive number. */
 export function rubricExcursionDeg(rubric: unknown): number | null {
@@ -61,15 +81,18 @@ export function exerciseThresholds(
   rubric?: unknown,
   exitDegOverride?: number | null,
 ): ResolvedThresholds {
-  const declared =
-    typeof minValidExcursionDeg === "number" && Number.isFinite(minValidExcursionDeg) && minValidExcursionDeg > 0
-      ? minValidExcursionDeg
-      : null;
+  const stated = typeof minValidExcursionDeg === "number" && Number.isFinite(minValidExcursionDeg);
+  const isStatic = stated && minValidExcursionDeg === 0;
+  const declared = stated && (minValidExcursionDeg as number) > 0 ? (minValidExcursionDeg as number) : null;
   const fromRubric = rubricExcursionDeg(rubric);
 
   let enterDeg: number;
   let source: ThresholdSource;
-  if (declared === null && fromRubric === null) {
+  if (isStatic && fromRubric === null) {
+    // A hold, and the clinician has not raised it: the stillness band, not a movement threshold.
+    enterDeg = STATIC_ENTER_DEG;
+    source = "static";
+  } else if (declared === null && fromRubric === null) {
     enterDeg = FALLBACK_ENTER_DEG;
     source = "fallback";
   } else if (fromRubric !== null && fromRubric > (declared ?? 0)) {

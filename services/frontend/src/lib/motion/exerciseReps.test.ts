@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { exerciseThresholds, rubricExcursionDeg } from "./exerciseReps.ts";
+import { STATIC_ENTER_DEG, exerciseThresholds, rubricExcursionDeg } from "./exerciseReps.ts";
 
 test("an exercise's own minimum excursion sets the entry threshold", () => {
   const heelSlide = exerciseThresholds(22.5);
@@ -27,6 +27,20 @@ test("a rubric may raise the entry threshold but never lower it", () => {
   const lowered = exerciseThresholds(22.5, { min_valid_excursion_deg: 5 });
   assert.equal(lowered.enterDeg, 22.5, "a rubric must not let jitter count as repetitions");
   assert.equal(lowered.source, "exercise");
+});
+
+test("a declared zero is a statement, not a blank: a static hold gets the stillness band", () => {
+  // Quad Set declares minValidExcursionDeg 0 — the spec's "static exercise ... Не применяется". Falling back to
+  // 18 degrees there would count no repetition of an isometric hold at all; using the zero would count a tremor.
+  const quadSet = exerciseThresholds(0);
+  assert.equal(quadSet.enterDeg, STATIC_ENTER_DEG);
+  assert.equal(quadSet.source, "static");
+  assert.ok(quadSet.exitDeg > 0 && quadSet.exitDeg < quadSet.enterDeg);
+
+  // A clinician may still raise it.
+  const raised = exerciseThresholds(0, { min_valid_excursion_deg: 6 });
+  assert.equal(raised.enterDeg, 6);
+  assert.equal(raised.source, "rubric");
 });
 
 test("an exercise that declares nothing falls back, and says that it fell back", () => {
