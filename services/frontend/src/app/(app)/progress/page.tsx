@@ -9,7 +9,17 @@ import Link from "next/link";
 
 import EmptyState from "@/components/app/EmptyState";
 import PageHeader from "@/components/app/PageHeader";
-import { card, focusRing, metricValue, primaryButton, sectionTitle, tileLabel } from "@/components/app/recipes";
+import {
+  card,
+  focusRing,
+  metricValue,
+  pageFlow,
+  primaryButton,
+  sectionHead,
+  sectionTitle,
+  tileGrid,
+  tileLabel,
+} from "@/components/app/recipes";
 import { cn } from "@/lib/utils";
 import { getTranslation } from "@/locales/server";
 
@@ -34,7 +44,7 @@ export default async function ProgressPage() {
 
   if (history.status === "error") {
     return (
-      <div className="space-y-8">
+      <div className={pageFlow}>
         <PageHeader eyebrow={t("progress.eyebrow")} title={t("progress.title")} lead={t("progress.lead")} />
         <EmptyState icon={TriangleAlert} title={t("progress.error.title")} body={t("progress.error.body")} />
       </div>
@@ -46,11 +56,11 @@ export default async function ProgressPage() {
   const { sessions, total, finished, lastFinished } = history;
 
   return (
-    <div className="space-y-8">
+    <div className={pageFlow}>
       <PageHeader eyebrow={t("progress.eyebrow")} title={t("progress.title")} lead={t("progress.lead")} />
 
       {sessions.length > 0 && (
-        <section aria-label={t("progress.summary.label")} className="grid gap-3 sm:grid-cols-2">
+        <section aria-label={t("progress.summary.label")} className={tileGrid}>
           <div className={cn(card, "p-5")}>
             <p className={cn("flex items-center gap-2", tileLabel)}>
               <CircleCheck className="size-5 shrink-0 text-signal-deep" strokeWidth={2} aria-hidden="true" />
@@ -75,7 +85,7 @@ export default async function ProgressPage() {
       <ScoresNotAvailableCard />
 
       <section aria-labelledby="progress-history-title" className="space-y-4">
-        <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+        <div className={sectionHead}>
           <h2 id="progress-history-title" className={sectionTitle}>
             {t("progress.history.title")}
           </h2>

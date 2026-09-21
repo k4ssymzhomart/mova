@@ -35,7 +35,7 @@ export default async function PatientPage({
     const { t } = getTranslation();
     const name = (heelSlide.kind === "ok" ? heelSlide.view.patientName : null) ?? patient?.demo.name ?? null;
     return (
-      <main className="mx-auto max-w-shell space-y-6 px-5 py-8 sm:px-8">
+      <main className="mx-auto max-w-app space-y-6 px-5 py-8 sm:px-8">
         <Link href="/clinician" className="inline-block text-sm text-ink-soft transition-colors hover:text-ink">
           {t("common.backToCaseload")}
         </Link>
@@ -48,7 +48,7 @@ export default async function PatientPage({
   if (!patient) {
     const { t } = getTranslation();
     return (
-      <main className="mx-auto max-w-shell px-5 py-16 sm:px-8">
+      <main className="mx-auto max-w-app px-5 py-16 sm:px-8">
         <p className="text-ink-soft">{t("clinician.detail.notFound")}</p>
         <Link href="/clinician" className="mt-4 inline-block text-sm text-signal-deep hover:underline">
           {t("common.backToCaseload")}

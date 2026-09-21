@@ -2,7 +2,7 @@
 
 import type { ReactNode } from "react";
 
-import { bodyText, eyebrow as eyebrowCls, pageTitle } from "./recipes";
+import { bodyText, eyebrow as eyebrowCls, pageMasthead, pageTitle } from "./recipes";
 
 export default function PageHeader({
   eyebrow,
@@ -16,11 +16,13 @@ export default function PageHeader({
   children?: ReactNode;
 }) {
   return (
-    <header>
-      <div className={eyebrowCls}>{eyebrow}</div>
-      <h1 className={pageTitle}>{title}</h1>
-      {lead && <p className={`mt-3 max-w-2xl ${bodyText}`}>{lead}</p>}
-      {children}
+    <header className={pageMasthead}>
+      <div className="min-w-0">
+        <div className={eyebrowCls}>{eyebrow}</div>
+        <h1 className={pageTitle}>{title}</h1>
+        {children}
+      </div>
+      {lead && <p className={`mt-3 lg:mt-0 ${bodyText}`}>{lead}</p>}
     </header>
   );
 }

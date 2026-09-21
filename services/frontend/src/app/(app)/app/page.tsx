@@ -18,7 +18,18 @@ import EmptyState from "@/components/app/EmptyState";
 import LocalDateTime from "@/components/app/LocalDateTime";
 import PageHeader from "@/components/app/PageHeader";
 import PrecautionsCard from "@/components/app/PrecautionsCard";
-import { bodyText, card, cardTitle, primaryButton, sectionTitle } from "@/components/app/recipes";
+import {
+  bodyText,
+  card,
+  cardTitle,
+  instrumentBody,
+  instrumentCard,
+  pageFlow,
+  primaryButton,
+  sectionTitle,
+} from "@/components/app/recipes";
+import ClipStill from "@/components/exercises/ClipStill";
+import { exerciseBySlug, localized } from "@/lib/exercises/catalog";
 import { getPatientContext } from "@/lib/patient/context";
 import { createClient } from "@/lib/supabase/server";
 import type { Locale } from "@/locales";
@@ -42,6 +53,8 @@ interface ExerciseItem {
   prescriptionId: string;
   name: string | null;
   perWeek: number | null;
+  /** The catalog slug, when the prescribed exercise is one the library knows: it carries the still and the target. */
+  slug: string | null;
 }
 type ExerciseList = { status: "error" } | { status: "none" } | { status: "ok"; items: ExerciseItem[] };
 
@@ -71,13 +84,11 @@ export default async function TodayPage() {
     profile?.display_name?.trim() || profile?.full_name?.trim() || user.email?.split("@")[0]?.trim() || null;
 
   return (
-    <div className="space-y-8">
+    <div className={pageFlow}>
       <PageHeader
         eyebrow={<LocalDateTime iso={new Date().toISOString()} format="weekday" />}
         title={name ? t("today.greeting", { name }) : t("today.greetingNoName")}
       />
-
-      <PrecautionsCard precautions={context.precautions} />
 
       <section aria-labelledby="today-exercises" className="space-y-4">
         <div>
@@ -108,38 +119,67 @@ export default async function TodayPage() {
           </ul>
         )}
       </section>
+
+      <PrecautionsCard precautions={context.precautions} />
     </div>
   );
 }
 
+/**
+ * One prescribed exercise, as the thing the patient is here to do: the clinician's own still frame from the library
+ * beside the name, what it aims for, how often, and the button that starts it. The still and the target come from
+ * the static catalog (lib/exercises/catalog.ts) — no extra query, and no picture invented for an exercise the
+ * library does not know. Without a catalog entry the card falls back to the plain row it has always been.
+ *
+ * On a phone the picture renders last, so the button stays on the first screen.
+ */
 function ExerciseCard({ item, t, locale }: { item: ExerciseItem; t: Translate; locale: Locale }) {
   const titleId = `rx-${item.prescriptionId}-title`;
   const startId = `rx-${item.prescriptionId}-start`;
-  return (
-    <li className={`${card} flex flex-col gap-5 p-5 sm:flex-row sm:items-center sm:justify-between sm:p-6`}>
-      <div className="min-w-0">
-        {/* Exercise name as stored in the catalog; it is not translated. */}
-        <h3 id={titleId} className={`${cardTitle} break-words`}>
-          {item.name ?? t("today.nameUnavailable")}
-        </h3>
-        {item.perWeek != null && (
-          <p className="mt-2 flex items-center gap-2 text-base text-ink-soft">
-            <CalendarDays className="size-5 shrink-0" strokeWidth={1.8} aria-hidden="true" />
-            {perWeekLabel(t, locale, item.perWeek)}
-          </p>
-        )}
-      </div>
+  const entry = item.slug ? exerciseBySlug(item.slug) : undefined;
+  const poster = entry?.poster ?? null;
+  const target = entry?.target ? localized(entry.target, locale) : null;
+
+  const body = (
+    <>
+      {/* Exercise name as stored in the catalog; it is not translated. */}
+      <h3 id={titleId} className={`${cardTitle} break-words sm:text-3xl`}>
+        {item.name ?? t("today.nameUnavailable")}
+      </h3>
+      {target && <p className="mt-3 text-base text-ink-soft">{target}</p>}
+      {item.perWeek != null && (
+        <p className="mt-2 flex items-center gap-2 text-base text-ink-soft">
+          <CalendarDays className="size-5 shrink-0" strokeWidth={1.8} aria-hidden="true" />
+          {perWeekLabel(t, locale, item.perWeek)}
+        </p>
+      )}
       {/* Every card has a "Start" button, so the accessible name adds the exercise: "Start, <name>". */}
       <Link
         id={startId}
         href={`/app/session/new/${encodeURIComponent(item.prescriptionId)}`}
         prefetch={false}
         aria-labelledby={`${startId} ${titleId}`}
-        className={`${primaryButton} w-full shrink-0 sm:w-auto`}
+        className={`${primaryButton} mt-6 w-full shrink-0 sm:mt-8 sm:w-auto`}
       >
         <Play className="size-5" strokeWidth={2} aria-hidden="true" />
         {t("today.start")}
       </Link>
+    </>
+  );
+
+  if (!poster) {
+    return (
+      <li className={`${card} p-5 sm:p-8`}>
+        <div className="min-w-0">{body}</div>
+      </li>
+    );
+  }
+
+  return (
+    <li className={instrumentCard}>
+      {/* Last on a phone, so the button stays on the first screen; beside the text from the small breakpoint up. */}
+      <ClipStill poster={poster} className="order-last h-52 w-full sm:order-none sm:h-full sm:min-h-[20rem]" />
+      <div className={instrumentBody}>{body}</div>
     </li>
   );
 }
@@ -178,6 +218,7 @@ async function loadExercises(supabase: SupabaseServer, profileId: string): Promi
     return {
       prescriptionId: row.id,
       name: exercise?.name?.trim() || null,
+      slug: exercise?.slug?.trim() || null,
       // 0 is allowed by the column check but is not a usable instruction, so it is left out like null.
       perWeek: row.frequency_per_week != null && row.frequency_per_week > 0 ? row.frequency_per_week : null,
     };

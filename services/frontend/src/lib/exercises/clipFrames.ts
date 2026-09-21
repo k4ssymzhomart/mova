@@ -77,6 +77,17 @@ export function clipFrame(path: string): ClipFrame {
   return { ratio: source.width / pictureHeight, objectPosition: `50% ${y}%`, wide: source.width >= pictureHeight };
 }
 
+/**
+ * A still of the clip with no black bands in the file itself, for a panel whose shape is not the clip's own — a
+ * card that spans a page, say. The two letterboxed clips have a cropped copy beside them in public/exercises; every
+ * other clip's poster already is its picture, so it is returned unchanged.
+ */
+export function clipStill(poster: string): string {
+  const source = clipSource(poster);
+  if (!source?.letterbox) return poster;
+  return poster.replace(/\.jpg$/, "-still.jpg");
+}
+
 /** Clip names this table knows about, for the tests. */
 export function knownClipNames(): string[] {
   return Object.keys(SOURCES);

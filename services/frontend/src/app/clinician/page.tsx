@@ -40,7 +40,7 @@ export default async function ClinicOverview() {
     .sort((a, b) => SEV_RANK[topSeverity(a.m)] - SEV_RANK[topSeverity(b.m)] || a.m.adherencePct - b.m.adherencePct);
 
   return (
-    <main className="mx-auto max-w-shell px-5 py-10 sm:px-8">
+    <main className="mx-auto max-w-app px-5 py-10 sm:px-8">
       <div className="text-[11px] font-medium uppercase tracking-[0.22em] text-ink-faint">{t("clinician.eyebrow")}</div>
       <h1 className="mt-2 text-5xl leading-[1.05] text-ink">{t("clinician.title")}</h1>
 

@@ -20,7 +20,7 @@ export default function ClinicHeader() {
 
   return (
     <header className="sticky top-0 z-30 border-b border-line bg-paper/85 backdrop-blur-md print:hidden">
-      <div className="mx-auto flex h-16 max-w-shell items-center justify-between px-5 sm:px-8">
+      <div className="mx-auto flex h-16 max-w-app items-center justify-between px-5 sm:px-8">
         <Link href="/clinician" className="flex items-center gap-2.5">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src="/logo-mova.png" alt="Mova" className="h-7 w-auto" />

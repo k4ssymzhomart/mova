@@ -55,7 +55,7 @@ export default function PatientDetail({ patient, resultSlot }: { patient: Clinic
   };
 
   return (
-    <main className="mx-auto max-w-shell px-5 py-8 sm:px-8">
+    <main className="mx-auto max-w-app px-5 py-8 sm:px-8">
       <Link href="/clinician" className="text-sm text-ink-soft transition-colors hover:text-ink">
         {t("clinician.detail.caseload")}
       </Link>

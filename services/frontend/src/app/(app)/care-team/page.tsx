@@ -14,7 +14,8 @@ import { CircleAlert, MessageSquareOff, UserRound, Users } from "lucide-react";
 
 import EmptyState from "@/components/app/EmptyState";
 import PageHeader from "@/components/app/PageHeader";
-import { bodyText, card, cardTitle, tileLabel } from "@/components/app/recipes";
+import { bodyText, card, cardTitle, pageFlow, personGrid, tileLabel } from "@/components/app/recipes";
+import { cn } from "@/lib/utils";
 import { createClient } from "@/lib/supabase/server";
 import { getTranslation } from "@/locales/server";
 
@@ -111,7 +112,7 @@ export default async function CareTeamPage() {
   }
 
   return (
-    <div className="space-y-8">
+    <div className={pageFlow}>
       <PageHeader eyebrow={t("nav.careTeam")} title={t("careTeam.title")} lead={t("careTeam.lead")} />
 
       {failed ? (
@@ -119,7 +120,7 @@ export default async function CareTeamPage() {
       ) : links.length === 0 ? (
         <EmptyState icon={Users} title={t("careTeam.empty.title")} body={t("careTeam.empty.body")} />
       ) : (
-        <ul aria-label={t("careTeam.listLabel")} className="grid gap-4 lg:grid-cols-2 lg:items-start">
+        <ul aria-label={t("careTeam.listLabel")} className={cn(personGrid, "lg:items-start")}>
           {links.map((link) => (
             <ClinicianCard key={link.id} link={link} t={t} />
           ))}

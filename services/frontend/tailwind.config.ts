@@ -60,7 +60,14 @@ const config: Config = {
         soft: "0 1px 2px rgba(18,19,17,0.05), 0 10px 28px -20px rgba(18,19,17,0.20)",
       },
       maxWidth: {
+        // The public site and the reading layout. Not to be widened: most of its uses are components/site/*.
         shell: "1320px",
+        // The application frame: the patient app and the clinician portal, one number for both halves.
+        app: "1640px",
+        // The task frame: the session flow, where one column is the whole job.
+        flow: "52rem",
+        // Prose measure, about 68 characters of Russian at 16px.
+        measure: "68ch",
       },
       transitionTimingFunction: {
         editorial: "cubic-bezier(0.16, 1, 0.3, 1)",

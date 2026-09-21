@@ -13,11 +13,44 @@ export const pageTitle =
   "mt-2 text-4xl font-semibold leading-tight tracking-tight text-ink [overflow-wrap:anywhere] sm:text-5xl";
 export const sectionTitle = "text-2xl font-semibold leading-tight text-ink";
 export const cardTitle = "text-xl font-semibold leading-tight text-ink";
-export const bodyText = "text-base leading-relaxed text-ink-soft";
+export const bodyText = "max-w-measure text-base leading-relaxed text-ink-soft";
 export const tileLabel = "text-sm font-medium text-ink-soft";
 export const metricValue = "tnum text-3xl font-semibold text-ink";
 
 export const card = "rounded-card border border-line bg-card";
+
+// Layout recipes. A page composes from these; it does not write its own frame, grid or rhythm. Card grids measure
+// the column they sit in rather than the window, so a card never gets smaller when the window gets wider.
+
+/** The page frame: the patient <main>, the context bar above it, and every clinician <main>. */
+export const appFrame = "mx-auto w-full max-w-app px-5 sm:px-8 lg:px-12";
+
+/** The task frame: the session flow, where one column is the whole job. */
+export const flowFrame = "mx-auto w-full max-w-flow px-5 sm:px-8 lg:px-12";
+
+/** Between the top-level bands of a page. The only vertical rhythm a page sets. */
+export const pageFlow = "space-y-10 lg:space-y-14";
+
+/** The masthead: eyebrow and title on the left, the lead at its own measure on the right, one rule under both. */
+export const pageMasthead =
+  "border-b border-line pb-6 lg:grid lg:grid-cols-[minmax(0,1fr)_minmax(0,26rem)] lg:items-end lg:gap-x-12 lg:pb-8";
+
+/** A section heading with its count beside it. Never justified apart: the frame is wide. */
+export const sectionHead = "flex flex-wrap items-baseline gap-x-4 gap-y-1";
+
+export const mediaCardGrid = "grid gap-4 grid-cols-[repeat(auto-fill,minmax(min(100%,20rem),1fr))]";
+export const cardGrid = "grid gap-4 grid-cols-[repeat(auto-fill,minmax(min(100%,24rem),1fr))]";
+export const personGrid = "grid gap-4 grid-cols-[repeat(auto-fill,minmax(min(100%,28rem),1fr))]";
+export const tileGrid = "grid gap-3 grid-cols-[repeat(auto-fill,minmax(min(100%,17rem),1fr))]";
+
+/** The instrument: the exercise the patient came to do. Picture on one side, decision on the other. */
+export const instrumentCard =
+  "grid overflow-hidden rounded-card border border-line bg-card sm:grid-cols-[minmax(0,1fr)_minmax(0,26rem)]";
+export const instrumentBody = "flex flex-col items-stretch p-6 sm:items-start sm:justify-center sm:p-10";
+
+/** A notice that is one message rather than a page: label column on the left, message at its measure. */
+export const noticeBand =
+  "rounded-card border border-line bg-card p-5 sm:p-6 lg:grid lg:grid-cols-[minmax(0,14rem)_minmax(0,1fr)] lg:gap-x-8";
 
 export const focusRing =
   "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-signal-deep focus-visible:ring-offset-2 focus-visible:ring-offset-paper-soft";

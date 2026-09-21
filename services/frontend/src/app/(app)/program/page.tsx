@@ -21,9 +21,12 @@ import PrecautionsCard from "@/components/app/PrecautionsCard";
 import {
   bodyText,
   card,
+  cardGrid,
   cardTitle,
   focusRing,
+  pageFlow,
   secondaryButton,
+  sectionHead,
   sectionTitle,
   tileLabel,
 } from "@/components/app/recipes";
@@ -124,7 +127,7 @@ export default async function PlanPage() {
     .sort((a, b) => a.created_at.localeCompare(b.created_at));
 
   return (
-    <div className="space-y-8">
+    <div className={pageFlow}>
       <PageHeader eyebrow={t("nav.plan")} title={t("plan.title")} lead={t("plan.lead")} />
 
       <PrecautionsCard precautions={context.precautions} />
@@ -162,7 +165,7 @@ export default async function PlanPage() {
           </section>
 
           <section aria-labelledby="plan-exercises" className="space-y-4">
-            <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+            <div className={sectionHead}>
               <h2 id="plan-exercises" className={sectionTitle}>
                 {t("plan.exercises.title")}
               </h2>
@@ -179,7 +182,7 @@ export default async function PlanPage() {
                 body={t("plan.exercises.emptyBody")}
               />
             ) : (
-              <ul className="grid gap-4 md:grid-cols-2">
+              <ul className={cardGrid}>
                 {prescriptions.map((p) => (
                   <li key={p.id}>
                     <PrescriptionCard prescription={p} t={t} locale={locale} />

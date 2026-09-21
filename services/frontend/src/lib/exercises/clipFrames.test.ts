@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { test } from "node:test";
 
 import { EXERCISE_CATALOG } from "./catalog.ts";
-import { clipFrame, clipName, clipSource, knownClipNames } from "./clipFrames.ts";
+import { clipFrame, clipName, clipSource, clipStill, knownClipNames } from "./clipFrames.ts";
 
 const PUBLIC = new URL("../../../public/exercises/", import.meta.url);
 
@@ -67,6 +67,24 @@ test("a letterboxed clip is framed on its picture, an ordinary one on the whole 
   const sideways = clipFrame("/exercises/quad-set.mp4");
   assert.equal(sideways.wide, true);
   assert.ok(Math.abs(sideways.ratio - 16 / 9) < 0.01);
+});
+
+test("a letterboxed clip has a cropped still beside it, and every other clip is its own still", () => {
+  for (const name of knownClipNames()) {
+    const poster = `/exercises/${name}.jpg`;
+    const still = clipStill(poster);
+    const letterboxed = clipSource(poster)?.letterbox != null;
+    assert.equal(still !== poster, letterboxed, `${name}: still and letterbox disagree`);
+    assert.ok(existsSync(new URL(still.replace("/exercises/", ""), PUBLIC)), `${still} is missing`);
+    if (letterboxed) {
+      const measured = jpegSize(new URL(still.replace("/exercises/", ""), PUBLIC));
+      const frame = clipFrame(poster);
+      assert.ok(
+        Math.abs(measured.width / measured.height - frame.ratio) < 0.02,
+        `${name}: the still is ${measured.width}x${measured.height}, the picture ratio is ${frame.ratio}`,
+      );
+    }
+  }
 });
 
 test("an unknown clip falls back to a sideways frame rather than throwing", () => {

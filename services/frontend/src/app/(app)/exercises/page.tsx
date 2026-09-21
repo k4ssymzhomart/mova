@@ -15,7 +15,7 @@ import type { Metadata } from "next";
 import { Suspense } from "react";
 
 import PageHeader from "@/components/app/PageHeader";
-import { sectionTitle } from "@/components/app/recipes";
+import { mediaCardGrid, pageFlow, sectionTitle } from "@/components/app/recipes";
 import ExerciseCard from "@/components/exercises/ExerciseCard";
 import ExerciseDetailDialog from "@/components/exercises/ExerciseDetailDialog";
 import LibraryOverviewVideo from "@/components/exercises/LibraryOverviewVideo";
@@ -37,7 +37,7 @@ export default async function ExerciseLibraryPage() {
 
   return (
     <>
-      <div className="space-y-10">
+      <div className={pageFlow}>
         <PageHeader
           eyebrow={t("exerciseLibrary.eyebrow")}
           title={t("exerciseLibrary.title")}
@@ -53,7 +53,7 @@ export default async function ExerciseLibraryPage() {
               <h2 id={headingId} className={sectionTitle}>
                 {t(phaseHeadingKey(group.phase))}
               </h2>
-              <ul className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+              <ul className={mediaCardGrid}>
                 {group.entries.map((entry) => (
                   <li key={entry.slug}>
                     <ExerciseCard entry={entry} heelSlide={heelSlide} t={t} locale={locale} />

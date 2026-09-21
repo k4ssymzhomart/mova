@@ -16,7 +16,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 
-import { focusRing } from "@/components/app/recipes";
+import { appFrame, flowFrame, focusRing } from "@/components/app/recipes";
 import type { PatientContext } from "@/lib/patient/context";
 import { SafetyProvider, useSafety } from "@/lib/safety/SafetyProvider";
 import { cn } from "@/lib/utils";
@@ -133,8 +133,9 @@ function Shell({ name, context, children }: ShellProps) {
 
   const railW = collapsed ? "lg:w-[74px]" : "lg:w-[260px]";
   const contentPad = collapsed ? "lg:pl-[74px]" : "lg:pl-[260px]";
-  // The max-width tracks the rail, so collapsing it reflows content into the reclaimed width.
-  const maxW = collapsed ? "max-w-[1180px] lg:max-w-[1560px]" : "max-w-[1180px]";
+  // One frame for every page, wide enough to use a large screen; collapsing the rail recentres it rather than
+  // reflowing the text. The session flow is one task in one column, so it takes the narrower frame.
+  const frame = inFlow ? flowFrame : appFrame;
 
   return (
     <div className="min-h-[100dvh] bg-paper-soft text-ink">
@@ -181,7 +182,7 @@ function Shell({ name, context, children }: ShellProps) {
         <div className={cn("transition-[padding] duration-300 ease-editorial", contentPad)}>
           {/* desktop context bar */}
           <div className="sticky top-0 z-20 hidden border-b border-line bg-card lg:block [@media(max-height:500px)]:static">
-            <div className={cn("mx-auto w-full px-12 py-3 transition-[max-width] duration-300 ease-editorial", maxW)}>
+            <div className={cn(appFrame, "py-3")}>
               <PatientContextBar context={context} layout="inline" />
             </div>
           </div>
@@ -190,9 +191,9 @@ function Shell({ name, context, children }: ShellProps) {
             id="main"
             tabIndex={-1}
             className={cn(
-              "mx-auto w-full px-5 py-8 transition-[max-width] duration-300 ease-editorial focus:outline-none sm:px-8 lg:px-12 lg:py-12",
-              maxW,
-              inFlow ? "pb-12" : "pb-32 lg:pb-12",
+              frame,
+              "py-8 transition-[max-width] duration-300 ease-editorial focus:outline-none lg:py-10",
+              inFlow ? "pb-12" : "pb-32 lg:pb-10",
             )}
           >
             {safety.level === "red" ? <SafetyStopPanel /> : children}

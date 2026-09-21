@@ -155,7 +155,7 @@ export function FlowStepSkeleton() {
 /** Clinician caseload: rollup tiles + a two-column roster of patient cards + telemetry feed. */
 export function ClinicCaseloadSkeleton() {
   return (
-    <main className="mx-auto max-w-shell px-5 py-10 sm:px-8">
+    <main className="mx-auto max-w-app px-5 py-10 sm:px-8">
       <div className="animate-pulse space-y-8" aria-hidden="true">
         <HeaderSkeleton wide />
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
@@ -177,7 +177,7 @@ export function ClinicCaseloadSkeleton() {
 /** Clinician patient detail: back link, header, tiles, charts + alerts/prescription aside. */
 export function ClinicPatientSkeleton() {
   return (
-    <main className="mx-auto max-w-shell px-5 py-8 sm:px-8">
+    <main className="mx-auto max-w-app px-5 py-8 sm:px-8">
       <div className="animate-pulse space-y-6" aria-hidden="true">
         <Bar className="h-4 w-28" />
         <HeaderSkeleton />
