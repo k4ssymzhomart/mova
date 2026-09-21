@@ -53,7 +53,7 @@ export default async function ExerciseLibraryPage() {
               <h2 id={headingId} className={sectionTitle}>
                 {t(phaseHeadingKey(group.phase))}
               </h2>
-              <ul className="grid gap-4 md:grid-cols-2">
+              <ul className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
                 {group.entries.map((entry) => (
                   <li key={entry.slug}>
                     <ExerciseCard entry={entry} heelSlide={heelSlide} t={t} locale={locale} />

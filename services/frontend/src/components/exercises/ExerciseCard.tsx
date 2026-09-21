@@ -51,7 +51,7 @@ export default function ExerciseCard({
       {entry.video ? (
         <ExerciseCardMedia video={entry.video} poster={entry.poster} name={name} />
       ) : (
-        <div className="grid aspect-video w-full place-items-center border-b border-line bg-paper-soft">
+        <div className="grid h-72 w-full place-items-center border-b border-line bg-paper-soft sm:h-80">
           <p className="flex items-center gap-2 text-base font-medium text-ink-soft">
             <Clapperboard className="size-5 text-ink-faint" strokeWidth={1.8} aria-hidden="true" />
             {t("exerciseLibrary.media.comingSoon")}

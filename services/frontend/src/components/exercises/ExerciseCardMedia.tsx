@@ -1,6 +1,11 @@
 "use client";
 
 // A library card's media: the poster until the patient asks for motion, then the looping muted reference clip.
+//  - The clip is drawn in a box of its own shape (lib/exercises/clipFrames.ts), so the whole picture is visible. The
+//    clips were filmed on a phone: most stand upright, some lie sideways, and two carry black bands inside the frame,
+//    which the box crops away. Nothing of the movement itself is ever cut off.
+//  - Every card's media area is the same height, whatever the shape of its clip, so a row of cards lines up. The clip
+//    sits in the middle of it at its own shape, on a blurred, dimmed copy of its own poster, and nothing is cropped.
 //  - Nothing requests the video before a click, or a hover with a mouse. Until then only the poster <img> exists.
 //  - Hover plays only for a fine pointer that can hover, and not when reduced motion is asked for; leaving pauses a
 //    clip that hover started. A click is an explicit request, so it plays either way and the clip stays put after.
@@ -10,9 +15,11 @@
 import { Pause, Play } from "lucide-react";
 import { type PointerEvent, useEffect, useRef, useState } from "react";
 
+import { clipFrame } from "@/lib/exercises/clipFrames";
+import { cn } from "@/lib/utils";
 import { useTranslation } from "@/locales/client";
 
-import { clipObjectPosition, hasFineHoverPointer, prefersReducedMotion } from "./media";
+import { hasFineHoverPointer, prefersReducedMotion } from "./media";
 
 export default function ExerciseCardMedia({
   video,
@@ -30,6 +37,7 @@ export default function ExerciseCardMedia({
   const [wantPlay, setWantPlay] = useState(false);
   const [playing, setPlaying] = useState(false);
   const [failed, setFailed] = useState(false);
+  const frame = clipFrame(video);
 
   useEffect(() => {
     const element = videoRef.current;
@@ -64,12 +72,8 @@ export default function ExerciseCardMedia({
     setWantPlay(false);
   }
 
-  return (
-    <div
-      className="group relative aspect-video w-full overflow-hidden border-b border-line bg-paper-soft"
-      onPointerEnter={onPointerEnter}
-      onPointerLeave={onPointerLeave}
-    >
+  const picture = (
+    <div className="absolute inset-0 overflow-hidden rounded-sm">
       {mounted ? (
         <video
           ref={videoRef}
@@ -84,8 +88,8 @@ export default function ExerciseCardMedia({
           onError={() => setFailed(true)}
           disablePictureInPicture
           disableRemotePlayback
-          className="absolute inset-0 size-full object-cover"
-          style={{ objectPosition: clipObjectPosition(video) }}
+          className="size-full object-cover"
+          style={{ objectPosition: frame.objectPosition }}
         />
       ) : poster ? (
         // eslint-disable-next-line @next/next/no-img-element
@@ -96,10 +100,40 @@ export default function ExerciseCardMedia({
           height={360}
           loading="lazy"
           decoding="async"
-          className="absolute inset-0 size-full object-cover"
-          style={{ objectPosition: clipObjectPosition(video) }}
+          className="size-full object-cover"
+          style={{ objectPosition: frame.objectPosition }}
         />
       ) : null}
+    </div>
+  );
+
+  return (
+    <div
+      className="group relative grid h-72 w-full place-items-center overflow-hidden border-b border-line bg-paper-soft sm:h-80"
+      onPointerEnter={onPointerEnter}
+      onPointerLeave={onPointerLeave}
+    >
+      {/* Behind the clip: its own poster, blurred and faded, so the card has no empty grey margins. */}
+      {poster && (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={poster}
+          alt=""
+          aria-hidden="true"
+          loading="lazy"
+          decoding="async"
+          className="absolute inset-0 size-full scale-125 object-cover opacity-30 blur-2xl"
+          style={{ objectPosition: frame.objectPosition }}
+        />
+      )}
+
+      <div
+        className={cn("relative", frame.wide ? "w-full" : "h-full")}
+        style={{ aspectRatio: frame.ratio, maxHeight: "100%", maxWidth: "100%" }}
+      >
+        {picture}
+      </div>
+
       <button
         type="button"
         onClick={onClick}

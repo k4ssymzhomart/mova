@@ -16,6 +16,7 @@ import { type KeyboardEvent, type MouseEvent, useEffect, useRef, useState } from
 
 import { bodyText, eyebrow, focusRing, sectionTitle, tileLabel } from "@/components/app/recipes";
 import { exerciseBySlug } from "@/lib/exercises/catalog";
+import { clipFrame } from "@/lib/exercises/clipFrames";
 import { cn } from "@/lib/utils";
 import { useTranslation } from "@/locales/client";
 
@@ -31,7 +32,7 @@ import {
   startActionFor,
   textIn,
 } from "./library";
-import { clipObjectPosition, prefersReducedMotion } from "./media";
+import { prefersReducedMotion } from "./media";
 import SensorChips from "./SensorChips";
 import StartControl from "./StartControl";
 
@@ -281,25 +282,54 @@ function DetailVideo({ video, poster, name }: { video: string; poster: string | 
   // A clip that fails to load is left out, like one the catalog does not have.
   if (failed) return null;
 
+  // The clip is shown in a box of its own shape, so the whole picture is visible: upright clips keep a fixed height
+  // and sit on a blurred copy of their own poster, sideways ones run the full width. See lib/exercises/clipFrames.ts.
+  const frame = clipFrame(video);
+  const element = (
+    <video
+      ref={videoRef}
+      src={video}
+      poster={poster ?? undefined}
+      loop
+      muted
+      playsInline
+      preload="none"
+      aria-label={t("exerciseLibrary.media.video", { name })}
+      onPlay={() => setPlaying(true)}
+      onPause={() => setPlaying(false)}
+      onError={() => setFailed(true)}
+      disablePictureInPicture
+      disableRemotePlayback
+      className="absolute inset-0 size-full rounded-sm object-cover"
+      style={{ objectPosition: frame.objectPosition }}
+    />
+  );
+
   return (
-    <div className="relative aspect-video w-full overflow-hidden rounded-card bg-paper-soft ring-1 ring-line">
-      <video
-        ref={videoRef}
-        src={video}
-        poster={poster ?? undefined}
-        loop
-        muted
-        playsInline
-        preload="none"
-        aria-label={t("exerciseLibrary.media.video", { name })}
-        onPlay={() => setPlaying(true)}
-        onPause={() => setPlaying(false)}
-        onError={() => setFailed(true)}
-        disablePictureInPicture
-        disableRemotePlayback
-        className="size-full object-cover"
-        style={{ objectPosition: clipObjectPosition(video) }}
-      />
+    <div
+      className={cn(
+        "relative w-full overflow-hidden rounded-card bg-paper-soft ring-1 ring-line",
+        frame.wide ? "" : "h-[22rem] sm:h-[26rem]",
+      )}
+      style={frame.wide ? { aspectRatio: frame.ratio } : undefined}
+    >
+      {!frame.wide && poster && (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={poster}
+          alt=""
+          aria-hidden="true"
+          className="absolute inset-0 size-full scale-125 object-cover opacity-30 blur-2xl"
+          style={{ objectPosition: frame.objectPosition }}
+        />
+      )}
+      {frame.wide ? (
+        element
+      ) : (
+        <div className="relative mx-auto h-full" style={{ aspectRatio: frame.ratio }}>
+          {element}
+        </div>
+      )}
       <button
         type="button"
         onClick={toggle}
