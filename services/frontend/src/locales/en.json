@@ -450,6 +450,45 @@
         "chart": "Simulated session: the lines are drawn from data the program created, not from sensors.",
         "technical": "Simulated session: the frames, devices, rates and battery values below come from the simulation, not from sensors."
       }
+    },
+    "assign": {
+      "title": "Prescribed exercises",
+      "lead": "Tick the exercises this patient should do. The change shows on their Today screen at once.",
+      "count": "{n} of {total} prescribed",
+      "toggle": "Prescribe this exercise",
+      "reps": "Repetitions",
+      "perWeek": "Times a week",
+      "saving": "Saving…",
+      "saved": "Saved",
+      "failed": "Could not save. Try again.",
+      "unavailable": "This exercise is not in the database and cannot be prescribed.",
+      "readFailed": "Could not read the prescriptions."
+    },
+    "progress": {
+      "title": "What the patient has done",
+      "sessions": "Sessions this week",
+      "reps": "Repetitions per session",
+      "pain": "Pain after a session",
+      "symptoms": "Symptom reports",
+      "symptomsHint": "In the last two weeks",
+      "weekBefore": "Week before: {n}",
+      "same": "no change",
+      "noTrend": "No sessions in the last two weeks, so there is nothing to compare.",
+      "emptyTitle": "No sessions yet",
+      "emptyBody": "Sessions appear here as soon as the patient finishes one.",
+      "date": "Date",
+      "exercise": "Exercise",
+      "repsColumn": "Repetitions",
+      "repsOf": "{done} of {target}",
+      "score": "Score",
+      "notScored": "not scored",
+      "partial": "partial",
+      "painColumn": "Pain before → after",
+      "difficulty": "Difficulty",
+      "feels": "Knee",
+      "symptomsColumn": "Symptoms",
+      "simulated": "simulated",
+      "readFailed": "Could not read this patient's sessions."
     }
   },
   "nav": {
